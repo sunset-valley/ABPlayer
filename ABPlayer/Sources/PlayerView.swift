@@ -78,14 +78,14 @@ struct PlayerView: View {
 
     private var loopControls: some View {
         HStack(spacing: 12) {
-            Button("Set A (c)", action: playerManager.setPointA)
+            Button("Set A (x)", action: playerManager.setPointA)
+                .keyboardShortcut("x", modifiers: [])
+
+            Button("Set B (c)", action: playerManager.setPointB)
                 .keyboardShortcut("c", modifiers: [])
 
-            Button("Set B (v)", action: playerManager.setPointB)
+            Button("Clear A/B (v)", action: playerManager.clearLoop)
                 .keyboardShortcut("v", modifiers: [])
-
-            Button("Clear A/B (b)", action: playerManager.clearLoop)
-                .keyboardShortcut("b", modifiers: [])
 
             if let pointA = playerManager.pointA {
                 Text("A: \(timeString(from: pointA))")
@@ -109,6 +109,7 @@ struct PlayerView: View {
                 Button("Save Current A-B") {
                     saveCurrentSegment()
                 }
+                .keyboardShortcut("b", modifiers: [])
                 .disabled(!playerManager.isLooping)
             }
 

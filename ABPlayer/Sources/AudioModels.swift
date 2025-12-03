@@ -10,6 +10,8 @@ final class AudioFile {
     var bookmarkData: Data
 
     var createdAt: Date
+
+    @Relationship(inverse: \LoopSegment.audioFile)
     var segments: [LoopSegment]
 
     init(
