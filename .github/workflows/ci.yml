@@ -35,6 +35,7 @@ jobs:
     - name: Install Tuist via mise
       run: |
         mise install tuist@4.95.0
+        mise use -g tuist@4.95.0
 
     - name: Generate Xcode Project
       run: |
@@ -87,6 +88,7 @@ jobs:
     - name: Install Tuist via mise
       run: |
         mise install tuist@4.95.0
+        mise use -g tuist@4.95.0
 
     - name: Generate Xcode Project
       run: |
