@@ -27,10 +27,14 @@ jobs:
       with:
         swift-version: '6.2'
 
-    - name: Setup Tuist
-      uses: tuist/action@v1
+    - name: Install mise
+      uses: jdx/mise-action@v3
       with:
-        version: "4.95.0"
+        github_token: ${{ secrets.GITHUB_TOKEN }} # Recommended for higher API rate limits
+  
+    - name: Install Tuist via mise
+      run: |
+        mise install tuist@4.95.0
 
     - name: Generate Xcode Project
       run: |
@@ -75,10 +79,14 @@ jobs:
       with:
         swift-version: '6.2'
 
-    - name: Setup Tuist
-      uses: tuist/action@v1
+    - name: Install mise
+      uses: jdx/mise-action@v3
       with:
-        version: "4.95.0"
+        github_token: ${{ secrets.GITHUB_TOKEN }} # Recommended for higher API rate limits
+
+    - name: Install Tuist via mise
+      run: |
+        mise install tuist@4.95.0
 
     - name: Generate Xcode Project
       run: |
