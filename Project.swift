@@ -4,7 +4,7 @@ let project = Project(
     name: "ABPlayer",
     settings: .settings(
         base: [
-            "SWIFT_VERSION": "6.0"
+            "SWIFT_VERSION": "6.2"
         ],
         configurations: [
             .debug(name: "Debug"),
@@ -17,6 +17,7 @@ let project = Project(
             destinations: .macOS,
             product: .app,
             bundleId: "cc.ihugo.app.ABPlayer",
+            deploymentTargets: .macOS("15.7.2"),
             infoPlist: .default,
             buildableFolders: [
                 "ABPlayer/Sources",
@@ -29,6 +30,7 @@ let project = Project(
             destinations: .macOS,
             product: .unitTests,
             bundleId: "cc.ihugo.app.ABPlayerTests",
+            deploymentTargets: .macOS("15.7.2"),
             infoPlist: .default,
             buildableFolders: [
                 "ABPlayer/Tests"
