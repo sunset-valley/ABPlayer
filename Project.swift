@@ -18,7 +18,10 @@ let project = Project(
             product: .app,
             bundleId: "cc.ihugo.app.ABPlayer",
             deploymentTargets: .macOS("15.7.2"),
-            infoPlist: .default,
+            infoPlist: .extendingDefault(with: [
+                "CFBundleVersion": "nightly-202512050245",
+                "CFBundleShortVersionString": "0.0.1"
+            ]),
             buildableFolders: [
                 "ABPlayer/Sources",
                 "ABPlayer/Resources",
