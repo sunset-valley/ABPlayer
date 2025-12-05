@@ -86,6 +86,9 @@ public struct ContentView: View {
                     }
                 }
             }
+            .safeAreaInset(edge: .bottom) {
+                versionFooter
+            }
     }
 
     private var mp3Section: some View {
@@ -126,6 +129,23 @@ public struct ContentView: View {
             }
         }
         .buttonStyle(.plain)
+    }
+
+    private var versionFooter: some View {
+        Text("Version \(bundleShortVersion) • Build \(bundleVersion)")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+    }
+
+    private var bundleShortVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+    }
+
+    private var bundleVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
     }
 
     private func handleImportResult(_ result: Result<[URL], Error>) {
