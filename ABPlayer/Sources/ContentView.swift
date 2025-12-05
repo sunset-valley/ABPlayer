@@ -17,6 +17,7 @@ public struct ContentView: View {
     @State private var selectedFile: AudioFile?
     @State private var isImportingFile: Bool = false
     @State private var importErrorMessage: String?
+    @AppStorage("lastSelectedAudioFileID") private var lastSelectedAudioFileID: String?
 
     public init() {}
 
@@ -45,6 +46,10 @@ public struct ContentView: View {
         .onAppear {
             sessionTracker.attachModelContext(modelContext)
             playerManager.sessionTracker = sessionTracker
+            restoreLastSelectionIfNeeded()
+        }
+        .task(id: audioFiles.map(\.id)) {
+            restoreLastSelectionIfNeeded()
         }
         #if os(macOS)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
@@ -101,8 +106,7 @@ public struct ContentView: View {
         let isSelected = selectedFile?.id == file.id
 
         Button {
-            selectedFile = file
-            playerManager.load(audioFile: file)
+            selectFile(file)
         } label: {
             HStack {
                 VStack(alignment: .leading) {
@@ -152,11 +156,49 @@ public struct ContentView: View {
             )
 
             modelContext.insert(audioFile)
-            selectedFile = audioFile
-            playerManager.load(audioFile: audioFile)
+        selectFile(audioFile)
         } catch {
             importErrorMessage = "Failed to import file: \(error.localizedDescription)"
         }
+    }
+
+    private func selectFile(_ file: AudioFile) {
+        selectedFile = file
+        lastSelectedAudioFileID = file.id.uuidString
+
+        if playerManager.currentFile?.id == file.id,
+           playerManager.currentFile != nil {
+            playerManager.currentFile = file
+            return
+        }
+
+        playerManager.load(audioFile: file)
+    }
+
+    private func restoreLastSelectionIfNeeded() {
+        guard selectedFile == nil else {
+            if let currentFile = playerManager.currentFile,
+               let matchedFile = audioFiles.first(where: { $0.id == currentFile.id }) {
+                selectedFile = matchedFile
+                playerManager.currentFile = matchedFile
+            }
+            return
+        }
+
+        if let currentFile = playerManager.currentFile,
+           let matchedFile = audioFiles.first(where: { $0.id == currentFile.id }) {
+            selectedFile = matchedFile
+            playerManager.currentFile = matchedFile
+            return
+        }
+
+        guard let lastSelectedAudioFileID,
+              let lastID = UUID(uuidString: lastSelectedAudioFileID),
+              let file = audioFiles.first(where: { $0.id == lastID }) else {
+            return
+        }
+
+        selectFile(file)
     }
 }
 

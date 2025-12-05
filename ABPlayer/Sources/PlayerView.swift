@@ -23,7 +23,12 @@ struct PlayerView: View {
         }
         .padding()
         .onAppear {
-            playerManager.load(audioFile: audioFile)
+            if playerManager.currentFile?.id == audioFile.id,
+               playerManager.currentFile != nil {
+                playerManager.currentFile = audioFile
+            } else {
+                playerManager.load(audioFile: audioFile)
+            }
         }
     }
 
