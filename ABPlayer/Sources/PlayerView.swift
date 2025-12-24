@@ -14,6 +14,10 @@ struct PlayerView: View {
   @AppStorage("segmentSortDescendingByStartTime") private var isSegmentSortDescendingByStartTime:
     Bool = true
 
+  // Progress bar seeking state
+  @State private var isSeeking: Bool = false
+  @State private var seekValue: Double = 0
+
   var body: some View {
     HSplitView {
       // Left: Player controls + Segments
@@ -157,21 +161,33 @@ struct PlayerView: View {
 
   private var progressSection: some View {
     VStack(alignment: .leading, spacing: 8) {
-      let binding = Binding(
-        get: { playerManager.currentTime },
-        set: { newValue in
-          playerManager.seek(to: newValue)
+      Slider(
+        value: Binding(
+          get: {
+            // 拖拽时使用本地值，否则使用实际播放时间
+            isSeeking ? seekValue : playerManager.currentTime
+          },
+          set: { newValue in
+            seekValue = newValue
+            // 拖拽中不执行seek，松手后统一执行
+          }
+        ),
+        in: 0...(playerManager.duration > 0 ? playerManager.duration : 1),
+        step: 0.01,
+        onEditingChanged: { editing in
+          if editing {
+            // 开始拖拽
+            isSeeking = true
+          } else {
+            // 结束拖拽，执行seek
+            playerManager.seek(to: seekValue)
+            isSeeking = false
+          }
         }
       )
 
-      Slider(
-        value: binding,
-        in: 0...(playerManager.duration > 0 ? playerManager.duration : 1),
-        step: 0.01
-      )
-
       HStack {
-        Text(timeString(from: playerManager.currentTime))
+        Text(timeString(from: isSeeking ? seekValue : playerManager.currentTime))
         Spacer()
         Text(timeString(from: playerManager.duration))
       }
