@@ -2,6 +2,33 @@ import AVFoundation
 import Foundation
 import Observation
 
+// MARK: - Loop Mode
+
+enum LoopMode: String, CaseIterable {
+  case none
+  case repeatOne  // 无限重播当前文件
+  case repeatAll  // 重播当前目录
+  case shuffle  // 随机播放当前目录
+
+  var displayName: String {
+    switch self {
+    case .none: "Off"
+    case .repeatOne: "Repeat One"
+    case .repeatAll: "Repeat All"
+    case .shuffle: "Shuffle"
+    }
+  }
+
+  var iconName: String {
+    switch self {
+    case .none: "repeat"
+    case .repeatOne: "repeat.1"
+    case .repeatAll: "repeat"
+    case .shuffle: "shuffle"
+    }
+  }
+}
+
 // MARK: - Observable UI State (MainActor)
 
 @MainActor
@@ -22,7 +49,14 @@ final class AudioPlayerManager {
   /// Whether A-B looping should be active when a valid range is set.
   var isLoopEnabled: Bool = true
 
+  /// Current loop mode for playback behavior
+  var loopMode: LoopMode = .none
+
+  /// Callback when playback ends (used for repeat all / shuffle)
+  var onPlaybackEnded: ((AudioFile?) -> Void)?
+
   private var lastPersistedTime: Double = 0
+  private var endOfFileObserver: Any?
 
   /// Whether A and B define a valid loop range.
   var hasValidLoopRange: Bool {
@@ -42,9 +76,16 @@ final class AudioPlayerManager {
     _engine.teardownSync()
   }
 
+  func cleanup() {
+    if let observer = endOfFileObserver {
+      NotificationCenter.default.removeObserver(observer)
+      endOfFileObserver = nil
+    }
+  }
+
   // MARK: - Public API
 
-  func load(audioFile: AudioFile) {
+  func load(audioFile: AudioFile, fromStart: Bool = false) async {
     // 使用缓存的时长立即显示 UI
     if let cached = audioFile.cachedDuration, cached > 0 {
       duration = cached
@@ -56,47 +97,84 @@ final class AudioPlayerManager {
     clearLoop()
     lastPersistedTime = 0
 
+    // Remove previous observer
+    if let observer = endOfFileObserver {
+      NotificationCenter.default.removeObserver(observer)
+      endOfFileObserver = nil
+    }
+
     let bookmarkData = audioFile.bookmarkData
-    let resumeTime = audioFile.lastPlaybackTime
+    // 如果 fromStart 为 true，从0开始播放，否则使用保存的进度
+    let resumeTime = fromStart ? 0 : audioFile.lastPlaybackTime
 
-    Task { [weak self] in
-      guard let self else { return }
-
-      do {
-        try await _engine.load(
-          bookmarkData: bookmarkData,
-          resumeTime: resumeTime,
-          onDurationLoaded: { [weak self] loadedDuration in
-            guard let self else { return }
-            self.duration = loadedDuration
-            audioFile.cachedDuration = loadedDuration
-          },
-          onTimeUpdate: { [weak self] seconds in
-            guard let self else { return }
-            self.handleTimeUpdate(seconds)
-          },
-          onLoopCheck: { [weak self] seconds in
-            guard let self else { return }
-            self.handleLoopCheck(seconds)
-          }
-        )
-
-        // Restore position after load
-        if resumeTime > 0 {
-          currentTime = resumeTime
-          lastPersistedTime = resumeTime
+    do {
+      let playerItem = try await _engine.load(
+        bookmarkData: bookmarkData,
+        resumeTime: resumeTime,
+        onDurationLoaded: { [weak self] loadedDuration in
+          guard let self else { return }
+          self.duration = loadedDuration
+          audioFile.cachedDuration = loadedDuration
+        },
+        onTimeUpdate: { [weak self] seconds in
+          guard let self else { return }
+          self.handleTimeUpdate(seconds)
+        },
+        onLoopCheck: { [weak self] seconds in
+          guard let self else { return }
+          self.handleLoopCheck(seconds)
         }
-      } catch {
-        assertionFailure("Failed to load audio file: \(error)")
+      )
+
+      // Setup end-of-file notification observer
+      if let item = playerItem {
+        self.endOfFileObserver = NotificationCenter.default.addObserver(
+          forName: .AVPlayerItemDidPlayToEndTime,
+          object: item,
+          queue: .main
+        ) { [weak self] _ in
+          Task { @MainActor [weak self] in
+            self?.handlePlaybackEnded()
+          }
+        }
       }
+
+      // Restore position after load
+      if resumeTime > 0 {
+        currentTime = resumeTime
+        lastPersistedTime = resumeTime
+      }
+    } catch {
+      assertionFailure("Failed to load audio file: \(error)")
     }
   }
 
-  func play() {
+  /// Handle when a file finishes playing
+  private func handlePlaybackEnded() {
+    switch loopMode {
+    case .none:
+      isPlaying = false
+
+    case .repeatOne:
+      // Restart the same file from beginning
+      isPlaying = false
+      seek(to: 0)
+      play()
+
+    case .repeatAll, .shuffle:
+      // Notify ContentView to play next/random file
+      onPlaybackEnded?(currentFile)
+    }
+  }
+
+  func play(fromStart: Bool = false) {
     guard !isPlaying else { return }
 
     Task { [weak self] in
       guard let self else { return }
+      if fromStart {
+        seek(to: 0)
+      }
       let success = await _engine.play()
       if success {
         self.isPlaying = true
@@ -226,7 +304,7 @@ actor AudioPlayerEngine {
     onDurationLoaded: @MainActor @Sendable @escaping (Double) -> Void,
     onTimeUpdate: @MainActor @Sendable @escaping (Double) -> Void,
     onLoopCheck: @MainActor @Sendable @escaping (Double) -> Void
-  ) async throws {
+  ) async throws -> AVPlayerItem? {
     teardownPlayerInternal()
 
     var isStale = false
@@ -239,7 +317,7 @@ actor AudioPlayerEngine {
 
     guard url.startAccessingSecurityScopedResource() else {
       assertionFailure("Unable to access security scoped resource")
-      return
+      return nil
     }
 
     currentScopedURL = url
@@ -268,6 +346,7 @@ actor AudioPlayerEngine {
     }
 
     addTimeObserver(onTimeUpdate: onTimeUpdate, onLoopCheck: onLoopCheck)
+    return item
   }
 
   func play() -> Bool {

@@ -55,6 +55,7 @@ public struct ContentView: View {
       sessionTracker.attachModelContext(modelContext)
       playerManager.sessionTracker = sessionTracker
       restoreLastSelectionIfNeeded()
+      setupPlaybackEndedHandler()
     }
     .task(id: allAudioFiles.map(\.id)) {
       restoreLastSelectionIfNeeded()
@@ -105,8 +106,8 @@ public struct ContentView: View {
       selectedFile: $selectedFile,
       currentFolder: $currentFolder,
       navigationPath: $navigationPath,
-      onSelectFile: selectFile,
-      onPlayFile: playFile
+      onSelectFile: { file in await selectFile(file) },
+      onPlayFile: { file, fromStart in await playFile(file, fromStart: fromStart) }
     )
     .navigationTitle("ABPlayer")
     .toolbar {
@@ -199,7 +200,7 @@ public struct ContentView: View {
 
       modelContext.insert(audioFile)
       currentFolder?.audioFiles.append(audioFile)
-      selectFile(audioFile)
+      Task { await selectFile(audioFile) }
     } catch {
       importErrorMessage = "Failed to import file: \(error.localizedDescription)"
     }
@@ -212,7 +213,7 @@ public struct ContentView: View {
       if let folder = try importer.importFolder(at: url) {
         // Select first audio file if available
         if let firstFile = folder.audioFiles.first {
-          selectFile(firstFile)
+          Task { await selectFile(firstFile) }
         }
       }
     } catch {
@@ -222,7 +223,7 @@ public struct ContentView: View {
 
   // MARK: - Selection
 
-  private func selectFile(_ file: AudioFile) {
+  private func selectFile(_ file: AudioFile, fromStart: Bool = false) async {
     selectedFile = file
     lastSelectedAudioFileID = file.id.uuidString
     lastFolderID = file.folder?.id.uuidString
@@ -234,11 +235,11 @@ public struct ContentView: View {
       return
     }
 
-    playerManager.load(audioFile: file)
+    await playerManager.load(audioFile: file, fromStart: fromStart)
   }
 
-  private func playFile(_ file: AudioFile) {
-    selectFile(file)
+  private func playFile(_ file: AudioFile, fromStart: Bool = false) async {
+    await selectFile(file, fromStart: fromStart)
     playerManager.play()
   }
 
@@ -285,7 +286,56 @@ public struct ContentView: View {
       return
     }
 
-    selectFile(file)
+    Task { await selectFile(file) }
+  }
+
+  // MARK: - Playback Loop Handling
+
+  private func setupPlaybackEndedHandler() {
+    playerManager.onPlaybackEnded = { [weak playerManager] currentFile in
+      guard let playerManager,
+        let currentFile,
+        let folder = currentFile.folder
+      else { return }
+
+      let files = folder.audioFiles.sorted { $0.displayName < $1.displayName }
+      guard !files.isEmpty else { return }
+
+      let nextFile: AudioFile?
+
+      switch playerManager.loopMode {
+      case .none, .repeatOne:
+        // These cases are handled in AudioPlayerManager
+        return
+
+      case .repeatAll:
+        // Play next file in sequence, wrap around to first
+        if let currentIndex = files.firstIndex(where: { $0.id == currentFile.id }) {
+          let nextIndex = (currentIndex + 1) % files.count
+          nextFile = files[nextIndex]
+        } else {
+          nextFile = files.first
+        }
+
+      case .shuffle:
+        // Play random file (different from current if possible)
+        if files.count > 1 {
+          var randomFile: AudioFile
+          repeat {
+            randomFile = files.randomElement()!
+          } while randomFile.id == currentFile.id
+          nextFile = randomFile
+        } else {
+          nextFile = files.first
+        }
+      }
+
+      if let nextFile {
+        Task { @MainActor in
+          await self.playFile(nextFile, fromStart: true)
+        }
+      }
+    }
   }
 
   // MARK: - Data Management
