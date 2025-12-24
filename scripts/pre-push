@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Pre-push hook to automatically update CFBundleVersion for nightly builds
+# Updates "nightly-*" versions to "nightly-<commit hash prefix>"
+
+PROJECT_FILE="Project.swift"
+
+# Get the current CFBundleVersion value
+CURRENT_VERSION=$(grep -o '"CFBundleVersion": "[^"]*"' "$PROJECT_FILE" | sed 's/"CFBundleVersion": "\(.*\)"/\1/')
+
+# Check if version starts with "nightly"
+if [[ "$CURRENT_VERSION" == nightly* ]]; then
+    # Get the short commit hash (first 7 characters)
+    COMMIT_HASH=$(git rev-parse --short HEAD)
+    
+    NEW_VERSION="nightly-${COMMIT_HASH}"
+    
+    # Only update if the version has changed
+    if [[ "$CURRENT_VERSION" != "$NEW_VERSION" ]]; then
+        echo "Updating CFBundleVersion from '$CURRENT_VERSION' to '$NEW_VERSION'"
+        
+        # Use sed to replace the version in Project.swift
+        if [[ "$(uname)" == "Darwin" ]]; then
+            # macOS sed requires empty string after -i
+            sed -i '' "s/\"CFBundleVersion\": \"nightly-[^\"]*\"/\"CFBundleVersion\": \"$NEW_VERSION\"/" "$PROJECT_FILE"
+        else
+            # Linux sed
+            sed -i "s/\"CFBundleVersion\": \"nightly-[^\"]*\"/\"CFBundleVersion\": \"$NEW_VERSION\"/" "$PROJECT_FILE"
+        fi
+        
+        # Stage and amend the commit with the updated version
+        git add "$PROJECT_FILE"
+        git commit --amend --no-edit
+        
+        echo "CFBundleVersion updated and commit amended."
+    else
+        echo "CFBundleVersion already set to '$NEW_VERSION', no update needed."
+    fi
+else
+    echo "CFBundleVersion '$CURRENT_VERSION' does not start with 'nightly', skipping update."
+fi
+
+exit 0
