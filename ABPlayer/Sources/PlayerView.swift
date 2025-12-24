@@ -47,7 +47,7 @@ struct PlayerView: View {
       {
         playerManager.currentFile = audioFile
       } else {
-        playerManager.load(audioFile: audioFile)
+        Task { await playerManager.load(audioFile: audioFile) }
       }
     }
   }
@@ -75,16 +75,30 @@ struct PlayerView: View {
           .font(.title2)
           .lineLimit(1)
 
-        Button {
-          playerManager.isLoopEnabled.toggle()
+        Menu {
+          ForEach(LoopMode.allCases, id: \.self) { mode in
+            Button {
+              playerManager.loopMode = mode
+            } label: {
+              HStack {
+                Text(mode.displayName)
+                if playerManager.loopMode == mode {
+                  Image(systemName: "checkmark")
+                }
+              }
+            }
+          }
         } label: {
-          Image(systemName: playerManager.isLoopEnabled ? "repeat.circle.fill" : "repeat.circle")
-            .font(.title)
-            .foregroundStyle(.primary)
+          Image(
+            systemName: playerManager.loopMode != .none
+              ? "\(playerManager.loopMode.iconName).circle.fill"
+              : "repeat.circle"
+          )
+          .font(.title)
+          .foregroundStyle(playerManager.loopMode != .none ? .blue : .primary)
         }
         .buttonStyle(.plain)
-        .help("Toggle A-B infinite loop on/off")
-        .keyboardShortcut("l", modifiers: [])
+        .help("Loop mode: \(playerManager.loopMode.displayName)")
       }
 
       Spacer()

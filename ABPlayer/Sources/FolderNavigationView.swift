@@ -25,8 +25,8 @@ struct FolderNavigationView: View {
 
   @State private var selection: SelectionItem?
 
-  let onSelectFile: (AudioFile) -> Void
-  let onPlayFile: (AudioFile) -> Void
+  let onSelectFile: (AudioFile) async -> Void
+  let onPlayFile: (AudioFile, Bool) async -> Void
 
   var body: some View {
     VStack(spacing: 0) {
@@ -121,7 +121,7 @@ struct FolderNavigationView: View {
       self.selection = nil
 
     case .audioFile(let file):
-      onSelectFile(file)
+      Task { await onSelectFile(file) }
 
     case .empty:
       break
