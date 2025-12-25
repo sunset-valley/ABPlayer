@@ -58,7 +58,30 @@ struct TranscriptionView: View {
   // MARK: - Content View
 
   private var transcriptionContentView: some View {
-    SubtitleView(cues: cachedCues)
+    VStack(spacing: 0) {
+      // Toolbar with cache management
+      HStack {
+        Spacer()
+
+        Button {
+          Task { await clearAndRetranscribe() }
+        } label: {
+          HStack(spacing: 4) {
+            Image(systemName: "arrow.clockwise")
+            Text("Re-transcribe")
+          }
+          .font(.caption)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 8)
+
+      Divider()
+
+      SubtitleView(cues: cachedCues)
+    }
   }
 
   // MARK: - Loading Cache View
@@ -233,11 +256,11 @@ struct TranscriptionView: View {
   // MARK: - Cache Operations
 
   private func loadCachedTranscription() async {
-    let hash = Transcription.hash(from: audioFile.bookmarkData)
+    let audioFileId = audioFile.id.uuidString
 
     // Query cache from SwiftData
     let descriptor = FetchDescriptor<Transcription>(
-      predicate: #Predicate { $0.audioFileHash == hash }
+      predicate: #Predicate { $0.audioFileId == audioFileId }
     )
 
     if let cached = try? modelContext.fetch(descriptor).first {
@@ -256,11 +279,11 @@ struct TranscriptionView: View {
       cachedCues = cues
 
       // Cache the result
-      let hash = Transcription.hash(from: audioFile.bookmarkData)
+      let audioFileId = audioFile.id.uuidString
 
       // Check if cache already exists and update it
       let descriptor = FetchDescriptor<Transcription>(
-        predicate: #Predicate { $0.audioFileHash == hash }
+        predicate: #Predicate { $0.audioFileId == audioFileId }
       )
 
       if let existing = try? modelContext.fetch(descriptor).first {
@@ -270,7 +293,7 @@ struct TranscriptionView: View {
         existing.language = settings.language
       } else {
         let cache = Transcription(
-          audioFileHash: hash,
+          audioFileId: audioFileId,
           audioFileName: audioFile.displayName,
           cues: cues,
           modelUsed: settings.modelName,
@@ -283,6 +306,24 @@ struct TranscriptionView: View {
     } catch {
       // Error is handled by TranscriptionManager state
     }
+  }
+
+  private func clearAndRetranscribe() async {
+    // Delete existing cache
+    let audioFileId = audioFile.id.uuidString
+    let descriptor = FetchDescriptor<Transcription>(
+      predicate: #Predicate { $0.audioFileId == audioFileId }
+    )
+
+    if let existing = try? modelContext.fetch(descriptor).first {
+      modelContext.delete(existing)
+      try? modelContext.save()
+    }
+
+    // Reset state and start fresh transcription
+    cachedCues = []
+    transcriptionManager.reset()
+    await startTranscription()
   }
 
   private func resolveURL(from bookmarkData: Data) throws -> URL {

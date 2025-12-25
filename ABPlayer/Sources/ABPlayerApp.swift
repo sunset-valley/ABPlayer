@@ -47,6 +47,7 @@ struct ABPlayerApp: App {
       Settings {
         SettingsView()
           .environment(transcriptionSettings)
+          .environment(transcriptionManager)
       }
     #endif
   }

@@ -6,8 +6,8 @@ import SwiftData
 final class Transcription {
   var id: UUID
 
-  /// Audio file identifier (using bookmark data hash)
-  var audioFileHash: String
+  /// Audio file identifier (using AudioFile's UUID)
+  var audioFileId: String
 
   /// Original audio file name for display
   var audioFileName: String
@@ -26,14 +26,14 @@ final class Transcription {
   var language: String?
 
   init(
-    audioFileHash: String,
+    audioFileId: String,
     audioFileName: String,
     cues: [SubtitleCue],
     modelUsed: String = "distil-large-v3",
     language: String? = nil
   ) {
     self.id = UUID()
-    self.audioFileHash = audioFileHash
+    self.audioFileId = audioFileId
     self.audioFileName = audioFileName
     self.createdAt = Date()
     self.modelUsed = modelUsed
@@ -49,12 +49,5 @@ final class Transcription {
     set {
       cachedCuesData = try? JSONEncoder().encode(newValue)
     }
-  }
-
-  /// Generate hash from bookmark data for cache lookup
-  static func hash(from bookmarkData: Data) -> String {
-    var hasher = Hasher()
-    hasher.combine(bookmarkData)
-    return String(format: "%08x", hasher.finalize())
   }
 }
