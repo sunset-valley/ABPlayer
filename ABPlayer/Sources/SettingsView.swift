@@ -3,6 +3,7 @@ import SwiftUI
 /// Settings view for configuring transcription options
 struct SettingsView: View {
   @Environment(TranscriptionSettings.self) private var settings
+  @Environment(TranscriptionManager.self) private var transcriptionManager
   @State private var isSelectingDirectory = false
   @State private var downloadedModels: [(name: String, size: Int64)] = []
   @State private var modelToDelete: String?
@@ -10,6 +11,7 @@ struct SettingsView: View {
   @State private var isMigrating = false
   @State private var migrationError: String?
   @State private var previousDirectory: String = ""
+  @State private var isDownloading = false
 
   var body: some View {
     Form {
@@ -65,6 +67,38 @@ struct SettingsView: View {
       ) {
         ForEach(TranscriptionSettings.availableModels, id: \.id) { model in
           Text(model.name).tag(model.id)
+        }
+      }
+
+      // Model Status
+      HStack {
+        Text("Status")
+        Spacer()
+        if isDownloading {
+          HStack(spacing: 6) {
+            ProgressView()
+              .controlSize(.small)
+            Text("Downloading...")
+              .foregroundStyle(.secondary)
+          }
+        } else if isCurrentModelDownloaded {
+          HStack(spacing: 4) {
+            Image(systemName: "checkmark.circle.fill")
+              .foregroundStyle(.green)
+            Text("Downloaded")
+              .foregroundStyle(.secondary)
+          }
+        } else {
+          Button {
+            Task { await downloadCurrentModel() }
+          } label: {
+            HStack(spacing: 4) {
+              Image(systemName: "arrow.down.circle")
+              Text("Download")
+            }
+          }
+          .buttonStyle(.borderedProminent)
+          .controlSize(.small)
         }
       }
 
@@ -192,8 +226,30 @@ struct SettingsView: View {
     return (settings.modelDirectory as NSString).lastPathComponent
   }
 
+  /// Check if the currently selected model is downloaded
+  private var isCurrentModelDownloaded: Bool {
+    // WhisperKit uses naming like "openai_whisper-tiny" or "distil-whisper_distil-large-v3"
+    downloadedModels.contains { model in
+      model.name.contains(settings.modelName)
+    }
+  }
+
   private func refreshModels() {
     downloadedModels = settings.listDownloadedModels()
+  }
+
+  private func downloadCurrentModel() async {
+    isDownloading = true
+    do {
+      try await transcriptionManager.loadModel(
+        modelName: settings.modelName,
+        downloadBase: settings.modelDirectoryURL
+      )
+      refreshModels()
+    } catch {
+      migrationError = "Failed to download model: \(error.localizedDescription)"
+    }
+    isDownloading = false
   }
 
   private func deleteModel(named name: String) {
@@ -263,5 +319,6 @@ struct SettingsView: View {
 #Preview {
   SettingsView()
     .environment(TranscriptionSettings())
+    .environment(TranscriptionManager())
     .frame(width: 500, height: 500)
 }

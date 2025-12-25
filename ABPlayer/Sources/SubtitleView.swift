@@ -11,7 +11,7 @@ struct SubtitleView: View {
   var body: some View {
     ScrollViewReader { proxy in
       ScrollView {
-        LazyVStack(alignment: .leading, spacing: 4) {
+        LazyVStack(alignment: .leading, spacing: 8) {
           ForEach(cues) { cue in
             SubtitleCueRow(
               cue: cue,
@@ -70,18 +70,18 @@ private struct SubtitleCueRow: View {
     Button(action: onTap) {
       HStack(alignment: .firstTextBaseline, spacing: 12) {
         Text(timeString(from: cue.startTime))
-          .font(.system(.caption, design: .monospaced))
+          .font(.system(.subheadline, design: .monospaced))
           .foregroundStyle(isActive ? .primary : .tertiary)
-          .frame(width: 44, alignment: .trailing)
+          .frame(width: 52, alignment: .trailing)
 
         Text(cue.text)
-          .font(.system(.body))
+          .font(.system(.title3))
           .foregroundStyle(isActive ? .primary : .secondary)
           .multilineTextAlignment(.leading)
           .frame(maxWidth: .infinity, alignment: .leading)
           .fixedSize(horizontal: false, vertical: true)
       }
-      .padding(.vertical, 10)
+      .padding(.vertical, 14)
       .padding(.horizontal, 12)
       .background(
         RoundedRectangle(cornerRadius: 8, style: .continuous)

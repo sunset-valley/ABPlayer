@@ -26,18 +26,18 @@ final class TranscriptionSettings {
 
   // MARK: - Computed Properties
 
-  /// Returns the model directory URL, or nil for default location
-  var modelDirectoryURL: URL? {
-    guard !modelDirectory.isEmpty else { return nil }
+  /// Returns the model directory URL (user-specified or default)
+  var modelDirectoryURL: URL {
+    if modelDirectory.isEmpty {
+      return TranscriptionSettings.defaultModelDirectory
+    }
     return URL(fileURLWithPath: modelDirectory)
   }
 
-  /// Default model directory in Application Support
+  /// Default model directory in user home
   static var defaultModelDirectory: URL {
-    let appSupport = FileManager.default.urls(
-      for: .applicationSupportDirectory, in: .userDomainMask
-    ).first!
-    return appSupport.appendingPathComponent("ABPlayer/WhisperKitModels", isDirectory: true)
+    let homeDir = FileManager.default.homeDirectoryForCurrentUser
+    return homeDir.appendingPathComponent(".abplayer", isDirectory: true)
   }
 
   // MARK: - Available Options
@@ -66,15 +66,23 @@ final class TranscriptionSettings {
   // MARK: - Model Management
 
   /// Returns list of downloaded models in the current model directory
+  /// WhisperKit stores models at: models/argmaxinc/whisperkit-coreml/<model-name>/
   func listDownloadedModels() -> [(name: String, size: Int64)] {
-    let dir = modelDirectoryURL ?? TranscriptionSettings.defaultModelDirectory
+    let baseDir = modelDirectoryURL
     let fileManager = FileManager.default
 
-    guard fileManager.fileExists(atPath: dir.path) else { return [] }
+    // WhisperKit stores models in a nested structure
+    let whisperKitDir =
+      baseDir
+      .appendingPathComponent("models", isDirectory: true)
+      .appendingPathComponent("argmaxinc", isDirectory: true)
+      .appendingPathComponent("whisperkit-coreml", isDirectory: true)
+
+    guard fileManager.fileExists(atPath: whisperKitDir.path) else { return [] }
 
     do {
       let contents = try fileManager.contentsOfDirectory(
-        at: dir,
+        at: whisperKitDir,
         includingPropertiesForKeys: [.isDirectoryKey, .totalFileAllocatedSizeKey],
         options: [.skipsHiddenFiles]
       )
@@ -84,6 +92,9 @@ final class TranscriptionSettings {
         guard fileManager.fileExists(atPath: url.path, isDirectory: &isDir),
           isDir.boolValue
         else { return nil }
+
+        // Skip cache directories
+        if url.lastPathComponent.hasPrefix(".") { return nil }
 
         // Check if it looks like a model directory (contains .mlmodelc or similar)
         let modelIndicators = ["AudioEncoder.mlmodelc", "TextDecoder.mlmodelc", "config.json"]
@@ -103,7 +114,7 @@ final class TranscriptionSettings {
 
   /// Delete a specific model from disk
   func deleteModel(named name: String) throws {
-    let dir = modelDirectoryURL ?? TranscriptionSettings.defaultModelDirectory
+    let dir = modelDirectoryURL
     let modelDir = dir.appendingPathComponent(name)
     try FileManager.default.removeItem(at: modelDir)
   }

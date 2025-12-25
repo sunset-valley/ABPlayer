@@ -3,42 +3,7 @@ import Testing
 
 @testable import ABPlayer
 
-// MARK: - Transcription Cache Tests
-
-struct TranscriptionCacheTests {
-
-  @Test
-  func testHashGenerationIsConsistent() {
-    let data = "audio_file.mp3".data(using: .utf8)!
-
-    let hash1 = Transcription.hash(from: data)
-    let hash2 = Transcription.hash(from: data)
-
-    #expect(hash1 == hash2, "Hash should be consistent for same input")
-  }
-
-  @Test
-  func testHashGenerationIsDifferentForDifferentData() {
-    let data1 = "audio1.mp3".data(using: .utf8)!
-    let data2 = "audio2.mp3".data(using: .utf8)!
-
-    let hash1 = Transcription.hash(from: data1)
-    let hash2 = Transcription.hash(from: data2)
-
-    #expect(hash1 != hash2, "Hash should be different for different inputs")
-  }
-
-  @Test
-  func testHashIsHexFormat() {
-    let data = "test.mp3".data(using: .utf8)!
-
-    let hash = Transcription.hash(from: data)
-
-    // Should be 8 character hex string
-    #expect(hash.count == 8, "Hash should be 8 characters")
-    #expect(hash.allSatisfy { $0.isHexDigit }, "Hash should be hex characters")
-  }
-}
+// NOTE: TranscriptionCacheTests removed - hash function replaced by audioFileId
 
 // MARK: - Subtitle Cue Encoding Tests
 
@@ -98,21 +63,23 @@ struct TranscriptionStateTests {
 
   @Test
   func testLoadingStateEquality() {
-    #expect(TranscriptionState.loading == TranscriptionState.loading)
+    #expect(
+      TranscriptionState.loading(modelName: "tiny")
+        == TranscriptionState.loading(modelName: "tiny"))
   }
 
   @Test
   func testTranscribingStateEqualityWithSameProgress() {
     #expect(
-      TranscriptionState.transcribing(progress: 0.5)
-        == TranscriptionState.transcribing(progress: 0.5))
+      TranscriptionState.transcribing(progress: 0.5, fileName: "test.mp3")
+        == TranscriptionState.transcribing(progress: 0.5, fileName: "test.mp3"))
   }
 
   @Test
   func testTranscribingStateInequalityWithDifferentProgress() {
     #expect(
-      TranscriptionState.transcribing(progress: 0.5)
-        != TranscriptionState.transcribing(progress: 0.6))
+      TranscriptionState.transcribing(progress: 0.5, fileName: "test.mp3")
+        != TranscriptionState.transcribing(progress: 0.6, fileName: "test.mp3"))
   }
 
   @Test
@@ -136,9 +103,11 @@ struct TranscriptionStateTests {
 
   @Test
   func testDifferentStatesAreNotEqual() {
-    #expect(TranscriptionState.idle != TranscriptionState.loading)
-    #expect(TranscriptionState.loading != TranscriptionState.completed)
-    #expect(TranscriptionState.transcribing(progress: 0.5) != TranscriptionState.completed)
+    #expect(TranscriptionState.idle != TranscriptionState.loading(modelName: "tiny"))
+    #expect(TranscriptionState.loading(modelName: "tiny") != TranscriptionState.completed)
+    #expect(
+      TranscriptionState.transcribing(progress: 0.5, fileName: "test.mp3")
+        != TranscriptionState.completed)
   }
 }
 
@@ -171,5 +140,79 @@ struct TranscriptionSettingsTests {
     let languageIds = TranscriptionSettings.availableLanguages.map { $0.id }
 
     #expect(languageIds.contains("en"))
+  }
+
+  @Test
+  func testListDownloadedModelsReturnsEmptyForNonexistentDirectory() {
+    let settings = TranscriptionSettings()
+    // Set to a non-existent directory
+    settings.modelDirectory = "/nonexistent/path/that/does/not/exist"
+
+    let models = settings.listDownloadedModels()
+
+    #expect(models.isEmpty, "Should return empty array for non-existent directory")
+  }
+
+  @Test
+  func testListDownloadedModelsReturnsEmptyForEmptyDirectory() throws {
+    let settings = TranscriptionSettings()
+    let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(
+      UUID().uuidString)
+    try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+    defer {
+      try? FileManager.default.removeItem(at: tempDir)
+    }
+
+    settings.modelDirectory = tempDir.path
+    let models = settings.listDownloadedModels()
+
+    #expect(models.isEmpty, "Should return empty array for empty directory")
+  }
+
+  @Test
+  func testListDownloadedModelsDetectsModelDirectory() throws {
+    let settings = TranscriptionSettings()
+    let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(
+      UUID().uuidString)
+    let modelDir = tempDir.appendingPathComponent("openai_whisper-tiny")
+
+    // Create mock model structure with required indicator file
+    try FileManager.default.createDirectory(at: modelDir, withIntermediateDirectories: true)
+    try "{}".write(
+      to: modelDir.appendingPathComponent("config.json"),
+      atomically: true, encoding: .utf8)
+
+    defer {
+      try? FileManager.default.removeItem(at: tempDir)
+    }
+
+    settings.modelDirectory = tempDir.path
+    let models = settings.listDownloadedModels()
+
+    #expect(models.count == 1, "Should detect one model directory")
+    #expect(models.first?.name == "openai_whisper-tiny", "Model name should match directory name")
+  }
+
+  @Test
+  func testDefaultModelDirectoryIsInUserHome() {
+    let defaultDir = TranscriptionSettings.defaultModelDirectory
+
+    #expect(
+      defaultDir.path.contains(".abplayer/models"),
+      "Default directory should be in ~/.abplayer/models")
+  }
+
+  @Test
+  func testFormatSizeReturnsReadableString() {
+    // Test MB formatting
+    let mbSize: Int64 = 100 * 1024 * 1024  // 100 MB
+    let mbFormatted = TranscriptionSettings.formatSize(mbSize)
+    #expect(mbFormatted.contains("MB") || mbFormatted.contains("100"))
+
+    // Test GB formatting
+    let gbSize: Int64 = 2 * 1024 * 1024 * 1024  // 2 GB
+    let gbFormatted = TranscriptionSettings.formatSize(gbSize)
+    #expect(gbFormatted.contains("GB") || gbFormatted.contains("2"))
   }
 }

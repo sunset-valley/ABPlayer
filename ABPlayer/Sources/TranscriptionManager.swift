@@ -25,10 +25,10 @@ final class TranscriptionManager {
     whisperKit != nil
   }
 
-  /// Initialize WhisperKit with the specified model and optional download folder
+  /// Initialize WhisperKit with the specified model and download folder
   func loadModel(
     modelName: String = "distil-large-v3",
-    downloadFolder: URL? = nil
+    downloadBase: URL
   ) async throws {
     // Reload if model name changed
     if whisperKit != nil && loadedModelName == modelName {
@@ -39,7 +39,7 @@ final class TranscriptionManager {
     do {
       let config = WhisperKitConfig(
         model: modelName,
-        downloadBase: downloadFolder
+        downloadBase: downloadBase
       )
 
       whisperKit = try await WhisperKit(config)
@@ -62,7 +62,7 @@ final class TranscriptionManager {
     if whisperKit == nil || loadedModelName != settings.modelName {
       try await loadModel(
         modelName: settings.modelName,
-        downloadFolder: settings.modelDirectoryURL
+        downloadBase: settings.modelDirectoryURL
       )
     }
 
