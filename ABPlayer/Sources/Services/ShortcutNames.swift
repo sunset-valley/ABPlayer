@@ -8,6 +8,7 @@ extension KeyboardShortcuts.Name {
   static let setPointB = Self("setPointB", default: .init(.c, modifiers: .option))
   static let clearLoop = Self("clearLoop", default: .init(.v, modifiers: .option))
   static let saveSegment = Self("saveSegment", default: .init(.b, modifiers: .option))
-  static let previousSegment = Self("previousSegment", default: .init(.leftArrow, modifiers: .option))
+  static let previousSegment = Self(
+    "previousSegment", default: .init(.leftArrow, modifiers: .option))
   static let nextSegment = Self("nextSegment", default: .init(.rightArrow, modifiers: .option))
 }

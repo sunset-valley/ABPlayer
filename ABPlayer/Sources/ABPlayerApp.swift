@@ -99,14 +99,32 @@ struct ABPlayerApp: App {
         .environment(transcriptionSettings)
     }
     .modelContainer(modelContainer)
+    .commands {
+      SettingsCommands()
+    }
 
     #if os(macOS)
-      Settings {
+      WindowGroup(id: "settings-window") {
         SettingsView()
           .environment(transcriptionSettings)
           .environment(transcriptionManager)
       }
-      .windowToolbarStyle(.unified(showsTitle: false))
+      .defaultPosition(.center)
+      .commandsRemoved()
     #endif
+  }
+}
+
+// MARK: - Settings Commands
+struct SettingsCommands: Commands {
+  @Environment(\.openWindow) private var openWindow
+
+  var body: some Commands {
+    CommandGroup(replacing: .appSettings) {
+      Button("Settings...") {
+        openWindow(id: "settings-window")
+      }
+      .keyboardShortcut(",", modifiers: .command)
+    }
   }
 }
