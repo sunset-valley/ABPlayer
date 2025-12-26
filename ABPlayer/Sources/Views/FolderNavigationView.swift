@@ -63,11 +63,11 @@ struct FolderNavigationView: View {
         }
 
         Text(currentFolder?.name ?? "Library")
-          .font(.headline)
           .lineLimit(1)
 
         Spacer()
       }
+      .font(.title3)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -169,6 +169,7 @@ struct FolderNavigationView: View {
       VStack(alignment: .leading) {
         Text(folder.name)
           .lineLimit(1)
+          .font(.appHeadline)
 
         let count = folder.audioFiles.count + folder.subfolders.count
         Text("\(count) items")
