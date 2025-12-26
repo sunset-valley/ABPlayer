@@ -17,17 +17,51 @@ struct PlayerView: View {
   @State private var isSeeking: Bool = false
   @State private var seekValue: Double = 0
 
-  var body: some View {
-    HSplitView {
-      // Left: Player controls + Segments
-      playerSection
-        .frame(minWidth: 360, idealWidth: 420)
+  // Content panel width for drag resizing
+  @State private var contentPanelWidth: CGFloat = 400
 
-      // Right: Content panel (PDF, Subtitles only)
-      if showContentPanel {
-        ContentPanelView(audioFile: audioFile)
-          .frame(minWidth: 300, idealWidth: 400)
+  var body: some View {
+    GeometryReader { geometry in
+      HStack(spacing: 0) {
+        // Left: Player controls + Segments
+        playerSection
+          .frame(minWidth: 360, idealWidth: 420)
+
+        // Right: Content panel (PDF, Subtitles only)
+        if showContentPanel {
+          // Draggable divider
+          Rectangle()
+            .fill(Color.gray.opacity(0.01))
+            .frame(width: 8)
+            .contentShape(Rectangle())
+            .overlay(
+              Rectangle()
+                .fill(Color(nsColor: .separatorColor))
+                .frame(width: 1)
+            )
+            .onHover { hovering in
+              if hovering {
+                NSCursor.resizeLeftRight.push()
+              } else {
+                NSCursor.pop()
+              }
+            }
+            .gesture(
+              DragGesture(minimumDistance: 1)
+                .onChanged { value in
+                  // Calculate new width (dragging left increases width, right decreases)
+                  let newWidth = contentPanelWidth - value.translation.width
+                  // Constrain width between min and max
+                  contentPanelWidth = min(max(newWidth, 200), geometry.size.width - 400)
+                }
+            )
+
+          ContentPanelView(audioFile: audioFile)
+            .frame(width: contentPanelWidth)
+            .transition(.move(edge: .trailing).combined(with: .opacity))
+        }
       }
+      .animation(.easeInOut(duration: 0.25), value: showContentPanel)
     }
     .toolbar {
       ToolbarItem(placement: .automatic) {
@@ -47,9 +81,7 @@ struct PlayerView: View {
 
       ToolbarItem(placement: .primaryAction) {
         Button {
-          withAnimation(.easeInOut(duration: 0.2)) {
-            showContentPanel.toggle()
-          }
+          showContentPanel.toggle()
         } label: {
           Label(
             showContentPanel ? "Hide Panel" : "Show Panel",
@@ -285,6 +317,7 @@ struct PlayerView: View {
           description: Text("Set A and B, then tap \"Save Current A-B\".")
         )
         .frame(maxHeight: .infinity)
+        .frame(maxWidth: .infinity, alignment: .center)
       } else {
         List(
           selection: Binding(
@@ -326,7 +359,6 @@ struct PlayerView: View {
           }
         }
         .frame(minHeight: 120, maxHeight: .infinity)
-        .background(.purple)
       }
     }
     .frame(maxHeight: .infinity)
