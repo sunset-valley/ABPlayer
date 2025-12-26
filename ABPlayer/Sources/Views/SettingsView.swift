@@ -23,10 +23,10 @@ struct SettingsView: View {
   @State private var showResetConfirmation = false
 
   var body: some View {
-    NavigationSplitView(columnVisibility: .constant(.doubleColumn)) {
-      EmptyView()
-        .toolbar(removing: .sidebarToggle)
-    } content: {
+    NavigationSplitView {
+//      EmptyView()
+//        .toolbar(removing: .sidebarToggle)
+//    } content: {
       List(selection: $selectedTab) {
         ForEach(SettingsTab.allCases) { tab in
           NavigationLink(value: tab) {
@@ -36,24 +36,25 @@ struct SettingsView: View {
       }
       .listStyle(.sidebar)
       .scrollContentBackground(.hidden)
-      .navigationSplitViewColumnWidth(min: 200, ideal: 200, max: 200)
-      .navigationTitle("ssss")
-      .toolbar(.hidden)
+      .navigationSplitViewColumnWidth(min: 200, ideal: 200)
     } detail: {
-      if let selectedTab {
-        switch selectedTab {
-        case .shortcuts:
-          shortcutsView
-        case .transcription:
-          transcriptionSettingsView
+      Group {
+        if let selectedTab {
+          switch selectedTab {
+            case .shortcuts:
+              shortcutsView
+            case .transcription:
+              transcriptionSettingsView
+          }
+        } else {
+          ContentUnavailableView("Select a setting", systemImage: "gear")
         }
-      } else {
-        ContentUnavailableView("Select a setting", systemImage: "gear")
       }
+      .navigationTitle("Settings")
     }
     .navigationSplitViewStyle(.balanced)
-    .frame(minWidth: 600, idealWidth: 800)
-    .frame(minHeight: 600, idealHeight: 600)
+    .frame(minWidth: 400, idealWidth: 600)
+    .frame(minHeight: 400, idealHeight: 600)
     // Common modifiers
     .fileImporter(
       isPresented: $isSelectingDirectory,
@@ -296,6 +297,7 @@ struct SettingsView: View {
         .captionStyle()
       }
     }
+    .focusable(false)
   }
 
   // MARK: - Downloaded Models Section
