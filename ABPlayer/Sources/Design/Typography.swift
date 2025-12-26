@@ -55,7 +55,7 @@ extension View {
   }
 
   func captionStyle() -> some View {
-    self.font(.appCaption)
+    self.font(.subheadline)
       .foregroundStyle(.secondary)
   }
 }

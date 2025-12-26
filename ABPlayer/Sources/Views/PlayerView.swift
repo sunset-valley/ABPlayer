@@ -50,6 +50,21 @@ struct PlayerView: View {
       }
     }
     .toolbar {
+      ToolbarItem(placement: .automatic) {
+        HStack(spacing: 6) {
+          Image(systemName: "timer")
+            .font(.system(size: 14))
+            .foregroundStyle(.secondary)
+          Text(timeString(from: sessionTracker.totalSeconds))
+            .font(.system(size: 13, weight: .medium, design: .monospaced))
+            .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(.ultraThinMaterial, in: Capsule())
+        .help("Session practice time")
+      }
+
       ToolbarItem(placement: .primaryAction) {
         Button {
           withAnimation(.easeInOut(duration: 0.2)) {
@@ -126,15 +141,6 @@ struct PlayerView: View {
       }
 
       Spacer()
-
-      VStack(alignment: .trailing, spacing: 4) {
-        Text("Session duration")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-
-        Text(timeString(from: sessionTracker.totalSeconds))
-          .font(.monospacedTime)
-      }
 
       playbackControls
     }
