@@ -12,6 +12,7 @@ enum SelectionItem: Hashable {
 /// Hierarchical folder navigation view for the sidebar
 struct FolderNavigationView: View {
   @Environment(\.modelContext) private var modelContext
+  @Environment(AudioPlayerManager.self) private var playerManager
 
   @Query(filter: #Predicate<Folder> { $0.parent == nil }, sort: \Folder.name)
   private var rootFolders: [Folder]
@@ -181,6 +182,13 @@ struct FolderNavigationView: View {
         .font(.caption)
     }
     .contentShape(Rectangle())
+    .contextMenu {
+      Button(role: .destructive) {
+        deleteFolder(folder)
+      } label: {
+        Label("Delete Folder", systemImage: "trash")
+      }
+    }
   }
 
   // MARK: - Audio File Row
@@ -223,6 +231,13 @@ struct FolderNavigationView: View {
       }
     }
     .contentShape(Rectangle())
+    .contextMenu {
+      Button(role: .destructive) {
+        deleteAudioFile(file)
+      } label: {
+        Label("Delete File", systemImage: "trash")
+      }
+    }
   }
 
   // MARK: - Computed Properties
@@ -252,5 +267,138 @@ struct FolderNavigationView: View {
     guard !navigationPath.isEmpty else { return }
     navigationPath.removeLast()
     currentFolder = navigationPath.last
+  }
+
+  // MARK: - Deletion Actions
+
+  /// Deletes a folder and all its contents (subfolders and audio files) recursively
+  private func deleteFolder(_ folder: Folder) {
+    // Save any pending changes before deletion to prevent conflicts
+    do {
+      try modelContext.save()
+    } catch {
+      print("⚠️ Failed to save context before folder deletion: \(error.localizedDescription)")
+    }
+
+    // Check if current file is in this folder (playing or not)
+    if isCurrentFileInFolder(folder) {
+      if playerManager.isPlaying {
+        playerManager.togglePlayPause()
+      }
+      playerManager.currentFile = nil
+    }
+
+    // Check if any file in this folder (or subfolders) is currently selected
+    if isSelectedFileInFolder(folder) {
+      selectedFile = nil
+    }
+
+    // If the folder being deleted is currently selected, navigate back
+    if currentFolder?.id == folder.id {
+      navigateBack()
+    }
+
+    // Recursively delete all subfolders
+    for subfolder in folder.subfolders {
+      deleteFolder(subfolder)
+    }
+
+    // Delete all audio files in this folder (without updating selection since we already handled it)
+    for audioFile in folder.audioFiles {
+      deleteAudioFile(audioFile, updateSelection: false, checkPlayback: false)
+    }
+
+    // Delete the folder itself
+    modelContext.delete(folder)
+  }
+
+  /// Deletes an audio file and all its related data (segments, subtitle, transcription)
+  private func deleteAudioFile(
+    _ file: AudioFile, updateSelection: Bool = true, checkPlayback: Bool = true
+  ) {
+    // Save any pending changes before deletion to prevent conflicts
+    // Only save if this is a user-initiated delete (not recursive)
+    if checkPlayback {
+      do {
+        try modelContext.save()
+      } catch {
+        print("⚠️ Failed to save context before file deletion: \(error.localizedDescription)")
+      }
+    }
+
+    // If the file being deleted is currently playing, stop playback
+    if checkPlayback && playerManager.isPlaying && playerManager.currentFile?.id == file.id {
+      playerManager.togglePlayPause()
+    }
+
+    // If the file being deleted is currently selected, clear selection and player
+    if updateSelection && selectedFile?.id == file.id {
+      selectedFile = nil
+      playerManager.currentFile = nil
+    }
+
+    // Delete all related loop segments
+    for segment in file.segments {
+      modelContext.delete(segment)
+    }
+
+    // Delete related subtitle file if exists
+    if let subtitleFile = file.subtitleFile {
+      modelContext.delete(subtitleFile)
+    }
+
+    // Delete related transcription if exists
+    let fileIdString = file.id.uuidString
+    let descriptor = FetchDescriptor<Transcription>(
+      predicate: #Predicate<Transcription> { $0.audioFileId == fileIdString }
+    )
+    if let transcriptions = try? modelContext.fetch(descriptor) {
+      for transcription in transcriptions {
+        modelContext.delete(transcription)
+      }
+    }
+
+    // Delete the audio file itself
+    modelContext.delete(file)
+  }
+
+  /// Checks if the folder (or any subfolder) contains the current file (playing or paused)
+  private func isCurrentFileInFolder(_ folder: Folder) -> Bool {
+    guard let currentFile = playerManager.currentFile else {
+      return false
+    }
+
+    // Check if current file is in this folder
+    if folder.audioFiles.contains(where: { $0.id == currentFile.id }) {
+      return true
+    }
+
+    // Recursively check subfolders
+    for subfolder in folder.subfolders {
+      if isCurrentFileInFolder(subfolder) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  /// Checks if the selected file is within the folder (or any subfolder)
+  private func isSelectedFileInFolder(_ folder: Folder) -> Bool {
+    guard let selectedFile else { return false }
+
+    // Check if selected file is in this folder
+    if folder.audioFiles.contains(where: { $0.id == selectedFile.id }) {
+      return true
+    }
+
+    // Recursively check subfolders
+    for subfolder in folder.subfolders {
+      if isSelectedFileInFolder(subfolder) {
+        return true
+      }
+    }
+
+    return false
   }
 }
