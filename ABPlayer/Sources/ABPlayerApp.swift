@@ -98,6 +98,7 @@ struct ABPlayerApp: App {
         .environment(transcriptionManager)
         .environment(transcriptionSettings)
     }
+    .defaultSize(width: 1600, height: 900)
     .modelContainer(modelContainer)
     .commands {
       SettingsCommands()

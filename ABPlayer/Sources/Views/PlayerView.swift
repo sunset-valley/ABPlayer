@@ -17,19 +17,21 @@ struct PlayerView: View {
   @State private var isSeeking: Bool = false
   @State private var seekValue: Double = 0
 
-  // Content panel width for drag resizing
-  @State private var contentPanelWidth: CGFloat = 400
+  // Persisted panel widths
+  @AppStorage("playerSectionWidth") private var playerSectionWidth: Double = 360
 
   var body: some View {
     GeometryReader { geometry in
+      let availableWidth = geometry.size.width
+
       HStack(spacing: 0) {
         // Left: Player controls + Segments
         playerSection
-          .frame(minWidth: 360, idealWidth: 420)
+          .frame(width: playerSectionWidth)
 
-        // Right: Content panel (PDF, Subtitles only)
+        // Right: Content panel (PDF, Subtitles only) - takes remaining space
         if showContentPanel {
-          // Draggable divider
+          // Draggable divider for playerSection
           Rectangle()
             .fill(Color.gray.opacity(0.01))
             .frame(width: 8)
@@ -49,15 +51,16 @@ struct PlayerView: View {
             .gesture(
               DragGesture(minimumDistance: 1)
                 .onChanged { value in
-                  // Calculate new width (dragging left increases width, right decreases)
-                  let newWidth = contentPanelWidth - value.translation.width
-                  // Constrain width between min and max
-                  contentPanelWidth = min(max(newWidth, 200), geometry.size.width - 400)
+                  // Dragging right increases playerSection, left decreases
+                  let newWidth = playerSectionWidth + value.translation.width
+                  // Constrain: min 300, max leaves at least 200 for content panel
+                  playerSectionWidth = min(max(newWidth, 300), Double(availableWidth) - 208)
                 }
             )
 
+          // ContentPanelView takes remaining space
           ContentPanelView(audioFile: audioFile)
-            .frame(width: contentPanelWidth)
+            .frame(maxWidth: .infinity)
             .transition(.move(edge: .trailing).combined(with: .opacity))
         }
       }

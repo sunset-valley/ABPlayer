@@ -57,8 +57,7 @@ public struct MainSplitView: View {
         print("[Debug] Window size changed: \(newSize.width) x \(newSize.height)")
       }
     }
-    .frame(minWidth: 800, idealWidth: 1200)
-    .frame(minWidth: 600, idealWidth: 800)
+    .navigationSplitViewColumnWidth(min: 200, ideal: 300, max: 400)
     .fileImporter(
       isPresented: $isImportingFile,
       allowedContentTypes: [UTType.mp3, UTType.audio],
