@@ -34,6 +34,7 @@ public struct MainSplitView: View {
       NavigationSplitView {
         GeometryReader { sidebarGeometry in
           sidebar
+            .navigationSplitViewColumnWidth(min: 200, ideal: 300, max: 400)
             .onAppear {
               print(
                 "[Debug] Sidebar size: \(sidebarGeometry.size.width) x \(sidebarGeometry.size.height)"
@@ -57,7 +58,6 @@ public struct MainSplitView: View {
         print("[Debug] Window size changed: \(newSize.width) x \(newSize.height)")
       }
     }
-    .navigationSplitViewColumnWidth(min: 200, ideal: 300, max: 400)
     .fileImporter(
       isPresented: $isImportingFile,
       allowedContentTypes: [UTType.mp3, UTType.audio],
