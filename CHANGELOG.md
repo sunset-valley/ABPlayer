@@ -1,3 +1,12 @@
+## [0.1.11] - 2025-12-28
+
+### Features
+- Release version 0.1.10, adding player section expansion and navigation split view fix.
+
+### Improvements
+- remove conditional session saving logic from duration update
+
+
 ## [0.1.10] - 2025-12-28
 
 ### Features

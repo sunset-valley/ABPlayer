@@ -65,11 +65,6 @@ final class SessionTracker {
 
     session.durationSeconds += delta
     totalSeconds = session.durationSeconds
-
-    if session.durationSeconds - lastSavedSeconds >= 5 {
-      saveContext()
-      lastSavedSeconds = session.durationSeconds
-    }
   }
 
   private func saveContext() {
