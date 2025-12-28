@@ -106,8 +106,7 @@ public struct MainSplitView: View {
       selectedFile: $selectedFile,
       currentFolder: $currentFolder,
       navigationPath: $navigationPath,
-      onSelectFile: { file in await selectFile(file) },
-      onPlayFile: { file, fromStart in await playFile(file, fromStart: fromStart) }
+      onSelectFile: { file in await selectFile(file) }
     )
     .navigationTitle("ABPlayer")
     .toolbar {
