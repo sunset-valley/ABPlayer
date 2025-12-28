@@ -29,17 +29,20 @@ struct FolderNavigationView: View {
   @State private var syncTask: Task<Void, Never>?
 
   let onSelectFile: (AudioFile) async -> Void
-  let onPlayFile: (AudioFile, Bool) async -> Void
 
   var body: some View {
     VStack(spacing: 0) {
       navigationHeader
       fileList
     }
+    .focusable(false)
     .onChange(of: selection) { _, newValue in
       handleSelectionChange(newValue)
     }
     .onChange(of: currentFolder) { _, _ in
+      syncAsync()
+    }
+    .onChange(of: selectedFile) { _, _ in
       syncAsync()
     }
     .task {
@@ -82,7 +85,6 @@ struct FolderNavigationView: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    .focusable(false)
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
     .background(.bar)
@@ -218,9 +220,7 @@ struct FolderNavigationView: View {
   // MARK: - Audio File Row
 
   private func audioFileRow(for file: AudioFile) -> some View {
-    let isSelected = selectedFile?.id == file.id
-
-    return HStack {
+    HStack {
       Image(systemName: "music.note")
         .foregroundStyle(file.isPlaybackComplete ? Color.secondary : Color.blue)
 
@@ -251,13 +251,6 @@ struct FolderNavigationView: View {
         }
         .captionStyle()
         .foregroundStyle(.secondary)
-      }
-
-      Spacer()
-
-      if isSelected {
-        Image(systemName: "checkmark.circle.fill")
-          .foregroundStyle(.tint)
       }
     }
     .contentShape(Rectangle())
