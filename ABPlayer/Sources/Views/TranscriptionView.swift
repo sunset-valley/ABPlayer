@@ -20,7 +20,6 @@ struct TranscriptionView: View {
   }
 
   var body: some View {
-    let _ = Self._printChanges()
     Group {
       // Check if current file has a task in the queue
       if let task = currentTask {
