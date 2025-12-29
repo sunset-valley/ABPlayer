@@ -2,75 +2,140 @@ import Foundation
 import Observation
 import SwiftData
 
+/// Background actor to handle SwiftData operations for listening sessions.
+/// This ensures all database operations happen off the main thread.
+@ModelActor
+actor SessionRecorder {
+  private var currentSessionID: PersistentIdentifier?
+
+  /// Start a new session on the background context
+  func startNewSession() {
+    let session = ListeningSession()
+    modelContext.insert(session)
+    do {
+      try modelContext.save()
+      currentSessionID = session.persistentModelID
+    } catch {
+      print("[SessionRecorder] Failed to start session: \(error)")
+    }
+  }
+
+  /// Add listening time to the current session
+  func addTime(_ delta: Double) {
+    guard let id = currentSessionID,
+      let session = modelContext.model(for: id) as? ListeningSession
+    else { return }
+
+    session.duration += delta
+
+    // Autosave will handle this eventually, but we save periodically
+    // to ensure data isn't lost if app crashes
+    try? modelContext.save()
+  }
+
+  /// End the current session
+  func endSession() {
+    guard let id = currentSessionID,
+      let session = modelContext.model(for: id) as? ListeningSession
+    else { return }
+
+    session.endedAt = Date()
+
+    do {
+      try modelContext.save()
+    } catch {
+      print("[SessionRecorder] Failed to save session end: \(error)")
+    }
+    currentSessionID = nil
+  }
+}
+
 /// Tracks listening sessions and persists playback progress.
-/// This class is @MainActor to ensure safe SwiftData context access.
+/// This class is @MainActor to ensure safe UI binding interactions.
 @MainActor
 @Observable
 final class SessionTracker {
-  private var modelContext: ModelContext?
-  private var currentSession: ListeningSession?
-  private var pendingListeningTime: Double = 0
-  private var lastSaveTime: Date = Date()
+  private var recorder: SessionRecorder?
 
-  /// Minimum interval between saves to avoid excessive context operations
-  private let saveInterval: TimeInterval = 5.0
+  // Buffered state
+  private var bufferedListeningTime: Double = 0
+  private var lastCommitTime: Date = Date()
+  private let commitInterval: TimeInterval = 5.0
 
-  /// Total seconds of listening time in the current session
-  var totalSeconds: Double {
-    currentSession?.duration ?? 0
-  }
+  // UI State
+  var totalSeconds: Double = 0
+  private var isSessionActive = false
 
-  func attachModelContext(_ context: ModelContext) {
-    self.modelContext = context
+  /// Initialize the recorder with a ModelContainer.
+  /// This must be called before using the tracker.
+  func setModelContainer(_ container: ModelContainer) {
+    self.recorder = SessionRecorder(modelContainer: container)
   }
 
   /// Start a new listening session if one isn't already active
   func startSessionIfNeeded() {
-    guard currentSession == nil else { return }
+    guard !isSessionActive else { return }
+    isSessionActive = true
 
-    let session = ListeningSession()
-    currentSession = session
-    modelContext?.insert(session)
-    pendingListeningTime = 0
-    lastSaveTime = Date()
+    // Reset local state
+    totalSeconds = 0
+    bufferedListeningTime = 0
+    lastCommitTime = Date()
+
+    // Start session in background
+    Task {
+      await recorder?.startNewSession()
+    }
   }
 
   /// Add listening time (called frequently during playback)
-  /// Note: This does NOT trigger immediate saves - relies on SwiftData autosave
   func addListeningTime(_ delta: Double) {
+    guard isSessionActive else { return }
     guard delta > 0 else { return }
-    pendingListeningTime += delta
-    currentSession?.duration += delta
 
-    // SwiftData autosave handles persistence automatically
-    // No explicit save calls to avoid CoreData context conflicts
+    // 1. Immediate UI update (Main Actor)
+    totalSeconds += delta
+
+    // 2. Buffer for background persistence
+    bufferedListeningTime += delta
+
+    // 3. Batch commit to background actor periodically
+    let now = Date()
+    if now.timeIntervalSince(lastCommitTime) >= commitInterval {
+      commitPendingTime()
+    }
   }
 
-  /// Persist current playback progress (called on pause/stop)
-  func persistProgress() {
-    // SwiftData autosave handles this automatically
-    // This method is kept for explicit save points (app termination)
-    do {
-      try modelContext?.save()
-    } catch {
-      // Silently fail - autosave will pick up changes
-      print("[SessionTracker] Failed to save: \(error.localizedDescription)")
+  /// Commit currently buffered time to the background actor
+  private func commitPendingTime() {
+    guard bufferedListeningTime > 0 else { return }
+
+    let amountToCommit = bufferedListeningTime
+    // Reset buffer immediately on main thread to prevent double-commit
+    bufferedListeningTime = 0
+    lastCommitTime = Date()
+
+    Task {
+      await recorder?.addTime(amountToCommit)
     }
+  }
+
+  /// Persist current playback progress (called on pause/stop/background)
+  func persistProgress() {
+    commitPendingTime()
   }
 
   /// End the current session if one is active
   func endSessionIfIdle() {
-    guard let session = currentSession else { return }
+    guard isSessionActive else { return }
 
-    session.endedAt = Date()
-    currentSession = nil
-    pendingListeningTime = 0
+    // Flush any remaining time
+    commitPendingTime()
 
-    // Save on session end
-    do {
-      try modelContext?.save()
-    } catch {
-      print("[SessionTracker] Failed to save session end: \(error.localizedDescription)")
+    isSessionActive = false
+
+    Task {
+      await recorder?.endSession()
     }
   }
 }

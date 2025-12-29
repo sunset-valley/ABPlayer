@@ -71,7 +71,7 @@ public struct MainSplitView: View {
       onCompletion: handleFolderImportResult
     )
     .onAppear {
-      sessionTracker.attachModelContext(modelContext)
+      sessionTracker.setModelContainer(modelContext.container)
       playerManager.sessionTracker = sessionTracker
       restoreLastSelectionIfNeeded()
       setupPlaybackEndedHandler()
