@@ -209,6 +209,17 @@ final class AudioPlayerManager {
     }
   }
 
+  func pause() {
+    guard isPlaying else { return }
+
+    Task { [weak self] in
+      guard let self else { return }
+      await _engine.pause()
+      self.isPlaying = false
+      self.sessionTracker?.persistProgress()
+    }
+  }
+
   func togglePlayPause() {
     if isPlaying {
       Task { [weak self] in
