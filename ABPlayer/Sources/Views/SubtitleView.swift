@@ -16,6 +16,10 @@ struct SubtitleView: View {
   @State private var isUserScrolling = false
   /// Task to handle countdown and resume tracking
   @State private var scrollResumeTask: Task<Void, Never>?
+  /// Currently selected word info (cueID, wordIndex) - lifted to parent for cross-row dismiss
+  @State private var selectedWord: (cueID: UUID, wordIndex: Int)?
+  /// Tracks if playback was playing before word interaction (for cross-row dismiss)
+  @State private var wasPlayingBeforeWordInteraction = false
 
   var body: some View {
     ScrollViewReader { proxy in
@@ -25,7 +29,12 @@ struct SubtitleView: View {
             SubtitleCueRow(
               cue: cue,
               isActive: cue.id == currentCueID,
+              selectedWordIndex: selectedWord?.cueID == cue.id ? selectedWord?.wordIndex : nil,
+              onWordSelected: { wordIndex in
+                handleWordSelection(wordIndex: wordIndex, cueID: cue.id)
+              },
               onTap: {
+                dismissWord()
                 playerManager.seek(to: cue.startTime)
               }
             )
@@ -39,19 +48,18 @@ struct SubtitleView: View {
         handleScrollPhaseChange(newPhase)
       }
       .onChange(of: currentCueID) { _, newValue in
-        // Only auto-scroll when not user scrolling
         guard !isUserScrolling, let id = newValue else { return }
         withAnimation(.easeInOut(duration: 0.25)) {
           proxy.scrollTo(id, anchor: .center)
         }
       }
       .onChange(of: cues) { _, _ in
-        // Reset all scrolling states when cues change
         scrollResumeTask?.cancel()
         scrollResumeTask = nil
         isUserScrolling = false
         currentCueID = nil
         countdownSeconds = nil
+        selectedWord = nil
       }
     }
     .task {
@@ -59,32 +67,48 @@ struct SubtitleView: View {
     }
   }
 
-  private func handleScrollPhaseChange(_ phase: ScrollPhase) {
-    switch phase {
-    case .interacting:
-      // User started scrolling - pause tracking and start/restart countdown
-      scrollResumeTask?.cancel()
-      isUserScrolling = true
-      countdownSeconds = Self.pauseDuration
-
-      // Start unified countdown and resume task
-      scrollResumeTask = Task {
-        for remaining in (0..<Self.pauseDuration).reversed() {
-          try? await Task.sleep(for: .seconds(1))
-          guard !Task.isCancelled else { return }
-          countdownSeconds = remaining > 0 ? remaining : nil
+  private func handleWordSelection(wordIndex: Int?, cueID: UUID) {
+    if let wordIndex {
+      if selectedWord == nil {
+        wasPlayingBeforeWordInteraction = playerManager.isPlaying
+        if playerManager.isPlaying {
+          playerManager.pause()
         }
-        isUserScrolling = false
       }
+      selectedWord = (cueID, wordIndex)
+    } else {
+      dismissWord()
+    }
+  }
 
-    default:
-      break
+  private func dismissWord() {
+    guard selectedWord != nil else { return }
+    selectedWord = nil
+    if wasPlayingBeforeWordInteraction {
+      playerManager.play()
+      wasPlayingBeforeWordInteraction = false
+    }
+  }
+
+  private func handleScrollPhaseChange(_ phase: ScrollPhase) {
+    guard case .interacting = phase else { return }
+
+    scrollResumeTask?.cancel()
+    isUserScrolling = true
+    countdownSeconds = Self.pauseDuration
+
+    scrollResumeTask = Task {
+      for remaining in (0..<Self.pauseDuration).reversed() {
+        try? await Task.sleep(for: .seconds(1))
+        guard !Task.isCancelled else { return }
+        countdownSeconds = remaining > 0 ? remaining : nil
+      }
+      isUserScrolling = false
     }
   }
 
   private func trackCurrentCue() async {
     while !Task.isCancelled {
-      // Skip tracking when user is manually scrolling
       if !isUserScrolling {
         let currentTime = playerManager.currentTime
         let activeCue = cues.first { cue in
@@ -108,40 +132,91 @@ struct SubtitleView: View {
 private struct SubtitleCueRow: View {
   let cue: SubtitleCue
   let isActive: Bool
+  let selectedWordIndex: Int?
+  let onWordSelected: (Int?) -> Void
   let onTap: () -> Void
 
   @State private var isHovered = false
+  @State private var hoveredWordIndex: Int?
+  @State private var isMenuHovered = false
+
+  private var words: [String] {
+    cue.text.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+  }
 
   var body: some View {
-    Button(action: onTap) {
-      HStack(alignment: .firstTextBaseline, spacing: 12) {
-        Text(timeString(from: cue.startTime))
-          .font(.system(.subheadline, design: .monospaced))
-          .foregroundStyle(isActive ? .primary : .tertiary)
-          .frame(width: 52, alignment: .trailing)
+    HStack(alignment: .firstTextBaseline, spacing: 12) {
+      Text(timeString(from: cue.startTime))
+        .font(.system(.subheadline, design: .monospaced))
+        .foregroundStyle(isActive ? .primary : .tertiary)
+        .frame(width: 52, alignment: .trailing)
 
+      if isActive {
+        FlowLayout(alignment: .leading, spacing: 4) {
+          ForEach(Array(words.enumerated()), id: \.offset) { index, word in
+            InteractiveWordView(
+              word: word,
+              isHovered: hoveredWordIndex == index,
+              isSelected: selectedWordIndex == index,
+              onHoverChanged: { isHovering in
+                hoveredWordIndex = isHovering ? index : nil
+                if isHovering && selectedWordIndex != nil && selectedWordIndex != index
+                  && !isMenuHovered
+                {
+                  onWordSelected(nil)
+                }
+              },
+              onTap: {
+                onWordSelected(selectedWordIndex == index ? nil : index)
+              },
+              onDismiss: {
+                onWordSelected(nil)
+              },
+              onMenuHoverChanged: { hovering in
+                isMenuHovered = hovering
+              }
+            )
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onDisappear {
+          onWordSelected(nil)
+        }
+      } else {
         Text(cue.text)
           .font(.system(.title3))
-          .foregroundStyle(isActive ? .primary : .secondary)
+          .foregroundStyle(.secondary)
           .multilineTextAlignment(.leading)
           .frame(maxWidth: .infinity, alignment: .leading)
           .fixedSize(horizontal: false, vertical: true)
       }
-      .padding(.vertical, 14)
-      .padding(.horizontal, 12)
-      .background(
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-          .fill(backgroundColor)
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-          .strokeBorder(isActive ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 1)
-      )
     }
-    .buttonStyle(.plain)
+    .padding(.vertical, 14)
+    .padding(.horizontal, 12)
+    .background(
+      RoundedRectangle(cornerRadius: 8, style: .continuous)
+        .fill(backgroundColor)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 8, style: .continuous)
+        .strokeBorder(isActive ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 1)
+    )
+    .contentShape(Rectangle())
+    .onTapGesture {
+      if !isActive {
+        onTap()
+      } else if selectedWordIndex != nil && !isMenuHovered {
+        onWordSelected(nil)
+      }
+    }
     .onHover { hovering in
       withAnimation(.easeInOut(duration: 0.15)) {
         isHovered = hovering
+      }
+    }
+    .onChange(of: isActive) { _, newValue in
+      if !newValue && selectedWordIndex != nil {
+        onWordSelected(nil)
       }
     }
     .animation(.easeInOut(duration: 0.2), value: isActive)
@@ -158,15 +233,70 @@ private struct SubtitleCueRow: View {
   }
 
   private func timeString(from value: Double) -> String {
-    guard value.isFinite, value >= 0 else {
-      return "0:00"
-    }
-
+    guard value.isFinite, value >= 0 else { return "0:00" }
     let totalSeconds = Int(value.rounded())
-    let minutes = totalSeconds / 60
-    let seconds = totalSeconds % 60
+    return String(format: "%d:%02d", totalSeconds / 60, totalSeconds % 60)
+  }
+}
 
-    return String(format: "%d:%02d", minutes, seconds)
+// MARK: - Interactive Word View
+
+private struct InteractiveWordView: View {
+  let word: String
+  let isHovered: Bool
+  let isSelected: Bool
+  let onHoverChanged: (Bool) -> Void
+  let onTap: () -> Void
+  let onDismiss: () -> Void
+  let onMenuHoverChanged: (Bool) -> Void
+
+  private var isHighlighted: Bool { isHovered || isSelected }
+
+  var body: some View {
+    Text(word)
+      .font(.system(.title3))
+      .foregroundStyle(isHighlighted ? Color.accentColor : .primary)
+      .padding(.horizontal, 2)
+      .padding(.vertical, 1)
+      .background(
+        RoundedRectangle(cornerRadius: 4)
+          .fill(isHighlighted ? Color.accentColor.opacity(0.15) : Color.clear)
+      )
+      .onHover { onHoverChanged($0) }
+      .onTapGesture { onTap() }
+      .popover(isPresented: .constant(isSelected), arrowEdge: .bottom) {
+        WordMenuView(word: word, onDismiss: onDismiss, onHoverChanged: onMenuHoverChanged)
+      }
+  }
+}
+
+// MARK: - Word Menu
+
+private struct WordMenuView: View {
+  let word: String
+  let onDismiss: () -> Void
+  let onHoverChanged: (Bool) -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Button {
+        print("Definition: \(word)")
+        onDismiss()
+      } label: {
+        Label("Definition", systemImage: "book")
+      }
+      .buttonStyle(.plain)
+
+      Button {
+        print("生词+1: \(word)")
+        onDismiss()
+      } label: {
+        Label("生词+1", systemImage: "plus.circle")
+      }
+      .buttonStyle(.plain)
+    }
+    .padding(8)
+    .onHover { onHoverChanged($0) }
   }
 }
 
