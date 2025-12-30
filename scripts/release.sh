@@ -54,8 +54,8 @@ STATE_FILE=".release_state"
 # 1. Update Project.swift
 echo "Updating version to $NEW_VERSION in $PROJECT_FILE..."
 if [ -f "$PROJECT_FILE" ]; then
-    # Update CFBundleShortVersionString
-    sed -i '' "s/\"CFBundleShortVersionString\": \".*\"/\"CFBundleShortVersionString\": \"$NEW_VERSION\"/" "$PROJECT_FILE"
+    # Update shortVersionString
+    sed -i '' "s/let shortVersionString = \".*\"/let shortVersionString = \"$NEW_VERSION\"/" "$PROJECT_FILE"
 else
     echo -e "${RED}Error: $PROJECT_FILE not found!${NC}"
     exit 1

@@ -1,5 +1,17 @@
 ## [0.2.3] - 2025-12-30
 
+- No significant changes.
+
+
+## [0.2.3] - 2025-12-30
+
+### Improvements
+- Centralize short version string definition and update version management scripts to use it.
+- use bundle identifier to dynamically determine app support folder name
+
+
+## [0.2.3] - 2025-12-30
+
 ### Features
 - Rework typography system, enhance subtitle font size selection, and introduce a development build target.
 - Add configurable font size for subtitles and integrate it into the subtitle rendering components.
