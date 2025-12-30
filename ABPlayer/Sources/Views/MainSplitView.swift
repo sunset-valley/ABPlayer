@@ -47,7 +47,7 @@ public struct MainSplitView: View {
         }
       } detail: {
         if let selectedFile {
-          PlayerView(audioFile: selectedFile)
+          AudioPlayerView(audioFile: selectedFile)
         } else {
           EmptyStateView()
         }

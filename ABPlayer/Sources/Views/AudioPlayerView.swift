@@ -2,7 +2,7 @@ import Observation
 import SwiftData
 import SwiftUI
 
-struct PlayerView: View {
+struct AudioPlayerView: View {
   @Environment(AudioPlayerManager.self) private var playerManager
   @Environment(SessionTracker.self) private var sessionTracker
   @Environment(\.modelContext) private var modelContext
