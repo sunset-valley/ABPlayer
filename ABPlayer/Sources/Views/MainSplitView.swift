@@ -24,6 +24,7 @@ public struct MainSplitView: View {
   @State private var isImportingFile: Bool = false
   @State private var isImportingFolder: Bool = false
   @State private var importErrorMessage: String?
+  @State private var isClearingData: Bool = false
   @AppStorage("lastSelectedAudioFileID") private var lastSelectedAudioFileID: String?
   @AppStorage("lastFolderID") private var lastFolderID: String?
 
@@ -102,12 +103,19 @@ public struct MainSplitView: View {
   // MARK: - Sidebar
 
   private var sidebar: some View {
-    FolderNavigationView(
-      selectedFile: $selectedFile,
-      currentFolder: $currentFolder,
-      navigationPath: $navigationPath,
-      onSelectFile: { file in await selectFile(file) }
-    )
+    Group {
+      if isClearingData {
+        ProgressView("Clearing...")
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+      } else {
+        FolderNavigationView(
+          selectedFile: $selectedFile,
+          currentFolder: $currentFolder,
+          navigationPath: $navigationPath,
+          onSelectFile: { file in await selectFile(file) }
+        )
+      }
+    }
     .navigationTitle("ABPlayer")
     .toolbar {
       ToolbarItemGroup(placement: .primaryAction) {
@@ -129,7 +137,9 @@ public struct MainSplitView: View {
 
         Menu {
           Button(role: .destructive) {
-            clearAllData()
+            Task {
+              await clearAllDataAsync()
+            }
           } label: {
             Label("Clear All Data", systemImage: "trash")
           }
@@ -389,5 +399,14 @@ public struct MainSplitView: View {
     } catch {
       importErrorMessage = "Failed to clear data: \(error.localizedDescription)"
     }
+  }
+
+  @MainActor
+  private func clearAllDataAsync() async {
+    isClearingData = true
+    // Give SwiftUI a moment to unmount views that observe this data
+    try? await Task.sleep(nanoseconds: 200_000_000)  // 0.2s
+    clearAllData()
+    isClearingData = false
   }
 }

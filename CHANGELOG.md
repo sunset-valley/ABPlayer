@@ -1,3 +1,10 @@
+## [0.1.22] - 2025-12-29
+
+### Features
+- show progress view in sidebar when clearing all data
+- trigger `onDismiss` callback when the popover is dismissed
+
+
 ## [0.1.21] - 2025-12-29
 
 ### Features
