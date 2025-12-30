@@ -291,6 +291,8 @@ private struct SubtitleCueRow: View {
             Text(word)
               .font(.system(.title3))
               .foregroundStyle(wordColor(for: word))
+              .padding(.horizontal, 2)
+              .padding(.vertical, 1)
           }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
