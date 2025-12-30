@@ -222,9 +222,21 @@ private struct SubtitleCueRow: View {
     }
   }
 
+  /// Remove vocabulary entry for a word
+  private func removeVocabulary(for word: String) {
+    if let vocab = findVocabulary(for: word) {
+      modelContext.delete(vocab)
+    }
+  }
+
   /// Get forgot count for a word (0 if not in vocabulary)
   private func forgotCount(for word: String) -> Int {
     findVocabulary(for: word)?.forgotCount ?? 0
+  }
+
+  /// Get remembered count for a word (0 if not in vocabulary)
+  private func rememberedCount(for word: String) -> Int {
+    findVocabulary(for: word)?.rememberedCount ?? 0
   }
 
   /// Get color for a word in non-active rows (secondary or difficulty color)
@@ -274,10 +286,14 @@ private struct SubtitleCueRow: View {
               onRemembered: {
                 incrementRememberedCount(for: word)
               },
+              onRemove: {
+                removeVocabulary(for: word)
+              },
               onMenuHoverChanged: { hovering in
                 isMenuHovered = hovering
               },
-              forgotCount: forgotCount(for: word)
+              forgotCount: forgotCount(for: word),
+              rememberedCount: rememberedCount(for: word)
             )
           }
         }
@@ -358,8 +374,10 @@ private struct InteractiveWordView: View {
   let onDismiss: () -> Void
   let onForgot: () -> Void
   let onRemembered: () -> Void
+  let onRemove: () -> Void
   let onMenuHoverChanged: (Bool) -> Void
   let forgotCount: Int
+  let rememberedCount: Int
 
   private var isHighlighted: Bool { isHovered || isSelected }
 
@@ -401,8 +419,9 @@ private struct InteractiveWordView: View {
       ) {
         WordMenuView(
           word: word, onDismiss: onDismiss, onForgot: onForgot,
-          onRemembered: onRemembered, onHoverChanged: onMenuHoverChanged,
-          forgotCount: forgotCount)
+          onRemembered: onRemembered, onRemove: onRemove,
+          onHoverChanged: onMenuHoverChanged,
+          forgotCount: forgotCount, rememberedCount: rememberedCount)
       }
   }
 }
@@ -414,40 +433,69 @@ private struct WordMenuView: View {
   let onDismiss: () -> Void
   let onForgot: () -> Void
   let onRemembered: () -> Void
+  let onRemove: () -> Void
   let onHoverChanged: (Bool) -> Void
   let forgotCount: Int
+  let rememberedCount: Int
 
   var body: some View {
-    HStack(spacing: 8) {
-      Button {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(word, forType: .string)
-        onDismiss()
-      } label: {
-        Label("Copy", systemImage: "doc.on.doc")
-      }
-      .buttonStyle(.plain)
-
-      Button {
-        onForgot()
-        onDismiss()
-      } label: {
-        Label("Forgot", systemImage: "xmark.circle")
-      }
-      .buttonStyle(.plain)
-
-      if forgotCount > 0 {
-        Button {
-          onRemembered()
+    VStack(alignment: .leading, spacing: 0) {
+      Group {
+        MenuButton(label: "Copy", systemImage: "doc.on.doc") {
+          NSPasteboard.general.clearContents()
+          NSPasteboard.general.setString(word, forType: .string)
           onDismiss()
-        } label: {
-          Label("Remember", systemImage: "checkmark.circle")
         }
-        .buttonStyle(.plain)
+
+        MenuButton(label: "Forgot (\(forgotCount))", systemImage: "xmark.circle") {
+          onForgot()
+          onDismiss()
+        }
+
+        if forgotCount > 0 {
+          MenuButton(label: "Remember (\(rememberedCount))", systemImage: "checkmark.circle") {
+            onRemembered()
+            onDismiss()
+          }
+        }
+
+        if forgotCount > 0 || rememberedCount > 0 {
+          // add a menu item to remove the word from the vocabulary
+          MenuButton(label: "Remove", systemImage: "trash") {
+            onRemove()
+            onDismiss()
+          }
+        }
       }
+      .padding(4)
     }
-    .padding(8)
+    .frame(minWidth: 160)
     .onHover { onHoverChanged($0) }
+  }
+}
+
+private struct MenuButton: View {
+  let label: String
+  let systemImage: String
+  let action: () -> Void
+
+  @State private var isHovered = false
+
+  var body: some View {
+    Button(action: action) {
+      Label(label, systemImage: systemImage)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .padding(.horizontal, 8)
+    .padding(.vertical, 6)
+    .background(
+      RoundedRectangle(cornerRadius: 4)
+        .fill(isHovered ? Color.accentColor : Color.clear)
+    )
+    .foregroundStyle(isHovered ? .white : .primary)
+    .onHover { isHovered = $0 }
   }
 }
 
