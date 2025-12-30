@@ -1,3 +1,12 @@
+## [0.1.20] - 2025-12-29
+
+### Features
+- Enable folder rescan via security-scoped bookmarks and improve synchronization of audio files with subtitles, PDFs, and transcription records.
+
+### Chores
+- Add padding to individual subtitle words.
+
+
 ## [0.1.19] - 2025-12-29
 
 ### Features
