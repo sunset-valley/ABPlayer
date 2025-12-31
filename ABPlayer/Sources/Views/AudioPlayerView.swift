@@ -194,19 +194,27 @@ struct AudioPlayerView: View {
       showVolumePopover.toggle()
     } label: {
       Image(systemName: playerVolume == 0 ? "speaker.slash" : "speaker.wave.3")
-        .frame(width: 20, height: 20)
+        .font(.title3)
+        .frame(width: 24, height: 24)
     }
     .buttonStyle(.plain)
     .popover(isPresented: $showVolumePopover, arrowEdge: .bottom) {
-      VStack(spacing: 8) {
-        Slider(value: $playerVolume, in: 0...1) {
+      HStack(spacing: 8) {
+        Slider(value: $playerVolume, in: 0...2) {
           Text("Volume")
         }
         .frame(width: 150)
 
-        Text("\(Int(playerVolume * 100))%")
-          .font(.caption2)
-          .foregroundStyle(.secondary)
+        HStack(spacing: 2) {
+          Text("\(Int(playerVolume * 100))%")
+          if playerVolume > 1.0 {
+            Image(systemName: "bolt.fill")
+              .foregroundStyle(.orange)
+          }
+        }
+        .frame(width: 50, alignment: .trailing)
+        .font(.caption2)
+        .foregroundStyle(.secondary)
       }
       .padding()
     }
