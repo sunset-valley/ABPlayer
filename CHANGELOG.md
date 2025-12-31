@@ -1,3 +1,16 @@
+## [0.2.4] - 2025-12-30
+
+### Features
+- add `autoPlayNext` playback mode and its sequential file handling logic.
+
+### Bug Fixes
+- Update version string parsing and updating in CI and release scripts to match new `Project.swift` format.
+
+### Improvements
+- Centralize `CFBundleShortVersionString` by introducing a new `shortVersionString` constant.
+- use bundle identifier to dynamically determine app support folder name
+
+
 ## [0.2.3] - 2025-12-30
 
 ### Features

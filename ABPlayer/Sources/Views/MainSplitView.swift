@@ -344,6 +344,16 @@ public struct MainSplitView: View {
         } else {
           nextFile = files.first
         }
+
+      case .autoPlayNext:
+        // Play next file in sequence, stop if at end
+        if let currentIndex = files.firstIndex(where: { $0.id == currentFile.id }),
+          currentIndex + 1 < files.count
+        {
+          nextFile = files[currentIndex + 1]
+        } else {
+          nextFile = nil
+        }
       }
 
       if let nextFile {

@@ -9,6 +9,7 @@ enum LoopMode: String, CaseIterable {
   case repeatOne  // 无限重播当前文件
   case repeatAll  // 重播当前目录
   case shuffle  // 随机播放当前目录
+  case autoPlayNext  // 自动播放下一个文件
 
   var displayName: String {
     switch self {
@@ -16,6 +17,7 @@ enum LoopMode: String, CaseIterable {
     case .repeatOne: "Repeat One"
     case .repeatAll: "Repeat All"
     case .shuffle: "Shuffle"
+    case .autoPlayNext: "Auto Play Next"
     }
   }
 
@@ -25,6 +27,7 @@ enum LoopMode: String, CaseIterable {
     case .repeatOne: "repeat.1"
     case .repeatAll: "repeat"
     case .shuffle: "shuffle"
+    case .autoPlayNext: "arrow.forward.to.line"
     }
   }
 }
@@ -184,7 +187,7 @@ final class AudioPlayerManager {
       seek(to: 0)
       play()
 
-    case .repeatAll, .shuffle:
+    case .repeatAll, .shuffle, .autoPlayNext:
       // Notify ContentView to play next/random file
       onPlaybackEnded?(currentFile)
     }
