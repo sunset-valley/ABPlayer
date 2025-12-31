@@ -1,3 +1,20 @@
+## [0.2.6.30] - 2025-12-31
+
+### Features
+- Implement volume debouncing and add a reset volume button to player views.
+- Implement volume boosting functionality up to 200% with a UI indicator.
+
+
+## [0.2.6.29] - 2025-12-31
+
+### Features
+- Implement volume boosting functionality up to 200% with a UI indicator.
+- Implement combined short and build versioning across release script and CI, and increment build version.
+
+### Other
+- Merge pull request #54 from sunset-valley/feat/auto-update-4
+
+
 ## [0.2.6.28] - 2025-12-31
 
 ### Features

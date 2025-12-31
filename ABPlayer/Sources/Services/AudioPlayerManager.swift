@@ -456,6 +456,7 @@ actor AudioPlayerEngine {
   private var player: AVPlayer?
   private var timeObserverToken: Any?
   private var currentScopedURL: URL?
+  private var currentAsset: AVURLAsset?  // Store asset for volume boost
   private var lastPersistedTime: Double = 0
   private var lastPlaybackTick: Double?
   private var rateObservation: NSKeyValueObservation?
@@ -488,6 +489,7 @@ actor AudioPlayerEngine {
     currentScopedURL = url
 
     let asset = AVURLAsset(url: url)
+    currentAsset = asset
 
     // Load duration asynchronously (non-blocking)
     let time = try await asset.load(.duration)
@@ -542,8 +544,30 @@ actor AudioPlayerEngine {
     lastPersistedTime = time
   }
 
-  func setVolume(_ volume: Float) {
-    player?.volume = volume
+  func setVolume(_ volume: Float) async {
+    guard let player = player,
+      let currentItem = player.currentItem
+    else { return }
+
+    if volume <= 1.0 {
+      // Normal range: use AVPlayer.volume directly
+      player.volume = volume
+      await MainActor.run { currentItem.audioMix = nil }  // Clear any previous boost
+    } else {
+      // Boost range: use AudioMix to amplify
+      player.volume = 1.0  // Keep system volume at max
+
+      guard let asset = currentAsset,
+        let audioTracks = try? await asset.loadTracks(withMediaType: .audio),
+        let audioTrack = audioTracks.first
+      else { return }
+
+      let audioMix = AVMutableAudioMix()
+      let params = AVMutableAudioMixInputParameters(track: audioTrack)
+      params.setVolume(volume, at: .zero)
+      audioMix.inputParameters = [params]
+      await MainActor.run { currentItem.audioMix = audioMix }
+    }
   }
 
   nonisolated func teardownSync() {
@@ -563,6 +587,7 @@ actor AudioPlayerEngine {
       currentScopedURL.stopAccessingSecurityScopedResource()
     }
     currentScopedURL = nil
+    currentAsset = nil
     player = nil
     lastPersistedTime = 0
     lastPlaybackTick = nil
