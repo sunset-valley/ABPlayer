@@ -241,7 +241,6 @@ public struct MainSplitView: View {
   // MARK: - Selection
 
   private func selectFile(_ file: AudioFile, fromStart: Bool = false) async {
-    selectedFile = file
     lastSelectedAudioFileID = file.id.uuidString
     lastFolderID = file.folder?.id.uuidString
 
@@ -253,6 +252,8 @@ public struct MainSplitView: View {
     }
 
     await playerManager.load(audioFile: file, fromStart: fromStart)
+    
+    selectedFile = file
   }
 
   private func playFile(_ file: AudioFile, fromStart: Bool = false) async {
