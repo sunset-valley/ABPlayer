@@ -137,6 +137,9 @@ final class AudioPlayerManager {
         onLoopCheck: { [weak self] seconds in
           guard let self else { return }
           self.handleLoopCheck(seconds)
+        },
+        onPlaybackStateChange: { [weak self] isPlaying in
+          self?.handlePlaybackStateUpdate(isPlaying)
         }
       )
 
@@ -427,6 +430,24 @@ final class AudioPlayerManager {
       seek(to: pointA)
     }
   }
+
+  private func handlePlaybackStateUpdate(_ isPlaying: Bool) {
+    guard self.isPlaying != isPlaying else { return }
+
+    self.isPlaying = isPlaying
+
+    if isPlaying {
+      sessionTracker?.startSessionIfNeeded()
+      if let file = currentFile {
+        if file.playbackRecord == nil {
+          file.playbackRecord = PlaybackRecord(audioFile: file)
+        }
+        file.playbackRecord?.lastPlayedAt = Date()
+      }
+    } else {
+      sessionTracker?.persistProgress()
+    }
+  }
 }
 
 // MARK: - Audio Engine Actor (Background)
@@ -437,6 +458,7 @@ actor AudioPlayerEngine {
   private var currentScopedURL: URL?
   private var lastPersistedTime: Double = 0
   private var lastPlaybackTick: Double?
+  private var rateObservation: NSKeyValueObservation?
 
   var currentPlayer: AVPlayer? { player }
 
@@ -445,7 +467,8 @@ actor AudioPlayerEngine {
     resumeTime: Double,
     onDurationLoaded: @MainActor @Sendable @escaping (Double) -> Void,
     onTimeUpdate: @MainActor @Sendable @escaping (Double) -> Void,
-    onLoopCheck: @MainActor @Sendable @escaping (Double) -> Void
+    onLoopCheck: @MainActor @Sendable @escaping (Double) -> Void,
+    onPlaybackStateChange: @MainActor @Sendable @escaping (Bool) -> Void
   ) async throws -> AVPlayerItem? {
     teardownPlayerInternal()
 
@@ -489,6 +512,14 @@ actor AudioPlayerEngine {
     }
 
     addTimeObserver(onTimeUpdate: onTimeUpdate, onLoopCheck: onLoopCheck)
+
+    // Add rate observation
+    rateObservation = player.observe(\.rate) { player, _ in
+      Task { @MainActor in
+        onPlaybackStateChange(player.rate != 0 && player.error == nil)
+      }
+    }
+
     return item
   }
 
@@ -524,6 +555,9 @@ actor AudioPlayerEngine {
       player.removeTimeObserver(timeObserverToken)
     }
     timeObserverToken = nil
+
+    rateObservation?.invalidate()
+    rateObservation = nil
 
     if let currentScopedURL {
       currentScopedURL.stopAccessingSecurityScopedResource()

@@ -158,11 +158,46 @@ jobs:
 
     - name: Prepare Release Artifact
       if: steps.compare_versions.outputs.should_release == 'true'
+      env:
+        SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
       run: |
         cd DerivedData/Build/Products/Release
+        
+        # Create zip for Sparkle
         zip -r ABPlayer.zip ABPlayer.app
+        
+        # Download Sparkle tools (Not needed, we rely on the Tuist dependency which should have downloaded it)
+        # The user indicated the path is Tuist/.build/artifacts/sparkle/Sparkle/bin/
+        # Since 'tuist install' and 'tuist generate' ran earlier, this path should exist if the artifact is cached/downloaded.
+        # However, artifacts might be in a different spot depending on Tuist version/cache. 
+        # But based on user input, we will use that relative path from project root.
+        
+        # We need to go back to project root to find the tools, or reference them relatively
+        # Current dir: DerivedData/Build/Products/Release
+        # Project root: ../../../../
+        
+        SPARKLE_BIN="../../../../Tuist/.build/artifacts/sparkle/Sparkle/bin"
+        
+        # Create a temporary file for the key
+        echo "$SPARKLE_PRIVATE_KEY" > sparkle_key
+        
+        # Generate signature
+        SIGNATURE=$("$SPARKLE_BIN/sign_update" ABPlayer.zip --ed-key-file sparkle_key)
+        echo "Signature: $SIGNATURE"
+        
+        # Generate Appcast
+        # We need to construct the appcast manually or use the tool. 
+        # Using generate_appcast tool:
+        "$SPARKLE_BIN/generate_appcast" . --ed-key-file sparkle_key --download-url-prefix "https://github.com/sunset-valley/ABPlayer/releases/latest/download/"
+        
+        # Cleanup key
+        rm sparkle_key
+        
+        # Move artifacts to root
         mv ABPlayer.zip ../../../../
+        mv appcast.xml ../../../../
         cd ../../../../
+
 
     - name: Create GitHub Release
       if: steps.compare_versions.outputs.should_release == 'true'
@@ -181,7 +216,7 @@ jobs:
           echo "Automated release for version $VERSION" > "$NOTES_FILE"
         fi
         
-        gh release create "$VERSION" ABPlayer.zip --title "$VERSION" --notes-file "$NOTES_FILE"
+        gh release create "$VERSION" ABPlayer.zip appcast.xml --title "$VERSION" --notes-file "$NOTES_FILE"
 
     - name: Upload dSYM to Sentry
       if: steps.compare_versions.outputs.should_release == 'true'

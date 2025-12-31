@@ -12,6 +12,7 @@ import PackageDescription
       "Sentry-Dynamic": .framework,
       "WhisperKit-Dynamic": .framework,
       "KeyboardShortcuts-Dynamic": .framework,
+      "Sparkle-Dynamic": .framework,
     ]
   )
 #endif
@@ -25,5 +26,6 @@ let package = Package(
     .package(url: "https://github.com/getsentry/sentry-cocoa", from: "9.0.0"),
     .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.15.0"),
     .package(url: "https://github.com/iHugo-Tang/KeyboardShortcuts", branch: "main"),
+    .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
   ]
 )

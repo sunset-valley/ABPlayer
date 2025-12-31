@@ -38,6 +38,9 @@ struct SubtitleView: View {
                 onWordSelected: { wordIndex in
                   handleWordSelection(wordIndex: wordIndex, cueID: cue.id)
                 },
+                onHidePopover: {
+                  hidePopover()
+                },
                 onTap: {
                   dismissWord()
                   playerManager.seek(to: cue.startTime)
@@ -95,6 +98,12 @@ struct SubtitleView: View {
     }
   }
 
+  /// Only hides the popover without resuming playback
+  private func hidePopover() {
+    selectedWord = nil
+  }
+
+  /// Hides the popover and resumes playback if it was paused by word click
   private func dismissWord() {
     guard selectedWord != nil else { return }
     selectedWord = nil
@@ -189,6 +198,7 @@ private struct SubtitleCueRow: View {
   let fontSize: Double
   let selectedWordIndex: Int?
   let onWordSelected: (Int?) -> Void
+  let onHidePopover: () -> Void
   let onTap: () -> Void
 
   @State private var isHovered = false
@@ -287,11 +297,6 @@ private struct SubtitleCueRow: View {
               isSelected: selectedWordIndex == index,
               onHoverChanged: { isHovering in
                 hoveredWordIndex = isHovering ? index : nil
-                if isHovering && selectedWordIndex != nil && selectedWordIndex != index
-                  && !isMenuHovered
-                {
-                  onWordSelected(nil)
-                }
               },
               onTap: {
                 onWordSelected(selectedWordIndex == index ? nil : index)
@@ -320,7 +325,7 @@ private struct SubtitleCueRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onDisappear {
-          onWordSelected(nil)
+          onHidePopover()
         }
       } else {
         FlowLayout(alignment: .leading, spacing: 4) {

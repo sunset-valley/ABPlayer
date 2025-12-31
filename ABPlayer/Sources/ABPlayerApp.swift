@@ -1,7 +1,22 @@
 import KeyboardShortcuts
 import Sentry
+import Sparkle
 import SwiftData
 import SwiftUI
+
+@MainActor
+final class SparkleUpdater: ObservableObject {
+  private let controller: SPUStandardUpdaterController
+
+  init() {
+    controller = SPUStandardUpdaterController(
+      startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+  }
+
+  func checkForUpdates() {
+    controller.checkForUpdates(nil)
+  }
+}
 
 @main
 struct ABPlayerApp: App {
@@ -10,7 +25,9 @@ struct ABPlayerApp: App {
   private let sessionTracker = SessionTracker()
   private let transcriptionManager = TranscriptionManager()
   private let transcriptionSettings = TranscriptionSettings()
+
   private let queueManager: TranscriptionQueueManager
+  private let updater = SparkleUpdater()
 
   init() {
     do {
@@ -128,6 +145,23 @@ struct ABPlayerApp: App {
     .modelContainer(modelContainer)
     .commands {
       SettingsCommands()
+      CommandGroup(replacing: .appInfo) {
+        Button("About ABPlayer") {
+          NSApp.orderFrontStandardAboutPanel(options: [
+            NSApplication.AboutPanelOptionKey.credits: NSAttributedString(
+              string: "Developed by Sunset Valley",
+              attributes: [
+                NSAttributedString.Key.font: NSFont.systemFont(
+                  ofSize: 11)
+              ]
+            )
+          ])
+        }
+
+        Button("Check for Updates...") {
+          updater.checkForUpdates()
+        }
+      }
     }
 
     #if os(macOS)
