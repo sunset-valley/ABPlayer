@@ -1,13 +1,7 @@
 ## [0.2.4] - 2025-12-30
 
 ### Features
-- update application icons
-
-
-## [0.2.4] - 2025-12-30
-
-### Features
-- enhance window and split view resizing behavior, update Sentry configuration, and remove build server config.
+- add `autoPlayNext` playback mode and its sequential file handling logic.
 
 ### Bug Fixes
 - Update version string parsing and updating in CI and release scripts to match new `Project.swift` format.
