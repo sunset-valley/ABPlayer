@@ -1,3 +1,15 @@
+## [0.2.5] - 2025-12-30
+
+### Features
+- add `autoPlayNext` playback mode and its sequential file handling logic.
+- update application icons
+- enhance window and split view resizing behavior, update Sentry configuration, and remove build server config.
+
+### Other
+- Merge pull request #48 from sunset-valley/feat/loopmode-auto-next
+- Merge branch 'main' into feat/loopmode-auto-next
+
+
 ## [0.2.4] - 2025-12-30
 
 ### Features
