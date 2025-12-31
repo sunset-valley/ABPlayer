@@ -32,12 +32,40 @@ enum LoopMode: String, CaseIterable {
   }
 }
 
+// MARK: - Audio Engine Protocol
+
+protocol AudioPlayerEngineProtocol: Actor {
+  var currentPlayer: AVPlayer? { get }
+
+  func load(
+    bookmarkData: Data,
+    resumeTime: Double,
+    onDurationLoaded: @MainActor @Sendable @escaping (Double) -> Void,
+    onTimeUpdate: @MainActor @Sendable @escaping (Double) -> Void,
+    onLoopCheck: @MainActor @Sendable @escaping (Double) -> Void,
+    onPlaybackStateChange: @MainActor @Sendable @escaping (Bool) -> Void,
+    onPlayerReady: @MainActor @Sendable @escaping (AVPlayer) -> Void
+  ) async throws -> AVPlayerItem?
+
+  func play() -> Bool
+  func pause()
+  func syncPauseState()
+  func syncPlayState()
+  func seek(to time: Double)
+  func setVolume(_ volume: Float) async
+  nonisolated func teardownSync()
+}
+
 // MARK: - Observable UI State (MainActor)
 
 @MainActor
 @Observable
 final class AudioPlayerManager {
-  private let _engine = AudioPlayerEngine()
+  private let _engine: any AudioPlayerEngineProtocol
+
+  init(engine: (any AudioPlayerEngineProtocol)? = nil) {
+    self._engine = engine ?? AudioPlayerEngine()
+  }
 
   private weak var _player: AVPlayer?
 
@@ -498,7 +526,7 @@ final class AudioPlayerManager {
 
 // MARK: - Audio Engine Actor (Background)
 
-actor AudioPlayerEngine {
+actor AudioPlayerEngine: AudioPlayerEngineProtocol {
   private var player: AVPlayer?
   private var timeObserverToken: Any?
   private var currentScopedURL: URL?
