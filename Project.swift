@@ -23,6 +23,10 @@ let project = Project(
         "CFBundleVersion": "nightly-f1e431b",
         "CFBundleShortVersionString": .string(shortVersionString),
         "NSMainStoryboardFile": "",
+        "SUFeedURL":
+          "https://github.com/sunset-valley/ABPlayer/releases/latest/download/appcast.xml",
+        "SUEnableAutomaticChecks": true,
+        "SUPublicEDKey": "Zw9DuoU9cuGJGt81eRRfWq5OwhCG+udkeOBwScjchU0=",
       ]),
       buildableFolders: [
         "ABPlayer/Sources",
@@ -32,6 +36,7 @@ let project = Project(
         .external(name: "Sentry"),
         .external(name: "WhisperKit"),
         .external(name: "KeyboardShortcuts"),
+        .external(name: "Sparkle"),
       ],
     ),
     .target(
@@ -44,6 +49,10 @@ let project = Project(
         "CFBundleVersion": "nightly-f1e431b",
         "CFBundleShortVersionString": .string(shortVersionString),
         "NSMainStoryboardFile": "",
+        "SUFeedURL":
+          "https://github.com/sunset-valley/ABPlayer/releases/latest/download/appcast.xml",
+        "SUEnableAutomaticChecks": true,
+        "SUPublicEDKey": "Zw9DuoU9cuGJGt81eRRfWq5OwhCG+udkeOBwScjchU0=",
       ]),
       buildableFolders: [
         "ABPlayer/Sources",
@@ -53,6 +62,7 @@ let project = Project(
         .external(name: "Sentry"),
         .external(name: "WhisperKit"),
         .external(name: "KeyboardShortcuts"),
+        .external(name: "Sparkle"),
       ],
     ),
     .target(

@@ -71,5 +71,7 @@ Tuist/.build
 
 # Logs
 build_output.log
+
 .env
 buildServer.json
+.keys/
