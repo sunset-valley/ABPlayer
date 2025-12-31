@@ -153,7 +153,12 @@ struct VideoPlayerView: View {
         }
       }
     }
-
+    .onChange(of: audioFile) { _, newFile in
+      Task {
+        self.currentPlayer = await playerManager.avPlayer
+      }
+    }
+    
   }
 
   // MARK: - Video Section

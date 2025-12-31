@@ -1,3 +1,15 @@
+## [0.2.6.36] - 2025-12-31
+
+### Features
+- Synchronize player views with audio file changes and reorder selected file assignment in `MainSplitView`.
+
+### Improvements
+- Remove redundant `onChange` observers for audio file loading and re-enable direct load call in `MainSplitView`.
+
+### Other
+- Merge pull request #60 from sunset-valley/fix/autoplay
+
+
 ## [0.2.6.35] - 2025-12-31
 
 ### Improvements
