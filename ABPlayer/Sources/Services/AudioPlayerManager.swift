@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import OSLog
 import Observation
 
 // MARK: - Loop Mode
@@ -69,6 +70,9 @@ final class AudioPlayerManager {
 
   private(set) weak var player: AVPlayer?
 
+  // Track the ID of the file currently being loaded
+  private var loadingFileID: UUID?
+
   var currentFile: AudioFile?
   var sessionTracker: SessionTracker?
 
@@ -135,6 +139,9 @@ final class AudioPlayerManager {
       duration = cached
     }
 
+    let fileID = audioFile.id
+    loadingFileID = fileID
+
     currentFile = audioFile
     currentTime = 0
     isPlaying = false
@@ -156,26 +163,33 @@ final class AudioPlayerManager {
         bookmarkData: bookmarkData,
         resumeTime: resumeTime,
         onDurationLoaded: { [weak self] loadedDuration in
-          guard let self else { return }
+          guard let self, self.loadingFileID == fileID else { return }
           self.duration = loadedDuration
           audioFile.cachedDuration = loadedDuration
         },
         onTimeUpdate: { [weak self] seconds in
-          guard let self else { return }
+          guard let self, self.currentFile?.id == fileID else { return }
           self.handleTimeUpdate(seconds)
         },
         onLoopCheck: { [weak self] seconds in
-          guard let self else { return }
+          guard let self, self.currentFile?.id == fileID else { return }
           self.handleLoopCheck(seconds)
         },
         onPlaybackStateChange: { [weak self] isPlaying in
-          self?.handlePlaybackStateUpdate(isPlaying)
+          guard let self, self.currentFile?.id == fileID else { return }
+          self.handlePlaybackStateUpdate(isPlaying)
         },
         onPlayerReady: { [weak self] player in
+          guard let self, self.loadingFileID == fileID else { return }
           // ✅ P1 优化: 保存播放器直接引用
-          self?.player = player
+          self.player = player
         }
       )
+
+      // 再次验证 ID，防止在等待期间被取消
+      guard loadingFileID == fileID else {
+        return
+      }
 
       // Setup end-of-file notification observer
       if let item = playerItem {
@@ -185,7 +199,8 @@ final class AudioPlayerManager {
           queue: .main
         ) { [weak self] _ in
           Task { @MainActor [weak self] in
-            self?.handlePlaybackEnded()
+            guard let self, self.currentFile?.id == fileID else { return }
+            self.handlePlaybackEnded()
           }
         }
       }
@@ -199,9 +214,14 @@ final class AudioPlayerManager {
       // Apply current volume
       await _engine.setVolume(volume)
     } catch {
-      assertionFailure("Failed to load audio file: \(error)")
+      // 只有在仍然是当前文件时才报错
+      if loadingFileID == fileID {
+        assertionFailure("Failed to load audio file: \(error)")
+      }
     }
   }
+
+  // ... (rest of methods unchanged until AudioPlayerEngine)
 
   /// Handle when a file finishes playing
   private func handlePlaybackEnded() {
@@ -266,23 +286,23 @@ final class AudioPlayerManager {
 
   func togglePlayPause() {
     let startTime = CFAbsoluteTimeGetCurrent()
-    print("[Performance] togglePlayPause() called, isPlaying: \(isPlaying)")
+    Logger.audio.debug("[Performance] togglePlayPause() called, isPlaying: \(self.isPlaying)")
 
     if isPlaying {
       // ✅ P0 优化: 立即更新 UI 状态
       isPlaying = false
       let uiUpdateTime = CFAbsoluteTimeGetCurrent()
-      print(
+      Logger.audio.debug(
         "[Performance] isPlaying = false (immediate) after \((uiUpdateTime - startTime) * 1000)ms")
 
       // ✅ P1 优化: 直接同步调用 AVPlayer.pause()，无需 await Actor
       player?.pause()
       let pauseTime = CFAbsoluteTimeGetCurrent()
-      print(
+      Logger.audio.debug(
         "[Performance] player.pause() (sync) completed after \((pauseTime - uiUpdateTime) * 1000)ms"
       )
 
-      print(
+      Logger.audio.debug(
         "[Performance] User perceives pause after \((CFAbsoluteTimeGetCurrent() - startTime) * 1000)ms"
       )
 
@@ -291,7 +311,7 @@ final class AudioPlayerManager {
         guard let self else { return }
         await _engine.syncPauseState()
         self.sessionTracker?.persistProgress()
-        print(
+        Logger.audio.debug(
           "[Performance] Background sync completed after \((CFAbsoluteTimeGetCurrent() - startTime) * 1000)ms"
         )
       }
@@ -299,16 +319,16 @@ final class AudioPlayerManager {
       // ✅ P0 优化: 立即更新 UI 状态
       isPlaying = true
       let uiUpdateTime = CFAbsoluteTimeGetCurrent()
-      print(
+      Logger.audio.debug(
         "[Performance] isPlaying = true (immediate) after \((uiUpdateTime - startTime) * 1000)ms")
 
       // ✅ P1 优化: 直接同步调用 AVPlayer.play()
       player?.play()
       let playTime = CFAbsoluteTimeGetCurrent()
-      print(
+      Logger.audio.debug(
         "[Performance] player.play() (sync) completed after \((playTime - uiUpdateTime) * 1000)ms")
 
-      print(
+      Logger.audio.debug(
         "[Performance] User perceives play after \((CFAbsoluteTimeGetCurrent() - startTime) * 1000)ms"
       )
 
@@ -324,7 +344,7 @@ final class AudioPlayerManager {
           }
           file.playbackRecord?.lastPlayedAt = Date()
         }
-        print(
+        Logger.audio.debug(
           "[Performance] Background sync completed after \((CFAbsoluteTimeGetCurrent() - startTime) * 1000)ms"
         )
       }
@@ -524,16 +544,46 @@ final class AudioPlayerManager {
   }
 }
 
+// MARK: - Tracked AVPlayer for debugging
+
+/// A subclass of AVPlayer that logs when it's deallocated
+final class TrackedAVPlayer: AVPlayer {
+  var url: URL?
+
+  convenience init(playerItem item: AVPlayerItem?, url: URL) {
+    self.init(playerItem: item)
+    self.url = url
+    Logger.audio.debug(
+      "[TrackedAVPlayer] 🆕 Created new player: \(String(describing: Unmanaged.passUnretained(self).toOpaque())) url: \(url.lastPathComponent)"
+    )
+  }
+
+  deinit {
+    Logger.audio.debug(
+      "[TrackedAVPlayer] 💀 DEINIT - Player deallocated: \(String(describing: Unmanaged.passUnretained(self).toOpaque()))"
+    )
+  }
+}
+
 // MARK: - Audio Engine Actor (Background)
 
 actor AudioPlayerEngine: AudioPlayerEngineProtocol {
-  private var player: AVPlayer?
+  private var player: AVPlayer? {
+    didSet {
+      Logger.audio.debug(
+        "[AudioPlayerEngine] player set to: \(self.player != nil ? String(describing: Unmanaged.passUnretained(self.player!).toOpaque()) : "nil")"
+      )
+    }
+  }
   private var timeObserverToken: Any?
   private var currentScopedURL: URL?
   private var currentAsset: AVURLAsset?  // Store asset for volume boost
   private var lastPersistedTime: Double = 0
   private var lastPlaybackTick: Double?
   private var rateObservation: NSKeyValueObservation?
+
+  // Track current loading operation ID to support cancellation
+  private var loadingID: UUID?
 
   var currentPlayer: AVPlayer? { player }
 
@@ -546,6 +596,10 @@ actor AudioPlayerEngine: AudioPlayerEngineProtocol {
     onPlaybackStateChange: @MainActor @Sendable @escaping (Bool) -> Void,
     onPlayerReady: @MainActor @Sendable @escaping (AVPlayer) -> Void
   ) async throws -> AVPlayerItem? {
+    let myLoadID = UUID()
+    loadingID = myLoadID
+
+    // 立即清理旧播放器，防止旧的 callback 还在跑
     teardownPlayerInternal()
 
     var isStale = false
@@ -568,18 +622,38 @@ actor AudioPlayerEngine: AudioPlayerEngineProtocol {
 
     // Load duration asynchronously (non-blocking)
     let time = try await asset.load(.duration)
+
+    // 检查是否已被新的 load 取消
+    guard loadingID == myLoadID else {
+      Logger.audio.debug(
+        "[AudioPlayerEngine] Loading cancelled after duration load (id: \(myLoadID))")
+      url.stopAccessingSecurityScopedResource()
+      return nil
+    }
+
     let assetDuration = CMTimeGetSeconds(time)
     let finalDuration = (assetDuration.isFinite && assetDuration > 0) ? assetDuration : 0
 
     await onDurationLoaded(finalDuration)
 
     let item = AVPlayerItem(asset: asset)
-    let player = AVPlayer(playerItem: item)
+    let player = await TrackedAVPlayer(playerItem: item, url: url)
+    Logger.audio.debug(
+      "[AudioPlayerEngine] 🆕 Created new player: \(String(describing: Unmanaged.passUnretained(player).toOpaque())) item: \(asset.url)"
+    )
     player.volume = 1.0  // Will be updated by manager
     self.player = player
 
     // ✅ P1 优化: 通知 Manager 播放器已就绪
     await onPlayerReady(player)
+
+    // 再次检查，防止在 onPlayerReady await 期间被取消
+    guard loadingID == myLoadID else {
+      Logger.audio.debug(
+        "[AudioPlayerEngine] Loading cancelled after onPlayerReady (id: \(myLoadID))")
+      teardownPlayerInternal()
+      return nil
+    }
 
     lastPlaybackTick = nil
     lastPersistedTime = 0
@@ -664,8 +738,18 @@ actor AudioPlayerEngine: AudioPlayerEngineProtocol {
   }
 
   private func teardownPlayerInternal() {
-    if let player, let timeObserverToken {
-      player.removeTimeObserver(timeObserverToken)
+    if let player {
+      Logger.audio.debug(
+        "[AudioPlayerEngine] 🗑️ Tearing down player: \(String(describing: Unmanaged.passUnretained(player).toOpaque()))"
+      )
+      player.pause()  // 确保停止播放
+      player.replaceCurrentItem(with: nil)  // 清理 item
+      if let timeObserverToken {
+        player.removeTimeObserver(timeObserverToken)
+      }
+    } else {
+      Logger.audio.debug(
+        "[AudioPlayerEngine] 🗑️ teardownPlayerInternal() called but player is already nil")
     }
     timeObserverToken = nil
 
@@ -680,6 +764,7 @@ actor AudioPlayerEngine: AudioPlayerEngineProtocol {
     player = nil
     lastPersistedTime = 0
     lastPlaybackTick = nil
+    Logger.audio.debug("[AudioPlayerEngine] ✅ Teardown complete, player set to nil")
   }
 
   private func addTimeObserver(

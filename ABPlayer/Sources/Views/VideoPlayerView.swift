@@ -1,4 +1,5 @@
 import AVKit
+import OSLog
 import Observation
 import SwiftData
 import SwiftUI
@@ -66,7 +67,7 @@ struct VideoPlayerView: View {
                 .onChanged { value in
                   let newWidth = videoPlayerSectionWidth + value.translation.width
                   videoPlayerSectionWidth = clampWidth(newWidth, availableWidth: availableWidth)
-                  print(
+                  Logger.ui.debug(
                     "[Debug] Video player section width: \(videoPlayerSectionWidth) effectiveWidth: \(effectiveWidth)"
                   )
                 }
@@ -147,9 +148,20 @@ struct VideoPlayerView: View {
   private var videoSection: some View {
     VStack(alignment: .leading, spacing: 0) {
       // 1. Video Player Area
-      NativeVideoPlayer(player: playerManager.player)
-        .aspectRatio(16 / 9, contentMode: .fit)
-        .layoutPriority(1)
+      Group {
+        if let player = playerManager.player {
+          NativeVideoPlayer(player: player)
+        } else {
+          ZStack {
+            Color.black
+            ProgressView()
+              .scaleEffect(1.5)
+              .tint(.white)
+          }
+        }
+      }
+      .aspectRatio(16 / 9, contentMode: .fit)
+      .layoutPriority(1)
 
       // 2. Controls Area (Fixed height)
       VStack(spacing: 12) {
@@ -194,37 +206,48 @@ struct VideoPlayerView: View {
   // MARK: - Controls Row
 
   private var controlsRow: some View {
-    HStack {
-      // Loop Mode & Volume
-      HStack(spacing: 12) {
-        Menu {
-          ForEach(LoopMode.allCases, id: \.self) { mode in
-            Button {
-              playerManager.loopMode = mode
-            } label: {
-              HStack {
-                Image(systemName: mode.iconName)
-                Text(mode.displayName)
+    ZStack(alignment: .center) {
+      HStack {
+        // Loop Mode & Volume
+        HStack(spacing: 12) {
+          Menu {
+            ForEach(LoopMode.allCases, id: \.self) { mode in
+              Button {
+                playerManager.loopMode = mode
+              } label: {
+                HStack {
+                  Image(systemName: mode.iconName)
+                  Text(mode.displayName)
+                }
               }
             }
-          }
-        } label: {
-          Image(
-            systemName: playerManager.loopMode != .none
+          } label: {
+            Image(
+              systemName: playerManager.loopMode != .none
               ? "\(playerManager.loopMode.iconName).circle.fill"
               : "repeat.circle"
-          )
-          .font(.title2)
-          .foregroundStyle(playerManager.loopMode != .none ? .blue : .primary)
+            )
+            .font(.title2)
+            .foregroundStyle(playerManager.loopMode != .none ? .blue : .primary)
+          }
+          .buttonStyle(.plain)
+          .help("Loop mode: \(playerManager.loopMode.displayName)")
+          
+          volumeControl
         }
-        .buttonStyle(.plain)
-        .help("Loop mode: \(playerManager.loopMode.displayName)")
-
-        volumeControl
+        
+        Spacer()
+        
+        // Time & Duration
+        HStack(spacing: 4) {
+          Text(timeString(from: isSeeking ? seekValue : playerManager.currentTime))
+          Text("/")
+            .foregroundStyle(.secondary)
+          Text(timeString(from: playerManager.duration))
+        }
+        .font(.body.monospacedDigit())
       }
-
-      Spacer()
-
+      
       // Playback Controls
       HStack(spacing: 16) {
         Button {
@@ -236,7 +259,7 @@ struct VideoPlayerView: View {
         }
         .buttonStyle(.plain)
         .keyboardShortcut("f", modifiers: [])
-
+        
         Button {
           playerManager.togglePlayPause()
         } label: {
@@ -245,7 +268,7 @@ struct VideoPlayerView: View {
         }
         .buttonStyle(.plain)
         .keyboardShortcut(.space, modifiers: [])
-
+        
         Button {
           let targetTime = playerManager.currentTime + 10
           playerManager.seek(to: targetTime)
@@ -256,17 +279,6 @@ struct VideoPlayerView: View {
         .buttonStyle(.plain)
         .keyboardShortcut("g", modifiers: [])
       }
-
-      Spacer()
-
-      // Time & Duration
-      HStack(spacing: 4) {
-        Text(timeString(from: isSeeking ? seekValue : playerManager.currentTime))
-        Text("/")
-          .foregroundStyle(.secondary)
-        Text(timeString(from: playerManager.duration))
-      }
-      .font(.body.monospacedDigit())
     }
   }
 

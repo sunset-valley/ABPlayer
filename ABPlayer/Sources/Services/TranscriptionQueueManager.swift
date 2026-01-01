@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import Observation
 import SwiftData
 
@@ -245,7 +246,7 @@ final class TranscriptionQueueManager {
     do {
       try SubtitleParser.writeSRT(cues: cues, to: srtURL)
     } catch {
-      print("Failed to save SRT: \(error)")
+      Logger.data.error("Failed to save SRT: \(error)")
     }
 
     // Save to database if modelContext available

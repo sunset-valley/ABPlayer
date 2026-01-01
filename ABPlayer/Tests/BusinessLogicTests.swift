@@ -791,6 +791,43 @@ struct AudioPlayerManagerIntegrationTests {
     // We can't easily test the background task timing here without expectations,
     // but we can check the state is false.
   }
+
+  @Test
+  func testRapidFileSwitchingCancelsOldLoad() async {
+    // Given
+    let mockEngine = MockAudioPlayerEngine()
+    let manager = AudioPlayerManager(engine: mockEngine)
+    // Set a delay to simulate async loading
+    await mockEngine.setDelay(50_000_000)  // 50ms
+
+    let fileA = AudioFile(displayName: "A.mp3", bookmarkData: Data("A".utf8))
+    let fileB = AudioFile(displayName: "B.mp3", bookmarkData: Data("B".utf8))
+
+    // When: Start loading A, then immediately load B
+    // We launch them in parallel tasks but they will hit the actor sequentially or concurrently depending on scheduling,
+    // but the Manager's State (loadingFileID) is MainActor protected and will be updated immediately.
+
+    // Task 1: Load A
+    Task {
+      await manager.load(audioFile: fileA)
+    }
+
+    // Small yield to ensure Task 1 starts but hits the delay
+    try? await Task.sleep(nanoseconds: 10_000_000)
+
+    // Task 2: Load B
+    await manager.load(audioFile: fileB)
+
+    // Then: Manager should reflect file B
+    #expect(manager.currentFile?.displayName == "B.mp3")
+
+    // Wait for everything to settle
+    try? await Task.sleep(nanoseconds: 100_000_000)
+
+    // Verify that even after A 'finishes' (in background), the manager state is still B
+    #expect(manager.currentFile?.displayName == "B.mp3")
+    #expect(manager.duration != 0)  // Should have loaded duration for B
+  }
 }
 
 extension MockAudioPlayerEngine {

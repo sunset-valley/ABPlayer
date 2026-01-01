@@ -1,3 +1,4 @@
+import OSLog
 import SwiftData
 import SwiftUI
 
@@ -406,7 +407,7 @@ struct FolderNavigationView: View {
 
     // 检查根文件夹是否有 bookmark
     guard let url = try? rootFolder.resolveURL() else {
-      print("⚠️ No root folder bookmark found")
+      Logger.data.warning("⚠️ No root folder bookmark found")
       return
     }
 
@@ -422,9 +423,9 @@ struct FolderNavigationView: View {
       do {
         let importer = FolderImporter(modelContext: modelContext)
         _ = try importer.syncFolder(at: url)
-        print("✅ Successfully rescanned folder: \(rootFolder.name)")
+        Logger.data.info("✅ Successfully rescanned folder: \(rootFolder.name)")
       } catch {
-        print("❌ Failed to rescan folder: \(error.localizedDescription)")
+        Logger.data.error("❌ Failed to rescan folder: \(error.localizedDescription)")
       }
     }
   }
@@ -437,7 +438,8 @@ struct FolderNavigationView: View {
     do {
       try modelContext.save()
     } catch {
-      print("⚠️ Failed to save context before folder deletion: \(error.localizedDescription)")
+      Logger.data.error(
+        "⚠️ Failed to save context before folder deletion: \(error.localizedDescription)")
     }
 
     // Check if current file is in this folder (playing or not)
@@ -482,7 +484,8 @@ struct FolderNavigationView: View {
       do {
         try modelContext.save()
       } catch {
-        print("⚠️ Failed to save context before file deletion: \(error.localizedDescription)")
+        Logger.data.error(
+          "⚠️ Failed to save context before file deletion: \(error.localizedDescription)")
       }
     }
 

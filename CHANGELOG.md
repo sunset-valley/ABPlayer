@@ -1,3 +1,19 @@
+## [0.2.7.39] - 2025-12-31
+
+### Features
+- Implement audio file loading cancellation for rapid switching and adjust video player controls layout.
+
+### Bug Fixes
+- Improve AVPlayer lifecycle management with tracking and enhance UI responsiveness during player transitions.
+
+### Improvements
+- replace `print` statements with categorized `OSLog` for structured logging
+- Expose `AVPlayer` from `AudioPlayerManager` and simplify player view state management.
+
+### Other
+- Merge pull request #62 from sunset-valley/fix/AudioPlayerManager
+
+
 ## [0.2.6.38] - 2025-12-31
 
 ### Improvements
