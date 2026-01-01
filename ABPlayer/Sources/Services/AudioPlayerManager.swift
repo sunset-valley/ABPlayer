@@ -524,10 +524,37 @@ final class AudioPlayerManager {
   }
 }
 
+// MARK: - Tracked AVPlayer for debugging
+
+/// A subclass of AVPlayer that logs when it's deallocated
+final class TrackedAVPlayer: AVPlayer {
+  var url: URL?
+
+  convenience init(playerItem item: AVPlayerItem?, url: URL) {
+    self.init(playerItem: item)
+    self.url = url
+    print(
+      "[TrackedAVPlayer] 🆕 Created new player: \(Unmanaged.passUnretained(self).toOpaque()) url: \(url.lastPathComponent)"
+    )
+  }
+
+  deinit {
+    print(
+      "[TrackedAVPlayer] 💀 DEINIT - Player deallocated: \(Unmanaged.passUnretained(self).toOpaque())"
+    )
+  }
+}
+
 // MARK: - Audio Engine Actor (Background)
 
 actor AudioPlayerEngine: AudioPlayerEngineProtocol {
-  private var player: AVPlayer?
+  private var player: AVPlayer? {
+    didSet {
+      print(
+        "[AudioPlayerEngine] player set to: \(player != nil ? Unmanaged.passUnretained(player!).toOpaque() : nil)"
+      )
+    }
+  }
   private var timeObserverToken: Any?
   private var currentScopedURL: URL?
   private var currentAsset: AVURLAsset?  // Store asset for volume boost
@@ -574,7 +601,10 @@ actor AudioPlayerEngine: AudioPlayerEngineProtocol {
     await onDurationLoaded(finalDuration)
 
     let item = AVPlayerItem(asset: asset)
-    let player = AVPlayer(playerItem: item)
+    let player = await TrackedAVPlayer(playerItem: item, url: url)
+    print(
+      "[AudioPlayerEngine] 🆕 Created new player: \(Unmanaged.passUnretained(player).toOpaque()) item: \(asset.url)"
+    )
     player.volume = 1.0  // Will be updated by manager
     self.player = player
 
@@ -664,8 +694,16 @@ actor AudioPlayerEngine: AudioPlayerEngineProtocol {
   }
 
   private func teardownPlayerInternal() {
-    if let player, let timeObserverToken {
-      player.removeTimeObserver(timeObserverToken)
+    if let player {
+      print(
+        "[AudioPlayerEngine] 🗑️ Tearing down player: \(Unmanaged.passUnretained(player).toOpaque())")
+      player.pause()  // 确保停止播放
+      player.replaceCurrentItem(with: nil)  // 清理 item
+      if let timeObserverToken {
+        player.removeTimeObserver(timeObserverToken)
+      }
+    } else {
+      print("[AudioPlayerEngine] 🗑️ teardownPlayerInternal() called but player is already nil")
     }
     timeObserverToken = nil
 
@@ -680,6 +718,7 @@ actor AudioPlayerEngine: AudioPlayerEngineProtocol {
     player = nil
     lastPersistedTime = 0
     lastPlaybackTick = nil
+    print("[AudioPlayerEngine] ✅ Teardown complete, player set to nil")
   }
 
   private func addTimeObserver(

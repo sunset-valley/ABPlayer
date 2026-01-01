@@ -251,9 +251,11 @@ public struct MainSplitView: View {
       return
     }
 
-    await playerManager.load(audioFile: file, fromStart: fromStart)
-    
+    // Update selectedFile first so the view switches immediately
+    // (e.g., video -> audio won't show loading in video view first)
     selectedFile = file
+
+    await playerManager.load(audioFile: file, fromStart: fromStart)
   }
 
   private func playFile(_ file: AudioFile, fromStart: Bool = false) async {

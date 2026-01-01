@@ -147,9 +147,20 @@ struct VideoPlayerView: View {
   private var videoSection: some View {
     VStack(alignment: .leading, spacing: 0) {
       // 1. Video Player Area
-      NativeVideoPlayer(player: playerManager.player)
-        .aspectRatio(16 / 9, contentMode: .fit)
-        .layoutPriority(1)
+      Group {
+        if let player = playerManager.player {
+          NativeVideoPlayer(player: player)
+        } else {
+          ZStack {
+            Color.black
+            ProgressView()
+              .scaleEffect(1.5)
+              .tint(.white)
+          }
+        }
+      }
+      .aspectRatio(16 / 9, contentMode: .fit)
+      .layoutPriority(1)
 
       // 2. Controls Area (Fixed height)
       VStack(spacing: 12) {
