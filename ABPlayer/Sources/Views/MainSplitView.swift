@@ -130,7 +130,7 @@ public struct MainSplitView: View {
           Button {
             isImportingFile = true
           } label: {
-            Label("Import Audio File", systemImage: "music.note")
+            Label("Import Media File", systemImage: "music.note")
           }
 
           Button {
@@ -138,11 +138,9 @@ public struct MainSplitView: View {
           } label: {
             Label("Import Folder", systemImage: "folder.badge.plus")
           }
-        } label: {
-          Label("Add", systemImage: "plus")
-        }
 
-        Menu {
+          Divider()
+
           Button(role: .destructive) {
             Task {
               await clearAllDataAsync()
@@ -151,7 +149,7 @@ public struct MainSplitView: View {
             Label("Clear All Data", systemImage: "trash")
           }
         } label: {
-          Label("More", systemImage: "ellipsis.circle")
+          Label("Add", systemImage: "plus")
         }
       }
     }
