@@ -1,4 +1,5 @@
 import Combine
+import OSLog
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
@@ -37,12 +38,12 @@ public struct MainSplitView: View {
           sidebar
             .navigationSplitViewColumnWidth(min: 200, ideal: 300, max: 400)
             .onAppear {
-              print(
+              Logger.ui.debug(
                 "[Debug] Sidebar size: \(sidebarGeometry.size.width) x \(sidebarGeometry.size.height)"
               )
             }
             .onChange(of: sidebarGeometry.size) { _, newSize in
-              print("[Debug] Sidebar size changed: \(newSize.width) x \(newSize.height)")
+              Logger.ui.debug("[Debug] Sidebar size changed: \(newSize.width) x \(newSize.height)")
             }
         }
       } detail: {
@@ -57,10 +58,11 @@ public struct MainSplitView: View {
         }
       }
       .onAppear {
-        print("[Debug] Window size: \(windowGeometry.size.width) x \(windowGeometry.size.height)")
+        Logger.ui.debug(
+          "[Debug] Window size: \(windowGeometry.size.width) x \(windowGeometry.size.height)")
       }
       .onChange(of: windowGeometry.size) { _, newSize in
-        print("[Debug] Window size changed: \(newSize.width) x \(newSize.height)")
+        Logger.ui.debug("[Debug] Window size changed: \(newSize.width) x \(newSize.height)")
       }
       .frame(minWidth: 1000, minHeight: 600)
     }

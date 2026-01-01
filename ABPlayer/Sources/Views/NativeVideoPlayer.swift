@@ -1,5 +1,6 @@
 import AVFoundation
 import AVKit
+import OSLog
 import SwiftUI
 
 #if os(macOS)
@@ -23,7 +24,7 @@ import SwiftUI
 
     static func dismantleNSView(_ nsView: TrackAVPlayerView, coordinator: ()) {
       let playerDesc = nsView.player.map { "\(Unmanaged.passUnretained($0).toOpaque())" } ?? "nil"
-      print("[NativeVideoPlayer] dismantleNSView player: \(playerDesc)")
+      Logger.ui.debug("[NativeVideoPlayer] dismantleNSView player: \(playerDesc)")
     }
   }
 
@@ -31,19 +32,21 @@ import SwiftUI
   final class TrackAVPlayerView: AVPlayerView {
     override init(frame frameRect: NSRect) {
       super.init(frame: frameRect)
-      print("[TrackAVPlayerView] 🆕 Created - Address: \(Unmanaged.passUnretained(self).toOpaque())")
+      Logger.ui.debug(
+        "[TrackAVPlayerView] 🆕 Created - Address: \(String(describing: Unmanaged.passUnretained(self).toOpaque()))"
+      )
     }
 
     required init?(coder: NSCoder) {
       super.init(coder: coder)
-      print(
-        "[TrackAVPlayerView] 🆕 Created (coder) - Address: \(Unmanaged.passUnretained(self).toOpaque())"
+      Logger.ui.debug(
+        "[TrackAVPlayerView] 🆕 Created (coder) - Address: \(String(describing: Unmanaged.passUnretained(self).toOpaque()))"
       )
     }
 
     deinit {
-      print(
-        "[TrackAVPlayerView] 💀 DEINIT - View deallocated: \(Unmanaged.passUnretained(self).toOpaque())"
+      Logger.ui.debug(
+        "[TrackAVPlayerView] 💀 DEINIT - View deallocated: \(String(describing: Unmanaged.passUnretained(self).toOpaque()))"
       )
     }
   }

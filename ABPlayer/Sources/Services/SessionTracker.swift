@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import Observation
 import SwiftData
 
@@ -16,7 +17,7 @@ actor SessionRecorder {
       try modelContext.save()
       currentSessionID = session.persistentModelID
     } catch {
-      print("[SessionRecorder] Failed to start session: \(error)")
+      Logger.data.error("[SessionRecorder] Failed to start session: \(error)")
       currentSessionID = nil
     }
   }
@@ -25,21 +26,25 @@ actor SessionRecorder {
   func addTime(_ delta: Double) {
     // If no active session, start one
     guard let id = currentSessionID else {
-      print("[SessionRecorder] No active session, starting new one")
+      Logger.data.info("[SessionRecorder] No active session, starting new one")
       startNewSession()
       return
     }
 
     // Try to fetch the session - it may have been invalidated
     guard let session = modelContext.model(for: id) as? ListeningSession else {
-      print("[SessionRecorder] Session invalidated (ID: \(id)), starting fresh session")
+      Logger.data.warning(
+        "[SessionRecorder] Session invalidated (ID: \(String(describing: id))), starting fresh session"
+      )
       currentSessionID = nil
       startNewSession()
       return
     }
 
     if session.isDeleted {
-      print("[SessionRecorder] Session invalidated (ID: \(id)), starting fresh session")
+      Logger.data.warning(
+        "[SessionRecorder] Session invalidated (ID: \(String(describing: id))), starting fresh session"
+      )
       currentSessionID = nil
       startNewSession()
       return
@@ -51,7 +56,7 @@ actor SessionRecorder {
       session.duration += delta
       try modelContext.save()
     } catch {
-      print("[SessionRecorder] Failed to save time update: \(error)")
+      Logger.data.error("[SessionRecorder] Failed to save time update: \(error)")
       // If save fails, the session may be corrupted - reset for next time
       currentSessionID = nil
     }
@@ -63,13 +68,15 @@ actor SessionRecorder {
 
     // Try to fetch the session - it may have been invalidated
     guard let session = modelContext.model(for: id) as? ListeningSession else {
-      print("[SessionRecorder] Cannot end session - already invalidated")
+      Logger.data.warning("[SessionRecorder] Cannot end session - already invalidated")
       currentSessionID = nil
       return
     }
 
     if session.isDeleted {
-      print("[SessionRecorder] Session invalidated (ID: \(id)), starting fresh session")
+      Logger.data.warning(
+        "[SessionRecorder] Session invalidated (ID: \(String(describing: id))), starting fresh session"
+      )
       currentSessionID = nil
       startNewSession()
       return
@@ -79,7 +86,7 @@ actor SessionRecorder {
       session.endedAt = Date()
       try modelContext.save()
     } catch {
-      print("[SessionRecorder] Failed to save session end: \(error)")
+      Logger.data.error("[SessionRecorder] Failed to save session end: \(error)")
     }
     currentSessionID = nil
   }

@@ -1,4 +1,5 @@
 import AVKit
+import OSLog
 import Observation
 import SwiftData
 import SwiftUI
@@ -66,7 +67,7 @@ struct VideoPlayerView: View {
                 .onChanged { value in
                   let newWidth = videoPlayerSectionWidth + value.translation.width
                   videoPlayerSectionWidth = clampWidth(newWidth, availableWidth: availableWidth)
-                  print(
+                  Logger.ui.debug(
                     "[Debug] Video player section width: \(videoPlayerSectionWidth) effectiveWidth: \(effectiveWidth)"
                   )
                 }

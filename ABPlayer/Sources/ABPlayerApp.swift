@@ -1,8 +1,18 @@
 import KeyboardShortcuts
+import OSLog
 import Sentry
 import Sparkle
 import SwiftData
 import SwiftUI
+
+extension Logger {
+  private static let subsystem = Bundle.main.bundleIdentifier ?? "cc.ihugo.ABPlayer"
+
+  static let audio = Logger(subsystem: subsystem, category: "audio")
+  static let ui = Logger(subsystem: subsystem, category: "ui")
+  static let data = Logger(subsystem: subsystem, category: "data")
+  static let general = Logger(subsystem: subsystem, category: "general")
+}
 
 @MainActor
 final class SparkleUpdater: ObservableObject {

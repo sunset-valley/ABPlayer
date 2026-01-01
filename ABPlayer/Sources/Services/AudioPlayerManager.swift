@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import OSLog
 import Observation
 
 // MARK: - Loop Mode
@@ -266,23 +267,23 @@ final class AudioPlayerManager {
 
   func togglePlayPause() {
     let startTime = CFAbsoluteTimeGetCurrent()
-    print("[Performance] togglePlayPause() called, isPlaying: \(isPlaying)")
+    Logger.audio.debug("[Performance] togglePlayPause() called, isPlaying: \(self.isPlaying)")
 
     if isPlaying {
       // ✅ P0 优化: 立即更新 UI 状态
       isPlaying = false
       let uiUpdateTime = CFAbsoluteTimeGetCurrent()
-      print(
+      Logger.audio.debug(
         "[Performance] isPlaying = false (immediate) after \((uiUpdateTime - startTime) * 1000)ms")
 
       // ✅ P1 优化: 直接同步调用 AVPlayer.pause()，无需 await Actor
       player?.pause()
       let pauseTime = CFAbsoluteTimeGetCurrent()
-      print(
+      Logger.audio.debug(
         "[Performance] player.pause() (sync) completed after \((pauseTime - uiUpdateTime) * 1000)ms"
       )
 
-      print(
+      Logger.audio.debug(
         "[Performance] User perceives pause after \((CFAbsoluteTimeGetCurrent() - startTime) * 1000)ms"
       )
 
@@ -291,7 +292,7 @@ final class AudioPlayerManager {
         guard let self else { return }
         await _engine.syncPauseState()
         self.sessionTracker?.persistProgress()
-        print(
+        Logger.audio.debug(
           "[Performance] Background sync completed after \((CFAbsoluteTimeGetCurrent() - startTime) * 1000)ms"
         )
       }
@@ -299,16 +300,16 @@ final class AudioPlayerManager {
       // ✅ P0 优化: 立即更新 UI 状态
       isPlaying = true
       let uiUpdateTime = CFAbsoluteTimeGetCurrent()
-      print(
+      Logger.audio.debug(
         "[Performance] isPlaying = true (immediate) after \((uiUpdateTime - startTime) * 1000)ms")
 
       // ✅ P1 优化: 直接同步调用 AVPlayer.play()
       player?.play()
       let playTime = CFAbsoluteTimeGetCurrent()
-      print(
+      Logger.audio.debug(
         "[Performance] player.play() (sync) completed after \((playTime - uiUpdateTime) * 1000)ms")
 
-      print(
+      Logger.audio.debug(
         "[Performance] User perceives play after \((CFAbsoluteTimeGetCurrent() - startTime) * 1000)ms"
       )
 
@@ -324,7 +325,7 @@ final class AudioPlayerManager {
           }
           file.playbackRecord?.lastPlayedAt = Date()
         }
-        print(
+        Logger.audio.debug(
           "[Performance] Background sync completed after \((CFAbsoluteTimeGetCurrent() - startTime) * 1000)ms"
         )
       }
@@ -533,14 +534,14 @@ final class TrackedAVPlayer: AVPlayer {
   convenience init(playerItem item: AVPlayerItem?, url: URL) {
     self.init(playerItem: item)
     self.url = url
-    print(
-      "[TrackedAVPlayer] 🆕 Created new player: \(Unmanaged.passUnretained(self).toOpaque()) url: \(url.lastPathComponent)"
+    Logger.audio.debug(
+      "[TrackedAVPlayer] 🆕 Created new player: \(String(describing: Unmanaged.passUnretained(self).toOpaque())) url: \(url.lastPathComponent)"
     )
   }
 
   deinit {
-    print(
-      "[TrackedAVPlayer] 💀 DEINIT - Player deallocated: \(Unmanaged.passUnretained(self).toOpaque())"
+    Logger.audio.debug(
+      "[TrackedAVPlayer] 💀 DEINIT - Player deallocated: \(String(describing: Unmanaged.passUnretained(self).toOpaque()))"
     )
   }
 }
@@ -550,8 +551,8 @@ final class TrackedAVPlayer: AVPlayer {
 actor AudioPlayerEngine: AudioPlayerEngineProtocol {
   private var player: AVPlayer? {
     didSet {
-      print(
-        "[AudioPlayerEngine] player set to: \(player != nil ? Unmanaged.passUnretained(player!).toOpaque() : nil)"
+      Logger.audio.debug(
+        "[AudioPlayerEngine] player set to: \(self.player != nil ? String(describing: Unmanaged.passUnretained(self.player!).toOpaque()) : "nil")"
       )
     }
   }
@@ -602,8 +603,8 @@ actor AudioPlayerEngine: AudioPlayerEngineProtocol {
 
     let item = AVPlayerItem(asset: asset)
     let player = await TrackedAVPlayer(playerItem: item, url: url)
-    print(
-      "[AudioPlayerEngine] 🆕 Created new player: \(Unmanaged.passUnretained(player).toOpaque()) item: \(asset.url)"
+    Logger.audio.debug(
+      "[AudioPlayerEngine] 🆕 Created new player: \(String(describing: Unmanaged.passUnretained(player).toOpaque())) item: \(asset.url)"
     )
     player.volume = 1.0  // Will be updated by manager
     self.player = player
@@ -695,15 +696,17 @@ actor AudioPlayerEngine: AudioPlayerEngineProtocol {
 
   private func teardownPlayerInternal() {
     if let player {
-      print(
-        "[AudioPlayerEngine] 🗑️ Tearing down player: \(Unmanaged.passUnretained(player).toOpaque())")
+      Logger.audio.debug(
+        "[AudioPlayerEngine] 🗑️ Tearing down player: \(String(describing: Unmanaged.passUnretained(player).toOpaque()))"
+      )
       player.pause()  // 确保停止播放
       player.replaceCurrentItem(with: nil)  // 清理 item
       if let timeObserverToken {
         player.removeTimeObserver(timeObserverToken)
       }
     } else {
-      print("[AudioPlayerEngine] 🗑️ teardownPlayerInternal() called but player is already nil")
+      Logger.audio.debug(
+        "[AudioPlayerEngine] 🗑️ teardownPlayerInternal() called but player is already nil")
     }
     timeObserverToken = nil
 
@@ -718,7 +721,7 @@ actor AudioPlayerEngine: AudioPlayerEngineProtocol {
     player = nil
     lastPersistedTime = 0
     lastPlaybackTick = nil
-    print("[AudioPlayerEngine] ✅ Teardown complete, player set to nil")
+    Logger.audio.debug("[AudioPlayerEngine] ✅ Teardown complete, player set to nil")
   }
 
   private func addTimeObserver(
