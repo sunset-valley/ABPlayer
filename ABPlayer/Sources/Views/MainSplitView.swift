@@ -28,6 +28,7 @@ public struct MainSplitView: View {
   @State private var isClearingData: Bool = false
   @AppStorage("lastSelectedAudioFileID") private var lastSelectedAudioFileID: String?
   @AppStorage("lastFolderID") private var lastFolderID: String?
+  @State private var loadAudioTask: Task<Void, Never>?
 
   public init() {}
 
@@ -255,7 +256,13 @@ public struct MainSplitView: View {
     // (e.g., video -> audio won't show loading in video view first)
     selectedFile = file
 
-    await playerManager.load(audioFile: file, fromStart: fromStart)
+    loadAudioTask?.cancel()
+    loadAudioTask = Task {
+      try? await Task.sleep(for: .milliseconds(250))
+      if !Task.isCancelled {
+        await playerManager.load(audioFile: file, fromStart: fromStart)
+      }
+    }
   }
 
   private func playFile(_ file: AudioFile, fromStart: Bool = false) async {

@@ -55,9 +55,6 @@ struct FolderNavigationView: View {
     .onChange(of: currentFolder) { _, _ in
       syncAsync()
     }
-    .onChange(of: selectedFile) { _, _ in
-      syncAsync()
-    }
     .task {
       await syncSelectionWithSelectedFile()
     }
