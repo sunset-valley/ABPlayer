@@ -41,7 +41,7 @@ let project = Project(
       ],
     ),
     .target(
-      name: "ABPlayer-Dev",
+      name: "ABPlayerDev",
       destinations: .macOS,
       product: .app,
       bundleId: "cc.ihugo.app.ABPlayerDev",
