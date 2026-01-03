@@ -53,8 +53,10 @@ struct SegmentsSection: View {
       .controlSize(.small)
 
       HStack {
-        Text("Saved Segments")
+        Text("Saved Segments".uppercased())
           .font(.headline)
+
+        Spacer()
 
         HStack {
           Button {
@@ -74,13 +76,11 @@ struct SegmentsSection: View {
           .keyboardShortcut(.rightArrow, modifiers: [])
         }
 
-        Spacer()
-
         Button {
           isSegmentSortDescendingByStartTime.toggle()
         } label: {
           HStack(spacing: 4) {
-            Image(systemName: "arrow.up.arrow.down")
+            // Image(systemName: "arrow.up.arrow.down")
             Text(isSegmentSortDescendingByStartTime ? "Start ↓" : "Start ↑")
           }
         }

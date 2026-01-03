@@ -23,10 +23,7 @@ struct VideoPlayerView: View {
   let minWidthOfContentPanel: CGFloat = 300
   let dividerWidth: CGFloat = 8
   @AppStorage("videoPlayerSectionWidth") private var videoPlayerSectionWidth: Double = 480  // Wider default for video
-
-  // Drag State
-  @State private var draggingWidth: Double?
-  @State private var initialDragWidth: Double?
+  @State private var draggingWidth: Double?  // Temporary width during drag, avoids I/O on every frame
 
   // Volume Persistence
   @AppStorage("playerVolume") private var playerVolume: Double = 1.0
@@ -39,9 +36,8 @@ struct VideoPlayerView: View {
   var body: some View {
     GeometryReader { geometry in
       let availableWidth = geometry.size.width
-      // Use draggingWidth if active, otherwise use the persisted value
-      let currentWidth = draggingWidth ?? videoPlayerSectionWidth
-      let effectiveWidth = clampWidth(currentWidth, availableWidth: availableWidth)
+      let effectiveWidth = clampWidth(
+        draggingWidth ?? videoPlayerSectionWidth, availableWidth: availableWidth)
 
       HStack(spacing: 0) {
         // Left: Video Player + Controls
@@ -71,22 +67,15 @@ struct VideoPlayerView: View {
             .gesture(
               DragGesture(minimumDistance: 1)
                 .onChanged { value in
-                  if initialDragWidth == nil {
-                    initialDragWidth = videoPlayerSectionWidth
-                  }
-
-                  if let startWidth = initialDragWidth {
-                    let newWidth = startWidth + Double(value.translation.width)
-                    draggingWidth = clampWidth(newWidth, availableWidth: availableWidth)
-                  }
+                  let newWidth =
+                    (draggingWidth ?? videoPlayerSectionWidth) + value.translation.width
+                  draggingWidth = clampWidth(newWidth, availableWidth: availableWidth)
                 }
-                .onEnded { value in
-                  if let startWidth = initialDragWidth {
-                    let newWidth = startWidth + Double(value.translation.width)
-                    videoPlayerSectionWidth = clampWidth(newWidth, availableWidth: availableWidth)
+                .onEnded { _ in
+                  if let finalWidth = draggingWidth {
+                    videoPlayerSectionWidth = finalWidth  // Persist only once at the end
                   }
                   draggingWidth = nil
-                  initialDragWidth = nil
                 }
             )
 
@@ -240,7 +229,7 @@ struct VideoPlayerView: View {
                 ? "\(playerManager.loopMode.iconName).circle.fill"
                 : "repeat.circle"
             )
-            .font(.title2)
+            .font(.title)
             .foregroundStyle(playerManager.loopMode != .none ? .blue : .primary)
           }
           .buttonStyle(.plain)
@@ -268,7 +257,7 @@ struct VideoPlayerView: View {
           playerManager.seek(to: targetTime)
         } label: {
           Image(systemName: "gobackward.5")
-            .font(.title2)
+            .font(.title)
         }
         .buttonStyle(.plain)
         .keyboardShortcut("f", modifiers: [])
@@ -277,7 +266,7 @@ struct VideoPlayerView: View {
           playerManager.togglePlayPause()
         } label: {
           Image(systemName: playerManager.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-            .font(.system(size: 32))
+            .font(.system(size: 36))
         }
         .buttonStyle(.plain)
         .keyboardShortcut(.space, modifiers: [])
@@ -287,7 +276,7 @@ struct VideoPlayerView: View {
           playerManager.seek(to: targetTime)
         } label: {
           Image(systemName: "goforward.10")
-            .font(.title2)
+            .font(.title)
         }
         .buttonStyle(.plain)
         .keyboardShortcut("g", modifiers: [])
@@ -300,7 +289,7 @@ struct VideoPlayerView: View {
       showVolumePopover.toggle()
     } label: {
       Image(systemName: playerVolume == 0 ? "speaker.slash" : "speaker.wave.3")
-        .font(.title3)
+        .font(.title2)
         .frame(width: 24, height: 24)
     }
     .buttonStyle(.plain)
