@@ -240,7 +240,7 @@ struct VideoPlayerView: View {
                 ? "\(playerManager.loopMode.iconName).circle.fill"
                 : "repeat.circle"
             )
-            .font(.title2)
+            .font(.title)
             .foregroundStyle(playerManager.loopMode != .none ? .blue : .primary)
           }
           .buttonStyle(.plain)
@@ -268,7 +268,7 @@ struct VideoPlayerView: View {
           playerManager.seek(to: targetTime)
         } label: {
           Image(systemName: "gobackward.5")
-            .font(.title2)
+            .font(.title)
         }
         .buttonStyle(.plain)
         .keyboardShortcut("f", modifiers: [])
@@ -277,7 +277,7 @@ struct VideoPlayerView: View {
           playerManager.togglePlayPause()
         } label: {
           Image(systemName: playerManager.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-            .font(.system(size: 32))
+            .font(.system(size: 36))
         }
         .buttonStyle(.plain)
         .keyboardShortcut(.space, modifiers: [])
@@ -287,7 +287,7 @@ struct VideoPlayerView: View {
           playerManager.seek(to: targetTime)
         } label: {
           Image(systemName: "goforward.10")
-            .font(.title2)
+            .font(.title)
         }
         .buttonStyle(.plain)
         .keyboardShortcut("g", modifiers: [])
@@ -300,7 +300,7 @@ struct VideoPlayerView: View {
       showVolumePopover.toggle()
     } label: {
       Image(systemName: playerVolume == 0 ? "speaker.slash" : "speaker.wave.3")
-        .font(.title3)
+        .font(.title2)
         .frame(width: 24, height: 24)
     }
     .buttonStyle(.plain)
