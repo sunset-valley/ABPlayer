@@ -21,6 +21,7 @@ struct AudioPlayerView: View {
   let minWidthOfContentPanel: CGFloat = 300
   let dividerWidth: CGFloat = 8
   @AppStorage("playerSectionWidth") private var playerSectionWidth: Double = 380
+  @State private var draggingWidth: Double?  // Temporary width during drag, avoids I/O on every frame
 
   // Volume Persistence
   @AppStorage("playerVolume") private var playerVolume: Double = 1.0
@@ -33,7 +34,8 @@ struct AudioPlayerView: View {
   var body: some View {
     GeometryReader { geometry in
       let availableWidth = geometry.size.width
-      let effectiveWidth = clampWidth(playerSectionWidth, availableWidth: availableWidth)
+      let effectiveWidth = clampWidth(
+        draggingWidth ?? playerSectionWidth, availableWidth: availableWidth)
 
       HStack(spacing: 0) {
         // Left: Player controls + Segments
@@ -63,8 +65,14 @@ struct AudioPlayerView: View {
             .gesture(
               DragGesture(minimumDistance: 1)
                 .onChanged { value in
-                  let newWidth = playerSectionWidth + value.translation.width
-                  playerSectionWidth = clampWidth(newWidth, availableWidth: availableWidth)
+                  let newWidth = (draggingWidth ?? playerSectionWidth) + value.translation.width
+                  draggingWidth = clampWidth(newWidth, availableWidth: availableWidth)
+                }
+                .onEnded { _ in
+                  if let finalWidth = draggingWidth {
+                    playerSectionWidth = finalWidth  // Persist only once at the end
+                  }
+                  draggingWidth = nil
                 }
             )
 
