@@ -91,7 +91,7 @@ struct FolderNavigationView: View {
         Button {
           rescanCurrentFolder()
         } label: {
-          Label("Rescan", systemImage: "arrow.clockwise")
+          Label("Rescan", systemImage: "arrow.2.circlepath")
             .labelStyle(.iconOnly)
         }
         .buttonStyle(.plain)
@@ -140,7 +140,7 @@ struct FolderNavigationView: View {
 
       // Audio files section
       if !currentAudioFiles.isEmpty {
-        Section("Audio Files") {
+        Section {
           ForEach(currentAudioFiles) { file in
             audioFileRow(for: file)
               .tag(SelectionItem.audioFile(file))
