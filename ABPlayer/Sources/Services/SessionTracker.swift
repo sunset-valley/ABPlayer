@@ -104,8 +104,9 @@ final class SessionTracker {
   private var lastCommitTime: Date = Date()
   private let commitInterval: TimeInterval = 5
 
-  // UI State
-  var totalSeconds: Double = 0
+  // UI State (throttled to 1-second precision for display)
+  private var _totalSeconds: Double = 0
+  private(set) var displaySeconds: Int = 0
   private var isSessionActive = false
 
   /// Initialize the recorder with a ModelContainer.
@@ -120,7 +121,8 @@ final class SessionTracker {
     isSessionActive = true
 
     // Reset local state
-    totalSeconds = 0
+    _totalSeconds = 0
+    displaySeconds = 0
     bufferedListeningTime = 0
     lastCommitTime = Date()
 
@@ -135,13 +137,15 @@ final class SessionTracker {
     guard isSessionActive else { return }
     guard delta > 0 else { return }
 
-    // 1. Immediate UI update (Main Actor)
-    totalSeconds += delta
+    _totalSeconds += delta
 
-    // 2. Buffer for background persistence
+    let newDisplaySeconds = Int(_totalSeconds)
+    if newDisplaySeconds != displaySeconds {
+      displaySeconds = newDisplaySeconds
+    }
+
     bufferedListeningTime += delta
 
-    // 3. Batch commit to background actor periodically
     let now = Date()
     if now.timeIntervalSince(lastCommitTime) >= commitInterval {
       commitPendingTime()

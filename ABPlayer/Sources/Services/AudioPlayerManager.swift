@@ -516,9 +516,9 @@ final class AudioPlayerManager {
       lastPersistedTime = seconds
     }
 
-    // Track listening time
+    // Track listening time (matches the 0.1s time observer interval)
     if isPlaying {
-      sessionTracker?.addListeningTime(0.03)
+      sessionTracker?.addListeningTime(0.1)
     }
   }
 
@@ -781,7 +781,9 @@ actor AudioPlayerEngine: AudioPlayerEngineProtocol {
   ) {
     guard let player else { return }
 
-    let interval = CMTime(seconds: 0.03, preferredTimescale: 600)
+    // Use 100ms interval (10 FPS) instead of 33ms (30 FPS) to reduce main thread pressure
+    // during window resizing and layout recalculations. Progress bar smoothness is acceptable at 10 FPS.
+    let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
 
     timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) {
       time in
