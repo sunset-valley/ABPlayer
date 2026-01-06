@@ -33,40 +33,21 @@ public struct MainSplitView: View {
   public init() {}
 
   public var body: some View {
-    GeometryReader { windowGeometry in
-      NavigationSplitView {
-        GeometryReader { sidebarGeometry in
-          sidebar
-            .navigationSplitViewColumnWidth(min: 200, ideal: 300, max: 400)
-            .onAppear {
-              Logger.ui.debug(
-                "[Debug] Sidebar size: \(sidebarGeometry.size.width) x \(sidebarGeometry.size.height)"
-              )
-            }
-            .onChange(of: sidebarGeometry.size) { _, newSize in
-              Logger.ui.debug("[Debug] Sidebar size changed: \(newSize.width) x \(newSize.height)")
-            }
-        }
-      } detail: {
-        if let selectedFile {
-          if selectedFile.isVideo {
-            VideoPlayerView(audioFile: selectedFile)
-          } else {
-            AudioPlayerView(audioFile: selectedFile)
-          }
+    NavigationSplitView {
+      sidebar
+        .navigationSplitViewColumnWidth(min: 200, ideal: 300, max: 400)
+    } detail: {
+      if let selectedFile {
+        if selectedFile.isVideo {
+          VideoPlayerView(audioFile: selectedFile)
         } else {
-          EmptyStateView()
+          AudioPlayerView(audioFile: selectedFile)
         }
+      } else {
+        EmptyStateView()
       }
-      .onAppear {
-        Logger.ui.debug(
-          "[Debug] Window size: \(windowGeometry.size.width) x \(windowGeometry.size.height)")
-      }
-      .onChange(of: windowGeometry.size) { _, newSize in
-        Logger.ui.debug("[Debug] Window size changed: \(newSize.width) x \(newSize.height)")
-      }
-      .frame(minWidth: 1000, minHeight: 600)
     }
+    .frame(minWidth: 1000, minHeight: 600)
     .fileImporter(
       isPresented: $isImportingFile,
       allowedContentTypes: [UTType.mp3, UTType.audio],

@@ -2,6 +2,69 @@ import Observation
 import SwiftData
 import SwiftUI
 
+// MARK: - Isolated Progress View (prevents parent re-renders on currentTime updates)
+
+private struct PlaybackProgressView: View {
+  @Environment(AudioPlayerManager.self) private var playerManager
+
+  @Binding var isSeeking: Bool
+  @Binding var seekValue: Double
+  @Binding var wasPlayingBeforeSeek: Bool
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Slider(
+        value: Binding(
+          get: {
+            isSeeking ? seekValue : playerManager.currentTime
+          },
+          set: { newValue in
+            seekValue = newValue
+          }
+        ),
+        in: 0...(playerManager.duration > 0 ? playerManager.duration : 1),
+        onEditingChanged: { editing in
+          if editing {
+            isSeeking = true
+            wasPlayingBeforeSeek = playerManager.isPlaying
+            if playerManager.isPlaying {
+              playerManager.togglePlayPause()
+            }
+          } else {
+            playerManager.seek(to: seekValue)
+            isSeeking = false
+            if wasPlayingBeforeSeek {
+              playerManager.togglePlayPause()
+            }
+          }
+        }
+      )
+
+      HStack {
+        Text(timeString(from: isSeeking ? seekValue : playerManager.currentTime))
+        Spacer()
+        Text(timeString(from: playerManager.duration))
+      }
+      .captionStyle()
+      .foregroundStyle(.secondary)
+    }
+  }
+
+  private func timeString(from value: Double) -> String {
+    guard value.isFinite, value >= 0 else {
+      return "0:00"
+    }
+
+    let totalSeconds = Int(value.rounded())
+    let minutes = totalSeconds / 60
+    let seconds = totalSeconds % 60
+
+    return String(format: "%d:%02d", minutes, seconds)
+  }
+}
+
+// MARK: - Audio Player View
+
 struct AudioPlayerView: View {
   @Environment(AudioPlayerManager.self) private var playerManager
   @Environment(SessionTracker.self) private var sessionTracker
@@ -95,7 +158,7 @@ struct AudioPlayerView: View {
           Image(systemName: "timer")
             .font(.system(size: 14))
             .foregroundStyle(.secondary)
-          Text(timeString(from: sessionTracker.totalSeconds))
+          Text(timeString(from: Double(sessionTracker.displaySeconds)))
             .font(.system(size: 13, weight: .medium, design: .monospaced))
             .foregroundStyle(.primary)
         }
@@ -294,46 +357,11 @@ struct AudioPlayerView: View {
   // MARK: - Progress Section
 
   private var progressSection: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Slider(
-        value: Binding(
-          get: {
-            // 拖拽时使用本地值，否则使用实际播放时间
-            isSeeking ? seekValue : playerManager.currentTime
-          },
-          set: { newValue in
-            seekValue = newValue
-            // 拖拽中不执行seek，松手后统一执行
-          }
-        ),
-        in: 0...(playerManager.duration > 0 ? playerManager.duration : 1),
-        onEditingChanged: { editing in
-          if editing {
-            // 开始拖拽/点击：暂停播放以防止时间更新导致闪烁
-            isSeeking = true
-            wasPlayingBeforeSeek = playerManager.isPlaying
-            if playerManager.isPlaying {
-              playerManager.togglePlayPause()
-            }
-          } else {
-            // 结束拖拽/点击：跳转到指定时间，然后恢复播放
-            playerManager.seek(to: seekValue)
-            isSeeking = false
-            if wasPlayingBeforeSeek {
-              playerManager.togglePlayPause()
-            }
-          }
-        }
-      )
-
-      HStack {
-        Text(timeString(from: isSeeking ? seekValue : playerManager.currentTime))
-        Spacer()
-        Text(timeString(from: playerManager.duration))
-      }
-      .captionStyle()
-      .foregroundStyle(.secondary)
-    }
+    PlaybackProgressView(
+      isSeeking: $isSeeking,
+      seekValue: $seekValue,
+      wasPlayingBeforeSeek: $wasPlayingBeforeSeek
+    )
   }
 
   // MARK: - Layout Helpers

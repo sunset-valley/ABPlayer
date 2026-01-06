@@ -4,6 +4,79 @@ import Observation
 import SwiftData
 import SwiftUI
 
+// MARK: - Isolated Progress View (prevents parent re-renders on currentTime updates)
+
+private struct VideoProgressView: View {
+  @Environment(AudioPlayerManager.self) private var playerManager
+
+  @Binding var isSeeking: Bool
+  @Binding var seekValue: Double
+  @Binding var wasPlayingBeforeSeek: Bool
+
+  var body: some View {
+    Slider(
+      value: Binding(
+        get: { isSeeking ? seekValue : playerManager.currentTime },
+        set: { newValue in seekValue = newValue }
+      ),
+      in: 0...(playerManager.duration > 0 ? playerManager.duration : 1),
+      onEditingChanged: { editing in
+        if editing {
+          isSeeking = true
+          wasPlayingBeforeSeek = playerManager.isPlaying
+          if playerManager.isPlaying {
+            playerManager.togglePlayPause()
+          }
+        } else {
+          playerManager.seek(to: seekValue)
+          isSeeking = false
+          if wasPlayingBeforeSeek {
+            playerManager.togglePlayPause()
+          }
+        }
+      }
+    )
+    .controlSize(.small)
+  }
+}
+
+private struct VideoTimeDisplay: View {
+  @Environment(AudioPlayerManager.self) private var playerManager
+
+  let isSeeking: Bool
+  let seekValue: Double
+
+  var body: some View {
+    HStack(spacing: 4) {
+      Text(timeString(from: isSeeking ? seekValue : playerManager.currentTime))
+      Text("/")
+        .foregroundStyle(.secondary)
+      Text(timeString(from: playerManager.duration))
+    }
+    .font(.body.monospacedDigit())
+  }
+
+  private func timeString(from value: Double) -> String {
+    guard value.isFinite, value >= 0 else {
+      return "0:00"
+    }
+
+    let totalSeconds = Int(value.rounded())
+    let minutes = totalSeconds / 60
+    let seconds = totalSeconds % 60
+
+    if minutes >= 60 {
+      let hours = minutes / 60
+      let remainingMinutes = minutes % 60
+      return String(format: "%d:%02d:%02d", hours, remainingMinutes, seconds)
+    }
+
+    return String(format: "%d:%02d", minutes, seconds)
+  }
+}
+
+// MARK: - Video Player View
+
 struct VideoPlayerView: View {
   @Environment(AudioPlayerManager.self) private var playerManager
   @Environment(SessionTracker.self) private var sessionTracker
@@ -99,7 +172,7 @@ struct VideoPlayerView: View {
           Image(systemName: "timer")
             .font(.system(size: 14))
             .foregroundStyle(.secondary)
-          Text(timeString(from: sessionTracker.totalSeconds))
+          Text(timeString(from: Double(sessionTracker.displaySeconds)))
             .font(.system(size: 13, weight: .medium, design: .monospaced))
             .foregroundStyle(.primary)
         }
@@ -180,29 +253,11 @@ struct VideoPlayerView: View {
   // MARK: - Progress Row
 
   private var progressRow: some View {
-    Slider(
-      value: Binding(
-        get: { isSeeking ? seekValue : playerManager.currentTime },
-        set: { newValue in seekValue = newValue }
-      ),
-      in: 0...(playerManager.duration > 0 ? playerManager.duration : 1),
-      onEditingChanged: { editing in
-        if editing {
-          isSeeking = true
-          wasPlayingBeforeSeek = playerManager.isPlaying
-          if playerManager.isPlaying {
-            playerManager.togglePlayPause()
-          }
-        } else {
-          playerManager.seek(to: seekValue)
-          isSeeking = false
-          if wasPlayingBeforeSeek {
-            playerManager.togglePlayPause()
-          }
-        }
-      }
+    VideoProgressView(
+      isSeeking: $isSeeking,
+      seekValue: $seekValue,
+      wasPlayingBeforeSeek: $wasPlayingBeforeSeek
     )
-    .controlSize(.small)
   }
 
   // MARK: - Controls Row
@@ -240,14 +295,7 @@ struct VideoPlayerView: View {
 
         Spacer()
 
-        // Time & Duration
-        HStack(spacing: 4) {
-          Text(timeString(from: isSeeking ? seekValue : playerManager.currentTime))
-          Text("/")
-            .foregroundStyle(.secondary)
-          Text(timeString(from: playerManager.duration))
-        }
-        .font(.body.monospacedDigit())
+        VideoTimeDisplay(isSeeking: isSeeking, seekValue: seekValue)
       }
 
       // Playback Controls
