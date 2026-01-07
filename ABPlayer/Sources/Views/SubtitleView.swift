@@ -242,18 +242,6 @@ private struct SubtitleCueRow: View {
     self.words = cue.text.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
   }
 
-  private var attributedText: AttributedString {
-    var result = AttributedString()
-    for (index, word) in words.enumerated() {
-      var wordPart = AttributedString(word)
-      wordPart.foregroundColor = wordColor(for: word)
-      result.append(wordPart)
-      if index < words.count - 1 {
-        result.append(AttributedString(" "))
-      }
-    }
-    return result
-  }
 
   /// Normalize a word for vocabulary lookup (lowercase, trim punctuation)
   private func normalize(_ word: String) -> String {
@@ -314,17 +302,6 @@ private struct SubtitleCueRow: View {
     findVocabulary(for: word)?.createdAt
   }
 
-  /// Get color for a word in non-active rows (secondary or difficulty color)
-  private func wordColor(for word: String) -> Color {
-    guard let level = difficultyLevel(for: word) else {
-      return .secondary
-    }
-    switch level {
-    case 1: return .green
-    case 2: return .yellow
-    default: return .red
-    }
-  }
 
   var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -333,10 +310,10 @@ private struct SubtitleCueRow: View {
         .foregroundStyle(isActive ? .primary : .tertiary)
         .frame(width: 52, alignment: .trailing)
 
-      if isActive {
-        InteractiveAttributedTextView(
+      InteractiveAttributedTextView(
           words: words,
           fontSize: fontSize,
+          defaultTextColor: isActive ? .labelColor : .secondaryLabelColor,
           selectedWordIndex: selectedWordIndex,
           difficultyLevelProvider: { difficultyLevel(for: $0) },
           onWordSelected: { index in
@@ -368,7 +345,8 @@ private struct SubtitleCueRow: View {
         )
         .alignmentGuide(.firstTextBaseline) { context in
           let font = NSFont.systemFont(ofSize: fontSize)
-          return context.height + font.descender
+          let lineHeight = font.ascender + font.leading //- font.descender
+          return lineHeight
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .popover(
@@ -399,32 +377,25 @@ private struct SubtitleCueRow: View {
         .onDisappear {
           onHidePopover()
         }
-      } else {
-        Text(attributedText)
-          .font(.system(size: fontSize))
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(.horizontal, 2)
-          .padding(.vertical, 1)
-      }
     }
     .padding(.vertical, 14)
     .padding(.horizontal, 12)
     .background(
       RoundedRectangle(cornerRadius: 8, style: .continuous)
         .fill(backgroundColor)
-        .onTapGesture {
-          if !isActive {
-            onTap()
-          } else if selectedWordIndex != nil && !isMenuHovered {
-            onWordSelected(nil)
-          }
-        }
     )
     .overlay(
       RoundedRectangle(cornerRadius: 8, style: .continuous)
         .strokeBorder(isActive ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 1)
     )
     .contentShape(Rectangle())
+    .onTapGesture {
+      if !isActive {
+        onTap()
+      } else if selectedWordIndex != nil && !isMenuHovered {
+        onWordSelected(nil)
+      }
+    }
     .onHover { hovering in
       withAnimation(.easeInOut(duration: 0.15)) {
         isHovered = hovering
@@ -562,6 +533,7 @@ struct SubtitleEmptyView: View {
 private struct InteractiveAttributedTextView: NSViewRepresentable {
   let words: [String]
   let fontSize: Double
+  var defaultTextColor: NSColor = .labelColor
   let selectedWordIndex: Int?
   let difficultyLevelProvider: (String) -> Int?
   let onWordSelected: (Int) -> Void
@@ -600,6 +572,7 @@ private struct InteractiveAttributedTextView: NSViewRepresentable {
       words: words,
       selectedWordIndex: selectedWordIndex,
       fontSize: fontSize,
+      defaultTextColor: defaultTextColor,
       difficultyLevelProvider: difficultyLevelProvider,
       onWordSelected: onWordSelected,
       onDismiss: onDismiss,
@@ -641,6 +614,7 @@ private struct InteractiveAttributedTextView: NSViewRepresentable {
       words: words,
       selectedWordIndex: selectedWordIndex,
       fontSize: fontSize,
+      defaultTextColor: defaultTextColor,
       difficultyLevelProvider: difficultyLevelProvider,
       onWordSelected: onWordSelected,
       onDismiss: onDismiss,
@@ -659,6 +633,7 @@ private struct InteractiveAttributedTextView: NSViewRepresentable {
     var words: [String]
     var selectedWordIndex: Int?
     var fontSize: Double
+    var defaultTextColor: NSColor
     var difficultyLevelProvider: (String) -> Int?
     var onWordSelected: (Int) -> Void
     var onDismiss: () -> Void
@@ -675,6 +650,7 @@ private struct InteractiveAttributedTextView: NSViewRepresentable {
       words: [String],
       selectedWordIndex: Int?,
       fontSize: Double,
+      defaultTextColor: NSColor,
       difficultyLevelProvider: @escaping (String) -> Int?,
       onWordSelected: @escaping (Int) -> Void,
       onDismiss: @escaping () -> Void,
@@ -690,6 +666,7 @@ private struct InteractiveAttributedTextView: NSViewRepresentable {
       self.words = words
       self.selectedWordIndex = selectedWordIndex
       self.fontSize = fontSize
+      self.defaultTextColor = defaultTextColor
       self.difficultyLevelProvider = difficultyLevelProvider
       self.onWordSelected = onWordSelected
       self.onDismiss = onDismiss
@@ -707,6 +684,7 @@ private struct InteractiveAttributedTextView: NSViewRepresentable {
       words: [String],
       selectedWordIndex: Int?,
       fontSize: Double,
+      defaultTextColor: NSColor,
       difficultyLevelProvider: @escaping (String) -> Int?,
       onWordSelected: @escaping (Int) -> Void,
       onDismiss: @escaping () -> Void,
@@ -722,6 +700,7 @@ private struct InteractiveAttributedTextView: NSViewRepresentable {
       self.words = words
       self.selectedWordIndex = selectedWordIndex
       self.fontSize = fontSize
+      self.defaultTextColor = defaultTextColor
       self.difficultyLevelProvider = difficultyLevelProvider
       self.onWordSelected = onWordSelected
       self.onDismiss = onDismiss
@@ -758,7 +737,7 @@ private struct InteractiveAttributedTextView: NSViewRepresentable {
 
     func baseColorForWord(_ word: String) -> NSColor {
       guard let level = difficultyLevelProvider(word), level > 0 else {
-        return .labelColor
+        return defaultTextColor
       }
       switch level {
       case 1: return .systemGreen
