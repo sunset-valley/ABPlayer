@@ -152,8 +152,8 @@ struct VideoPlayerView: View {
                 }
             )
 
-          // ContentPanelView takes remaining space
-          ContentPanelView(audioFile: audioFile)
+          // SegmentsSection takes remaining space
+          SegmentsSection(audioFile: audioFile)
             .frame(minWidth: minWidthOfContentPanel, maxWidth: .infinity)
             .transition(.move(edge: .trailing).combined(with: .opacity))
         }
@@ -243,7 +243,7 @@ struct VideoPlayerView: View {
         progressRow
         controlsRow
         Divider()
-        SegmentsSection(audioFile: audioFile)
+        ContentPanelView(audioFile: audioFile)
       }
       .padding()
       .background(.thinMaterial)
