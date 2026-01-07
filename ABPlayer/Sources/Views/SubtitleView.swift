@@ -217,7 +217,7 @@ private struct SubtitleCueRow: View {
 
   @State private var isHovered = false
   @State private var isMenuHovered = false
-  @State private var popoverSourceRect: CGRect = .zero
+  @State private var popoverSourceRect: CGRect?
 
   private let words: [String]
 
@@ -358,7 +358,7 @@ private struct SubtitleCueRow: View {
             isMenuHovered = hovering
           },
           onWordRectChanged: { rect in
-            if let rect {
+            if popoverSourceRect != rect {
               popoverSourceRect = rect
             }
           },
@@ -373,10 +373,13 @@ private struct SubtitleCueRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .popover(
           isPresented: Binding(
-            get: { selectedWordIndex != nil },
-            set: { if !$0 { onWordSelected(nil) } }
+            get: { popoverSourceRect != nil },
+            set: { if !$0 {
+              popoverSourceRect = nil
+              onWordSelected(nil)
+            } }
           ),
-          attachmentAnchor: .rect(.rect(popoverSourceRect)),
+          attachmentAnchor: .rect(.rect(popoverSourceRect ?? .zero)),
           arrowEdge: .top
         ) {
           if let selectedIndex = selectedWordIndex, selectedIndex < words.count {
@@ -766,30 +769,32 @@ private struct InteractiveAttributedTextView: NSViewRepresentable {
 
     @MainActor
     func updateSelectedRect(in textView: NSTextView) {
-      guard let index = selectedWordIndex,
-            let layoutManager = textView.layoutManager,
-            let textContainer = textView.textContainer,
-            let textStorage = textView.textStorage else {
-        onWordRectChanged(nil)
-        return
-      }
-
-      var range = NSRange(location: NSNotFound, length: 0)
-      textStorage.enumerateAttribute(NSAttributedString.Key("wordIndex"), in: NSRange(location: 0, length: textStorage.length)) { value, r, stop in
-        if let i = value as? Int, i == index {
-          range = r
-          stop.pointee = true
+      Task { @MainActor in
+        guard let index = selectedWordIndex,
+              let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer,
+              let textStorage = textView.textStorage else {
+          onWordRectChanged(nil)
+          return
         }
-      }
 
-      if range.location != NSNotFound {
-        let glyphRange = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
-        var rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
-        rect.origin.x += textView.textContainerInset.width
-        rect.origin.y += textView.textContainerInset.height
-        onWordRectChanged(rect)
-      } else {
-        onWordRectChanged(nil)
+        var range = NSRange(location: NSNotFound, length: 0)
+        textStorage.enumerateAttribute(NSAttributedString.Key("wordIndex"), in: NSRange(location: 0, length: textStorage.length)) { value, r, stop in
+          if let i = value as? Int, i == index {
+            range = r
+            stop.pointee = true
+          }
+        }
+
+        if range.location != NSNotFound {
+          let glyphRange = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+          var rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+          rect.origin.x += textView.textContainerInset.width
+          rect.origin.y += textView.textContainerInset.height
+          onWordRectChanged(rect)
+        } else {
+          onWordRectChanged(nil)
+        }
       }
     }
 
