@@ -46,7 +46,6 @@ struct SubtitleView: View {
                   hidePopover()
                 },
                 onTap: {
-                  dismissWord()
                   playerManager.seek(to: cue.startTime)
                 }
               )
@@ -218,6 +217,7 @@ private struct SubtitleCueRow: View {
   @State private var isHovered = false
   @State private var isMenuHovered = false
   @State private var popoverSourceRect: CGRect?
+  @State private var isWordInteracting = false
 
   private let words: [String]
 
@@ -317,7 +317,14 @@ private struct SubtitleCueRow: View {
           selectedWordIndex: selectedWordIndex,
           difficultyLevelProvider: { difficultyLevel(for: $0) },
           onWordSelected: { index in
+            // Set flag to prevent row tap gesture from dismissing the popover
+            isWordInteracting = true
             onWordSelected(selectedWordIndex == index ? nil : index)
+            // Clear flag after a short delay to allow proper tap gesture handling
+            Task { @MainActor in
+              try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+              isWordInteracting = false
+            }
           },
           onDismiss: {
             onWordSelected(nil)
@@ -392,10 +399,14 @@ private struct SubtitleCueRow: View {
     )
     .contentShape(Rectangle())
     .onTapGesture {
-      if !isActive {
-        onTap()
-      } else if selectedWordIndex != nil && !isMenuHovered {
-        onWordSelected(nil)
+      guard !isWordInteracting else { return }
+
+      if selectedWordIndex == nil {
+        if !isActive {
+          onTap()
+        }
+      } else {
+        onWordSelected(selectedWordIndex)
       }
     }
     .onHover { hovering in
@@ -404,7 +415,7 @@ private struct SubtitleCueRow: View {
       }
     }
     .onChange(of: isActive) { _, newValue in
-      if !newValue && selectedWordIndex != nil {
+      if !newValue {
         onWordSelected(nil)
       }
     }
