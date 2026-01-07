@@ -1,3 +1,11 @@
+## [0.2.8.46] - 2026-01-06
+
+### Other
+- feat(transcription): add configurable FFmpeg path with auto-detection
+- feat(transcription): add video file support with audio extraction
+- Merge pull request #71 from sunset-valley/ci/release-45
+
+
 ## [0.2.8.45] - 2026-01-06
 
 ### Other
