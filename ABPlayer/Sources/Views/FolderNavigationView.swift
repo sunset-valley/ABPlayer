@@ -39,6 +39,7 @@ struct FolderNavigationView: View {
   @AppStorage("folderNavigationSortOrder") private var sortOrder: SortOrder = .nameAZ
   @State private var selection: SelectionItem?
   @State private var isRescanningFolder = false
+  @State private var hovering: SelectionItem?
 
   let onSelectFile: (AudioFile) async -> Void
 
@@ -63,23 +64,29 @@ struct FolderNavigationView: View {
 
   private var navigationHeader: some View {
     HStack {
-      Button {
-        withAnimation(.easeInOut(duration: 0.2)) {
-          navigateBack()
-        }
-      } label: {
-        HStack(spacing: 4) {
-          if !navigationPath.isEmpty {
-            Label("Back", systemImage: "chevron.left")
-              .font(.title2)
-              .labelStyle(.iconOnly)
+      if canNavigateBack {
+        Button {
+          withAnimation(.easeInOut(duration: 0.2)) {
+            navigateBack()
           }
-
-          Text(currentFolder?.name ?? "Library")
-            .lineLimit(1)
+        } label: {
+          HStack(spacing: 4) {
+            Label(" ", systemImage: "chevron.left")
+              .font(.title2)
+              .labelStyle(.titleAndIcon)
+          }
+          .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
       }
-      .buttonStyle(.plain)
+      
+      Spacer()
+
+      HStack {
+        Image(systemName: "folder.fill")
+          .foregroundStyle(.secondary)
+        Text(currentFolder?.name ?? "Liberary")
+      }
 
       Spacer()
 
@@ -119,9 +126,9 @@ struct FolderNavigationView: View {
       .buttonStyle(.plain)
     }
     .font(.title3)
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
-    .background(.bar)
+    .frame(height: 44)
+    .padding(.horizontal, 16)
+    .background(Color.asset.bgPrimary)
   }
 
   // MARK: - File List
@@ -130,11 +137,14 @@ struct FolderNavigationView: View {
     List(selection: $selection) {
       // Folders section
       if !currentFolders.isEmpty {
-        Section("Folders") {
+        Section {
           ForEach(currentFolders) { folder in
             folderRow(for: folder)
               .tag(SelectionItem.folder(folder))
           }
+          .frame(height: 44)
+          .padding(.horizontal, 16)
+          .listRowSeparator(.hidden)
         }
       }
 
@@ -142,12 +152,33 @@ struct FolderNavigationView: View {
       if !currentAudioFiles.isEmpty {
         Section {
           ForEach(currentAudioFiles) { file in
-            audioFileRow(for: file)
+            fileRow(for: file)
               .tag(SelectionItem.audioFile(file))
+              .onHover {
+                if $0 {
+                  hovering = SelectionItem.audioFile(file)
+                } else {
+                  hovering = nil
+                }
+              }
+              .listRowBackground(
+                selectedFile == file
+                ? Color.asset.listHighlight
+                : hovering == SelectionItem.audioFile(file)
+                  ? Color.asset.listHighlight.opacity(0.5)
+                  : .clear
+              )
           }
+          .frame(height: 44)
+          .padding(.horizontal, -8)
+          .listRowSeparatorTint(Color.asset.bgPrimary)
+          .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
         }
       }
     }
+    .listStyle(.plain)
+    .listSectionSeparator(.hidden)
+    .scrollContentBackground(.hidden)
     // 将 Empty State 放在这里
     .overlay {
       // Empty state
@@ -217,56 +248,62 @@ struct FolderNavigationView: View {
 
   // MARK: - Audio File Row
 
-  private func audioFileRow(for file: AudioFile) -> some View {
+  private func fileRow(for file: AudioFile) -> some View {
     let isAvailable = file.isBookmarkValid
     let isSelected = selectedFile?.id == file.id
 
-    return HStack {
-      // 文件图标
-      if isAvailable {
-        Image(systemName: "music.note")
-          .foregroundStyle(file.isPlaybackComplete ? Color.secondary : Color.blue)
-      } else {
-        Image(systemName: "exclamationmark.triangle.fill")
-          .foregroundStyle(.orange)
+    return ZStack(alignment: .leading) {
+      if selectedFile == file {
+        Color.asset.accent.frame(width: 3)
       }
-
-      VStack(alignment: .leading) {
-        Text(file.displayName)
-          .lineLimit(1)
-          .strikethrough(!isAvailable, color: .secondary)
-          .foregroundStyle(isSelected ? Color(nsColor: .labelColor) : (isAvailable ? .primary : .secondary))
-          .bodyStyle()
-
-        HStack(spacing: 4) {
-          if !isAvailable {
-            Text("文件不可用")
-              .foregroundStyle(.orange)
-          } else {
-            Text(file.createdAt, style: .date)
-
-            if file.subtitleFile != nil {
-              Text("•")
-              Image(systemName: "text.bubble")
-                .font(.caption2)
-            }
-
-            if file.hasTranscriptionRecord {
-              Text("•")
-              Image(systemName: "waveform")
-                .font(.caption2)
-            }
-
-            if file.pdfBookmarkData != nil {
-              Text("•")
-              Image(systemName: "doc.text")
-                .font(.caption2)
+      HStack(spacing: 12) {
+        // 文件图标
+        if isAvailable {
+          Image(systemName: "music.note")
+            .foregroundStyle(file.isPlaybackComplete ? Color.secondary : Color.blue)
+        } else {
+          Image(systemName: "exclamationmark.triangle.fill")
+            .foregroundStyle(.orange)
+        }
+        
+        VStack(alignment: .leading) {
+          Text(file.displayName)
+            .lineLimit(1)
+            .strikethrough(!isAvailable, color: .secondary)
+            .foregroundStyle(isSelected ? Color(nsColor: .labelColor) : (isAvailable ? .primary : .secondary))
+            .bodyStyle()
+          
+          HStack(spacing: 4) {
+            if !isAvailable {
+              Text("文件不可用")
+                .foregroundStyle(.orange)
+            } else {
+              Text(file.createdAt, style: .date)
+              
+              if file.subtitleFile != nil {
+                Text("•")
+                Image(systemName: "text.bubble")
+                  .font(.caption2)
+              }
+              
+              if file.hasTranscriptionRecord {
+                Text("•")
+                Image(systemName: "waveform")
+                  .font(.caption2)
+              }
+              
+              if file.pdfBookmarkData != nil {
+                Text("•")
+                Image(systemName: "doc.text")
+                  .font(.caption2)
+              }
             }
           }
+          .captionStyle()
+          .foregroundStyle(.secondary)
         }
-        .captionStyle()
-        .foregroundStyle(.secondary)
       }
+      .padding(.horizontal, 16)
     }
     .contentShape(Rectangle())
     .contextMenu {
@@ -350,6 +387,10 @@ struct FolderNavigationView: View {
     guard !navigationPath.isEmpty else { return }
     navigationPath.removeLast()
     currentFolder = navigationPath.last
+  }
+  
+  private var canNavigateBack: Bool {
+    navigationPath.count > 0
   }
 
   /// 重新扫描当前文件夹（用于同步磁盘变更）

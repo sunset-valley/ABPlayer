@@ -36,6 +36,7 @@ public struct MainSplitView: View {
     NavigationSplitView {
       sidebar
         .navigationSplitViewColumnWidth(min: 200, ideal: 300, max: 400)
+        .background(Color.asset.bgPrimary)
     } detail: {
       if let selectedFile {
         if selectedFile.isVideo {
@@ -105,8 +106,6 @@ public struct MainSplitView: View {
         )
       }
     }
-    .background(Color.asset.bgPrimary)
-    .navigationTitle("ABPlayer")
     .toolbar {
       ToolbarItemGroup(placement: .primaryAction) {
         Menu {
