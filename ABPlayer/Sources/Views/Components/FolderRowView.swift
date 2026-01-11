@@ -7,7 +7,7 @@ struct FolderRowView: View {
   let onDelete: () -> Void
   
   var body: some View {
-    HStack {
+    HStack(spacing: 12) {
       Image(systemName: "folder.fill")
         .foregroundStyle(.secondary)
 
@@ -27,6 +27,7 @@ struct FolderRowView: View {
         .foregroundStyle(.tertiary)
         .font(.caption)
     }
+    .padding(.horizontal, 16)
     .contentShape(Rectangle())
     .contextMenu {
       Button(role: .destructive) {

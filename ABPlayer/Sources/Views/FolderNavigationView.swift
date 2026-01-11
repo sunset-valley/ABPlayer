@@ -37,6 +37,7 @@ struct FolderNavigationView: View {
   @Binding var navigationPath: [Folder]
 
   @State private var viewModel: FolderNavigationViewModel?
+  @State private var isDeselecting = false
 
   let onSelectFile: (AudioFile) async -> Void
 
@@ -59,15 +60,26 @@ struct FolderNavigationView: View {
       }
     }
     .onChange(of: viewModel?.selection) { _, newValue in
-      guard let viewModel else { return }
+      guard let viewModel, !isDeselecting else { return }
       viewModel.handleSelectionChange(
         newValue,
         navigationPath: &navigationPath,
         currentFolder: &currentFolder,
         onSelectFile: onSelectFile
       )
+      
+      // Deselect after action completes
+      if newValue != nil {
+        Task { @MainActor in
+          try? await Task.sleep(for: .milliseconds(100))
+          isDeselecting = true
+          viewModel.selection = nil
+          isDeselecting = false
+        }
+      }
     }
     .onChange(of: selectedFile) {
+      guard !isDeselecting else { return }
       if let file = selectedFile {
         viewModel?.selection = .audioFile(file)
       } else {
@@ -119,8 +131,9 @@ struct FolderNavigationView: View {
                   .tag(SelectionItem.folder(folder))
               }
               .frame(height: 44)
-              .padding(.horizontal, 16)
-              .listRowSeparator(.hidden)
+              .padding(.horizontal, -8)
+              .listRowSeparatorTint(Color.asset.bgPrimary)
+              .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
             }
           }
 

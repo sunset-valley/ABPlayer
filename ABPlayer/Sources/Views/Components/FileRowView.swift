@@ -16,7 +16,7 @@ struct FileRowView: View {
       }
       HStack(spacing: 12) {
         if isAvailable {
-          Image(systemName: "music.note")
+          Image(systemName: "movieclapper.fill")
             .foregroundStyle(file.isPlaybackComplete ? Color.secondary : Color.blue)
         } else {
           Image(systemName: "exclamationmark.triangle.fill")
