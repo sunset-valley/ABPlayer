@@ -105,6 +105,7 @@ public struct MainSplitView: View {
         )
       }
     }
+    .background(Color.asset.bgPrimary)
     .navigationTitle("ABPlayer")
     .toolbar {
       ToolbarItemGroup(placement: .primaryAction) {

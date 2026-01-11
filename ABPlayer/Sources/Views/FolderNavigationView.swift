@@ -36,8 +36,8 @@ struct FolderNavigationView: View {
   @Binding var currentFolder: Folder?
   @Binding var navigationPath: [Folder]
 
-  @State private var selection: SelectionItem?
   @AppStorage("folderNavigationSortOrder") private var sortOrder: SortOrder = .nameAZ
+  @State private var selection: SelectionItem?
   @State private var isRescanningFolder = false
 
   let onSelectFile: (AudioFile) async -> Void
