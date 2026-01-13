@@ -241,7 +241,6 @@ public struct MainSplitView: View {
     if debounce {
       loadAudioTask = Task {
         await playerManager.clearPlayer()
-        try? await Task.sleep(for: .milliseconds(250))
         if !Task.isCancelled {
           await playerManager.load(audioFile: file, fromStart: fromStart)
         }

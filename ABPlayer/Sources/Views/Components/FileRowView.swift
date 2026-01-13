@@ -13,9 +13,11 @@ struct FileRowView: View {
 
   var body: some View {
     ZStack(alignment: .leading) {
-      if isSelected {
-        Color.asset.accent.frame(width: 3)
-      }
+      Color.asset.accent
+        .frame(width: 3)
+        .scaleEffect(y: isSelected ? 1 : 0, anchor: .center)
+        .opacity(isSelected ? 1 : 0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
       HStack(spacing: 12) {
         if isAvailable {
           Image(systemName: file.fileType.iconName)

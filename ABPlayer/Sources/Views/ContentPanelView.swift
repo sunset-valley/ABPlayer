@@ -40,8 +40,6 @@ struct ContentPanelView: View {
     }
     .padding(.horizontal, 8)
     .padding(.vertical, 4)
-    // comment it when show in a vertical window; uncomment it when show in a wide window.
-    // .background(.bar)
   }
 
   private func tabButton(for tab: ContentPanelTab) -> some View {
