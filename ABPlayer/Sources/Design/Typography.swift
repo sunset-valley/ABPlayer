@@ -61,7 +61,7 @@ extension View {
   }
 
   func captionStyle() -> some View {
-    self.font(.subheadline)
+    self.font(.callout)
       .foregroundStyle(Color.asset.textTertiary)
   }
 }

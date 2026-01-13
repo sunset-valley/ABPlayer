@@ -12,6 +12,7 @@ public struct MainSplitView: View {
   @Environment(AudioPlayerManager.self) private var playerManager
   @Environment(SessionTracker.self) private var sessionTracker
   @Environment(\.modelContext) private var modelContext
+  @Environment(\.openURL) private var openURL
 
   @Query(sort: \ABFile.createdAt, order: .forward)
   private var allAudioFiles: [ABFile]
@@ -136,17 +137,29 @@ public struct MainSplitView: View {
       }
     }
     .safeAreaInset(edge: .bottom) {
-      versionFooter
+      VStack(spacing: 0) {
+        Divider()
+        versionFooter
+      }
     }
   }
 
   private var versionFooter: some View {
-    Text("Version \(bundleShortVersion) • Build \(bundleVersion)")
-      .font(.caption2)
-      .foregroundStyle(.secondary)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(.horizontal, 12)
-      .padding(.bottom, 8)
+    HStack {
+      Text("v\(bundleShortVersion)(\(bundleVersion))")
+      
+      Spacer()
+      
+      Button("Feedback", systemImage: "bubble.left.and.exclamationmark.bubble.right") {
+        if let url = URL(string: "https://github.com/sunset-valley/ABPlayer/issues/new") {
+          openURL(url)
+        }
+      }
+      .buttonStyle(.plain)
+    }
+    .captionStyle()
+    .padding(.horizontal, 16)
+    .padding(.vertical)
   }
 
   private var bundleShortVersion: String {
