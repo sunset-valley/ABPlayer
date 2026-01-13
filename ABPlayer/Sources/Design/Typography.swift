@@ -57,10 +57,11 @@ extension View {
 
   func bodyStyle() -> some View {
     self.font(.sm)
+      .foregroundStyle(Color.asset.textPrimary)
   }
 
   func captionStyle() -> some View {
     self.font(.subheadline)
-      .foregroundStyle(.secondary)
+      .foregroundStyle(Color.asset.textTertiary)
   }
 }

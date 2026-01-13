@@ -11,8 +11,8 @@ final class FolderNavigationViewModel {
   // MARK: - State Properties
   
   var sortOrder: SortOrder = .nameAZ
-  var selection: SelectionItem?
   var isRescanningFolder = false
+  var selection: SelectionItem?
   var hovering: SelectionItem?
   var pressing: SelectionItem?
   
@@ -27,7 +27,7 @@ final class FolderNavigationViewModel {
   
   /// Extracts the leading number from a filename for number-based sorting
   /// Returns Int.max if the filename doesn't start with a number
-  func extractLeadingNumber(_ name: String) -> Int {
+  private func extractLeadingNumber(_ name: String) -> Int {
     let digits = name.prefix(while: { $0.isNumber })
     return Int(digits) ?? Int.max
   }
@@ -91,7 +91,7 @@ final class FolderNavigationViewModel {
   }
   
   func canNavigateBack(navigationPath: [Folder]) -> Bool {
-    navigationPath.count > 0
+    !navigationPath.isEmpty
   }
   
   // MARK: - Selection Handling
@@ -109,8 +109,10 @@ final class FolderNavigationViewModel {
       navigateInto(folder, navigationPath: &navigationPath, currentFolder: &currentFolder)
       
     case .audioFile(let file):
-      Task { await onSelectFile(file) }
-      
+      Task {
+        await onSelectFile(file)
+      }
+
     case .empty:
       break
     }

@@ -6,18 +6,20 @@ struct FileRowView: View {
   let file: ABFile
   let isSelected: Bool
   let onDelete: () -> Void
-  
+
+  private var isAvailable: Bool {
+    file.isBookmarkValid
+  }
+
   var body: some View {
-    let isAvailable = file.isBookmarkValid
-    
-    return ZStack(alignment: .leading) {
+    ZStack(alignment: .leading) {
       if isSelected {
         Color.asset.accent.frame(width: 3)
       }
       HStack(spacing: 12) {
         if isAvailable {
           Image(systemName: file.fileType.iconName)
-            .foregroundStyle(file.isPlaybackComplete ? Color.secondary : Color.blue)
+            .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
         } else {
           Image(systemName: "exclamationmark.triangle.fill")
             .foregroundStyle(.orange)
@@ -27,37 +29,17 @@ struct FileRowView: View {
           Text(file.displayName)
             .lineLimit(1)
             .strikethrough(!isAvailable, color: .secondary)
-            .foregroundStyle(isSelected ? Color(nsColor: .labelColor) : (isAvailable ? .primary : .secondary))
             .bodyStyle()
           
           HStack(spacing: 4) {
             if !isAvailable {
               Text("文件不可用")
                 .foregroundStyle(.orange)
-            } else {
-              Text(file.createdAt, style: .date)
-              
-              if file.subtitleFile != nil {
-                Text("•")
-                Image(systemName: "text.bubble")
-                  .font(.caption2)
-              }
-              
-              if file.hasTranscriptionRecord {
-                Text("•")
-                Image(systemName: "waveform")
-                  .font(.caption2)
-              }
-              
-              if file.pdfBookmarkData != nil {
-                Text("•")
-                Image(systemName: "doc.text")
-                  .font(.caption2)
-              }
+            } else if let duration = file.cachedDuration, duration > 0 {
+              Text(timeString(from: duration))
             }
           }
           .captionStyle()
-          .foregroundStyle(.secondary)
         }
       }
       .padding(.horizontal, 16)
@@ -72,5 +54,23 @@ struct FileRowView: View {
         Label("Delete File", systemImage: "trash")
       }
     }
+  }
+
+  private func timeString(from value: Double) -> String {
+    guard value.isFinite, value >= 0 else {
+      return "0:00"
+    }
+
+    let totalSeconds = Int(value.rounded())
+    let minutes = totalSeconds / 60
+    let seconds = totalSeconds % 60
+
+    if minutes >= 60 {
+      let hours = minutes / 60
+      let remainingMinutes = minutes % 60
+      return String(format: "%d:%02d:%02d", hours, remainingMinutes, seconds)
+    }
+
+    return String(format: "%d:%02d", minutes, seconds)
   }
 }

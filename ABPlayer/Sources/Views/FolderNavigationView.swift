@@ -59,37 +59,22 @@ struct FolderNavigationView: View {
           viewModel?.sortOrder = sortOrder
         }
       }
-    }
-    .onChange(of: viewModel?.selection) { _, newValue in
-      guard let viewModel, !isDeselecting else { return }
-      viewModel.handleSelectionChange(
-        newValue,
-        navigationPath: &navigationPath,
-        currentFolder: &currentFolder,
-        onSelectFile: onSelectFile
-      )
-      
-      // Deselect after action completes
-      if newValue != nil {
-        Task { @MainActor in
-          try? await Task.sleep(for: .milliseconds(100))
-          isDeselecting = true
-          viewModel.selection = nil
-          isDeselecting = false
-        }
-      }
-    }
-    .onChange(of: selectedFile) {
-      guard !isDeselecting else { return }
-      if let file = selectedFile {
-        viewModel?.selection = .audioFile(file)
-      } else {
-        viewModel?.selection = nil
+
+      if let selectedFile {
+        viewModel?.selection = .audioFile(selectedFile)
       }
     }
     .onChange(of: viewModel?.sortOrder) { _, newValue in
       if let newValue {
         UserDefaults.standard.set(newValue.rawValue, forKey: "folderNavigationSortOrder")
+      }
+    }
+    .onChange(of: selectedFile) { _, newValue in
+      guard let viewModel else { return }
+      if let newValue {
+        viewModel.selection = .audioFile(newValue)
+      } else if case .audioFile? = viewModel.selection {
+        viewModel.selection = nil
       }
     }
   }
@@ -121,10 +106,7 @@ struct FolderNavigationView: View {
   private var fileList: some View {
     Group {
       if let viewModel {
-        List(selection: Binding(
-          get: { viewModel.selection },
-          set: { viewModel.selection = $0 }
-        )) {
+        List(selection: listSelection) {
           if !currentFolders.isEmpty {
             Section {
               ForEach(currentFolders) { folder in
@@ -176,21 +158,12 @@ struct FolderNavigationView: View {
                     viewModel.hovering = nil
                   }
                 }
-                .listRowBackground(
-                  viewModel.pressing == SelectionItem.audioFile(file)
-                    ? Color.asset.listHighlight.opacity(0.6)
-                    : selectedFile == file
-                      ? Color.asset.listHighlight
-                      : viewModel.hovering == SelectionItem.audioFile(file)
-                        ? Color.asset.listHighlight.opacity(0.6)
-                        : .clear
-                )
+                .listRowBackground(audioFileRowBackground(for: file))
                 .tag(SelectionItem.audioFile(file))
               }
             }
           }
         }
-        .accentColor(.red)
         .padding(.horizontal, -8)
         .listStyle(.plain)
         .listSectionSeparator(.hidden)
@@ -207,6 +180,42 @@ struct FolderNavigationView: View {
         }
       }
     }
+  }
+
+  private var listSelection: Binding<SelectionItem?> {
+    Binding(
+      get: {
+        viewModel?.selection
+      },
+      set: { newSelection in
+        guard let newSelection, let viewModel, !isDeselecting else { return }
+        viewModel.selection = newSelection
+        viewModel.handleSelectionChange(
+          newSelection,
+          navigationPath: &navigationPath,
+          currentFolder: &currentFolder,
+          onSelectFile: onSelectFile
+        )
+      }
+    )
+  }
+
+  private func audioFileRowBackground(for file: ABFile) -> Color {
+    guard let viewModel else { return .clear }
+
+    if viewModel.pressing == .audioFile(file) {
+      return Color.asset.listHighlight
+    }
+
+    if viewModel.selection == .audioFile(file) {
+      return Color.asset.listHighlight
+    }
+
+    if viewModel.hovering == .audioFile(file) {
+      return Color.asset.listHighlight.opacity(0.6)
+    }
+
+    return .clear
   }
 
   // MARK: - Selection Handling
@@ -253,6 +262,12 @@ struct FolderNavigationView: View {
     }
 
     viewModel.selection = selection
+    viewModel.handleSelectionChange(
+      selection,
+      navigationPath: &navigationPath,
+      currentFolder: &currentFolder,
+      onSelectFile: onSelectFile
+    )
   }
 
   // MARK: - Folder Row
@@ -277,7 +292,7 @@ struct FolderNavigationView: View {
   private func fileRow(for file: ABFile) -> some View {
     FileRowView(
       file: file,
-      isSelected: selectedFile?.id == file.id,
+      isSelected: viewModel?.selection == .audioFile(file),
       onDelete: {
         guard let viewModel else { return }
         viewModel.deleteAudioFile(
