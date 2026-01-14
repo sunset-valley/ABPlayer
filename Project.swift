@@ -38,6 +38,10 @@ let project = Project(
         .external(name: "WhisperKit"),
         .external(name: "KeyboardShortcuts"),
         .external(name: "Sparkle"),
+        .external(name: "FirebaseCore"),
+        .external(name: "FirebaseAnalytics"),
+        .external(name: "FirebaseAuth"),
+        .external(name: "FirebaseFirestore"),
       ],
     ),
     .target(
@@ -64,6 +68,10 @@ let project = Project(
         .external(name: "WhisperKit"),
         .external(name: "KeyboardShortcuts"),
         .external(name: "Sparkle"),
+        .external(name: "FirebaseCore"),
+        .external(name: "FirebaseAnalytics"),
+        .external(name: "FirebaseAuth"),
+        .external(name: "FirebaseFirestore"),
       ],
     ),
     .target(
