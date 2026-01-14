@@ -120,7 +120,7 @@ struct FolderNavigationView: View {
                       )
                     )
                 }
-                .frame(height: 44)
+                .frame(height: 60)
                 .listRowSeparator(.hidden)
                 .listRowInsets(.init())
                 .listRowBackground(
