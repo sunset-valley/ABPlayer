@@ -178,7 +178,8 @@ struct InteractiveAttributedTextView: NSViewRepresentable {
     )
   }
 
-  class Coordinator: NSObject {
+    @MainActor
+    class Coordinator: NSObject {
     var cueID: UUID
     var words: [String]
     var selectedWordIndex: Int?

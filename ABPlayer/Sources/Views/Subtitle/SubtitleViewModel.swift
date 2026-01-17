@@ -47,20 +47,15 @@ class SubtitleViewModel {
     scrollState = .userScrolling(countdown: Self.pauseDuration)
     
     scrollResumeTask = Task { @MainActor in
-      do {
-        for await remaining in countdown(from: Self.pauseDuration) {
-          guard !Task.isCancelled else {
-            Self.logger.debug("Countdown task cancelled")
-            return
-          }
-          scrollState = remaining > 0 ? .userScrolling(countdown: remaining) : .autoScrolling
+      for await remaining in countdown(from: Self.pauseDuration) {
+        guard !Task.isCancelled else {
+          Self.logger.debug("Countdown task cancelled")
+          return
         }
-        scrollState = .autoScrolling
-        Self.logger.debug("Countdown completed, resumed auto-scrolling")
-      } catch {
-        Self.logger.error("Countdown error: \(error.localizedDescription)")
-        scrollState = .autoScrolling
+        scrollState = remaining > 0 ? .userScrolling(countdown: remaining) : .autoScrolling
       }
+      scrollState = .autoScrolling
+      Self.logger.debug("Countdown completed, resumed auto-scrolling")
     }
   }
   

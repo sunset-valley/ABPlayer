@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 
 /// Manages word frame caching and hit detection for interactive text
+@MainActor
 class WordLayoutManager {
   private(set) var wordFrames: [CGRect] = []
   
