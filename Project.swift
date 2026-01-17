@@ -1,6 +1,6 @@
 import ProjectDescription
 
-let buildVersionString = "52"
+let buildVersionString = "53"
 let shortVersionString = "0.2.9"
 let project = Project(
   name: "ABPlayer",
@@ -34,6 +34,7 @@ let project = Project(
         "ABPlayer/Resources",
       ],
       dependencies: [
+        .sdk(name: "AppIntents", type: .framework, status: .optional),
         .external(name: "Sentry"),
         .external(name: "WhisperKit"),
         .external(name: "KeyboardShortcuts"),
@@ -61,6 +62,7 @@ let project = Project(
         "ABPlayer/Resources",
       ],
       dependencies: [
+        .sdk(name: "AppIntents", type: .framework, status: .optional),
         .external(name: "Sentry"),
         .external(name: "WhisperKit"),
         .external(name: "KeyboardShortcuts"),

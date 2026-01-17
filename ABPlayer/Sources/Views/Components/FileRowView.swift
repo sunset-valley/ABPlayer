@@ -16,7 +16,7 @@ struct FileRowView: View {
 
   var body: some View {
     ZStack(alignment: .leading) {
-      Color.asset.accent
+      Color.asset.appAccent
         .frame(width: 3)
         .scaleEffect(y: isSelected ? 1 : 0, anchor: .center)
         .opacity(isSelected ? 1 : 0)
