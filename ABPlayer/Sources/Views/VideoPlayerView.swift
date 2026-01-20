@@ -150,8 +150,10 @@ struct VideoPlayerView: View {
         )
         
         VideoControlsView(viewModel: viewModel)
-        
+          .padding(.horizontal)
+
         Divider()
+        
         ContentPanelView(audioFile: audioFile)
       }
     }
