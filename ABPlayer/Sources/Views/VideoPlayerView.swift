@@ -142,15 +142,15 @@ struct VideoPlayerView: View {
         .aspectRatio(16 / 9, contentMode: .fit)
         .layoutPriority(1)
         
-        if viewModel.showHudMessage {
-          Text(viewModel.hudMessage ?? "")
+        if let message = viewModel.hudMessage {
+          Text(message)
             .font(.title)
             .padding(.all, 16)
             .background(.black.opacity(0.6))
             .cornerRadius(8)
-            .id(viewModel.hudMessage)
-            .transition(.scale.combined(with: .opacity))
-            .animation(.bouncy, value: viewModel.hudMessage)
+            .id(message)
+            .opacity(viewModel.isHudVisible ? 1 : 0)
+            .scaleEffect(viewModel.isHudVisible ? 1 : 0.5)
         }
       }
 
