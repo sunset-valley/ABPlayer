@@ -15,13 +15,8 @@ final class VideoPlayerViewModel {
   
   // MARK: - HUD
   var hudMessage: String?
+  var isHudVisible: Bool = false
   var hideHudTask: Task<Void, Never>?
-  var showHudMessage: Bool {
-    guard let hudMessage else {
-      return false
-    }
-    return !hudMessage.isEmpty
-  }
   
   // MARK: - Layout State
   var draggingWidth: Double?
@@ -153,23 +148,29 @@ final class VideoPlayerViewModel {
 
   func showHUDMessage(_ message: String) {
     hideHudTask?.cancel()
-    hudMessage = nil
     
-    Task { @MainActor in
+    hudMessage = message
+    isHudVisible = false
+    
+    hideHudTask = Task { @MainActor in
       try? await Task.sleep(nanoseconds: 10_000_000)
-      withAnimation(.bouncy) {
-        hudMessage = message
+      guard !Task.isCancelled else { return }
+
+      withAnimation(.bouncy(duration: 0.25)) {
+        isHudVisible = true
       }
       
-      hideHudTask = Task {
-        try? await Task.sleep(nanoseconds: 2_000_000_000)
-        if Task.isCancelled {
-          return
-        }
-        withAnimation {
-          hudMessage = nil
-        }
+      try? await Task.sleep(nanoseconds: 2_500_000_000)
+      guard !Task.isCancelled else { return }
+      
+      withAnimation(.bouncy(duration: 0.25)) {
+        isHudVisible = false
       }
+      
+      try? await Task.sleep(nanoseconds: 250_000_000)
+      guard !Task.isCancelled else { return }
+      
+      hudMessage = nil
     }
   }
 }
