@@ -125,8 +125,8 @@ struct FolderNavigationView: View {
                 .listRowInsets(.init())
                 .listRowBackground(
                   viewModel.pressing == SelectionItem.folder(folder)
-                    ? Color.red.opacity(0.7)
-                    : .clear
+                  ? Color.asset.listHighlight
+                  : .clear
                 )
                 .tag(SelectionItem.folder(folder))
               }
