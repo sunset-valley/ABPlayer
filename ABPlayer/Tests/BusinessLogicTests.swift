@@ -200,7 +200,7 @@ struct PlaybackQueueLogicTests {
 
     let nextFile = queue.playNext()
 
-    #expect(nextFile == nil)
+    #expect(nextFile == fileA)
   }
 
   @Test
@@ -723,7 +723,7 @@ struct VocabularyLogicTests {
 
 // MARK: - Mocks
 
-actor MockAudioPlayerEngine: AudioPlayerEngineProtocol {
+actor MockAudioPlayerEngine: PlayerEngineProtocol {
   var currentPlayer: AVPlayer? = AVPlayer()
 
   // Call tracking
@@ -778,13 +778,13 @@ actor MockAudioPlayerEngine: AudioPlayerEngineProtocol {
 // MARK: - Integration Tests with Mock Engine
 
 @MainActor
-struct AudioPlayerManagerIntegrationTests {
+struct PlayerManagerIntegrationTests {
 
   @Test
   func testSwitchingFileResetsPlayingState() async {
     // Given
     let mockEngine = MockAudioPlayerEngine()
-    let manager = AudioPlayerManager(engine: mockEngine)
+    let manager = PlayerManager(engine: mockEngine)
 
     // Setup dummy file A
     let fileA = ABFile(displayName: "A.mp3", bookmarkData: Data("A".utf8))
@@ -811,7 +811,7 @@ struct AudioPlayerManagerIntegrationTests {
   func testCurrentFileUpdatesCorrectly() async {
     // Given
     let mockEngine = MockAudioPlayerEngine()
-    let manager = AudioPlayerManager(engine: mockEngine)
+    let manager = PlayerManager(engine: mockEngine)
 
     let fileA = ABFile(displayName: "A.mp3", bookmarkData: Data("A".utf8))
     let fileB = ABFile(displayName: "B.mp3", bookmarkData: Data("B".utf8))
@@ -837,7 +837,7 @@ struct AudioPlayerManagerIntegrationTests {
     // 100ms delay
     await mockEngine.setDelay(100_000_000)
 
-    let manager = AudioPlayerManager(engine: mockEngine)
+    let manager = PlayerManager(engine: mockEngine)
     let fileA = ABFile(displayName: "A.mp3", bookmarkData: Data("A".utf8))
     let fileB = ABFile(displayName: "B.mp3", bookmarkData: Data("B".utf8))
 
@@ -861,7 +861,7 @@ struct AudioPlayerManagerIntegrationTests {
   func testTogglePlayPauseWhilePlayingCallsPauseReference() async {
     // Given: Playing
     let mockEngine = MockAudioPlayerEngine()
-    let manager = AudioPlayerManager(engine: mockEngine)
+    let manager = PlayerManager(engine: mockEngine)
     manager.isPlaying = true
 
     // When: Toggle
@@ -881,7 +881,7 @@ struct AudioPlayerManagerIntegrationTests {
   func testRapidFileSwitchingCancelsOldLoad() async {
     // Given
     let mockEngine = MockAudioPlayerEngine()
-    let manager = AudioPlayerManager(engine: mockEngine)
+    let manager = PlayerManager(engine: mockEngine)
     // Set a delay to simulate async loading
     await mockEngine.setDelay(50_000_000)  // 50ms
 
