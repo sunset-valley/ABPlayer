@@ -142,7 +142,11 @@ final class FolderNavigationViewModel {
       do {
         let importer = FolderImporter(modelContainer: modelContext.container)
         _ = try await importer.syncFolder(at: url)
-        Logger.data.info("✅ Successfully rescanned folder: \(rootFolder.name)")
+        
+        Task { @MainActor in
+          try? modelContext.save()
+          Logger.data.info("✅ Successfully rescanned folder: \(rootFolder.name)")
+        }
       } catch {
         Logger.data.error("❌ Failed to rescan folder: \(error.localizedDescription)")
       }
