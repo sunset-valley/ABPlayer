@@ -48,6 +48,9 @@ final class ABFile {
   /// 所属文件夹
   var folder: Folder?
 
+  /// 相对于根导入目录的路径（包括文件名）
+  var relativePath: String = ""
+
   /// 关联的字幕文件
   @Relationship(inverse: \SubtitleFile.audioFile)
   var subtitleFile: SubtitleFile?
@@ -73,6 +76,7 @@ final class ABFile {
     createdAt: Date = Date(),
     segments: [LoopSegment] = [],
     folder: Folder? = nil,
+    relativePath: String = "",
     subtitleFile: SubtitleFile? = nil,
     pdfBookmarkData: Data? = nil,
     cachedDuration: Double? = nil,
@@ -86,6 +90,7 @@ final class ABFile {
     self.createdAt = createdAt
     self.segments = segments
     self.folder = folder
+    self.relativePath = relativePath
     self.subtitleFile = subtitleFile
     self.pdfBookmarkData = pdfBookmarkData
     self.cachedDuration = cachedDuration
@@ -124,26 +129,10 @@ final class LoopSegment {
 }
 
 extension ABFile {
-  /// Generate a deterministic UUID from bookmark data
-  /// Uses SHA256 hash to ensure the same data always produces the same UUID
-  /// This enables transcription data reuse when the same file is re-imported
-  static func generateDeterministicID(from bookmarkData: Data) -> UUID {
-    // Use SHA256 hash of bookmark data to create deterministic UUID
-    let hash = SHA256.hash(data: bookmarkData)
-    let hashData = Data(hash)
-
-    // Take first 16 bytes for UUID
-    let uuidBytes = Array(hashData.prefix(16))
-    return UUID(
-      uuid: (
-        uuidBytes[0], uuidBytes[1], uuidBytes[2], uuidBytes[3],
-        uuidBytes[4], uuidBytes[5], uuidBytes[6], uuidBytes[7],
-        uuidBytes[8], uuidBytes[9], uuidBytes[10], uuidBytes[11],
-        uuidBytes[12], uuidBytes[13], uuidBytes[14], uuidBytes[15]
-      ))
+  static func generateDeterministicID(from relativePath: String) -> UUID {
+    DeterministicID.generate(from: relativePath)
   }
 
-  /// 获取对应的SRT字幕文件URL（与音频文件同目录）
   var srtFileURL: URL? {
     guard let audioURL = resolvedURL() else { return nil }
     return audioURL.deletingPathExtension().appendingPathExtension("srt")

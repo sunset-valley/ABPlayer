@@ -37,31 +37,35 @@ final class ImportService {
       try librarySettings.ensureLibraryDirectoryExists()
       
       let fileURL: URL
+      let targetFolder: Folder?
       if isInLibrary(url) {
         fileURL = url
+        let folderRelativePath = folderRelativePath(for: fileURL)
+        targetFolder = findOrCreateFolder(relativePath: folderRelativePath)
       } else {
         let destinationDirectory = currentFolderLibraryURL(currentFolder) ?? librarySettings.libraryDirectoryURL
         fileURL = try copyItemToLibrary(from: url, destinationDirectory: destinationDirectory)
+        targetFolder = currentFolder
       }
       
+      let relativePath = calculateRelativePath(for: fileURL)
       let bookmarkData = try fileURL.bookmarkData(
         options: [.withSecurityScope],
         includingResourceValuesForKeys: nil,
         relativeTo: nil
       )
       
-      let displayName = fileURL.lastPathComponent
-      let deterministicID = ABFile.generateDeterministicID(from: bookmarkData)
-      
+      let deterministicID = ABFile.generateDeterministicID(from: relativePath)
       let audioFile = ABFile(
         id: deterministicID,
-        displayName: displayName,
+        displayName: fileURL.lastPathComponent,
         bookmarkData: bookmarkData,
-        folder: currentFolder
+        folder: targetFolder,
+        relativePath: relativePath
       )
       
       modelContext.insert(audioFile)
-      currentFolder?.audioFiles.append(audioFile)
+      targetFolder?.audioFiles.append(audioFile)
     } catch {
       importErrorMessage = "Failed to import file: \(error.localizedDescription)"
     }
@@ -72,7 +76,15 @@ final class ImportService {
       let importer = FolderImporter(modelContext: modelContext, librarySettings: librarySettings)
       
       do {
-        _ = try await importer.syncFolder(at: url, parentFolder: currentFolder)
+        let targetParent: Folder?
+        if isInLibrary(url) {
+          let folderRelativePath = calculateRelativePath(for: url)
+          let parentRelativePath = parentRelativePath(for: folderRelativePath)
+          targetParent = findOrCreateFolder(relativePath: parentRelativePath)
+        } else {
+          targetParent = currentFolder
+        }
+        _ = try await importer.syncFolder(at: url, parentFolder: targetParent)
       } catch {
         await MainActor.run {
           importErrorMessage = "Failed to import folder: \(error.localizedDescription)"
@@ -124,6 +136,64 @@ final class ImportService {
     let relativePath = currentFolder.relativePath
     guard !relativePath.isEmpty else { return nil }
     return librarySettings.libraryDirectoryURL.appendingPathComponent(relativePath)
+  }
+  
+  private func calculateRelativePath(for fileURL: URL) -> String {
+    let libraryURL = librarySettings.libraryDirectoryURL.standardizedFileURL
+    let standardizedFileURL = fileURL.standardizedFileURL
+    return String(
+      standardizedFileURL.path
+        .dropFirst(libraryURL.path.count)
+        .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    )
+  }
+  
+  private func folderRelativePath(for fileURL: URL) -> String {
+    let relativePath = calculateRelativePath(for: fileURL)
+    return parentRelativePath(for: relativePath)
+  }
+  
+  private func parentRelativePath(for relativePath: String) -> String {
+    let parentPath = (relativePath as NSString).deletingLastPathComponent
+    return parentPath == "." ? "" : parentPath
+  }
+  
+  private func findOrCreateFolder(relativePath: String) -> Folder? {
+    guard !relativePath.isEmpty else { return nil }
+    let components = relativePath.split(separator: "/").map(String.init)
+    var parent: Folder?
+    var currentPath = ""
+    
+    for component in components {
+      currentPath = currentPath.isEmpty ? component : "\(currentPath)/\(component)"
+      let folderId = Folder.generateDeterministicID(from: currentPath)
+      let descriptor = FetchDescriptor<Folder>(
+        predicate: #Predicate<Folder> { $0.id == folderId }
+      )
+      
+      if let existing = try? modelContext.fetch(descriptor).first {
+        if let parent, existing.parent?.id != parent.id {
+          existing.parent = parent
+          if !parent.subfolders.contains(where: { $0.id == existing.id }) {
+            parent.subfolders.append(existing)
+          }
+        }
+        parent = existing
+      } else {
+        let folder = Folder(
+          id: folderId,
+          name: component,
+          relativePath: currentPath,
+          createdAt: Date(),
+          parent: parent
+        )
+        modelContext.insert(folder)
+        parent?.subfolders.append(folder)
+        parent = folder
+      }
+    }
+    
+    return parent
   }
   
   private func uniqueURL(for url: URL) -> URL {

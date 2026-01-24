@@ -121,36 +121,20 @@ final class DeletionService {
   
   func isSelectedFileInFolder(_ folder: Folder, selectedFile: ABFile?) -> Bool {
     guard let selectedFile else { return false }
+    guard !selectedFile.relativePath.isEmpty else { return false }
     
-    if folder.audioFiles.contains(where: { $0.id == selectedFile.id }) {
-      return true
-    }
-    
-    for subfolder in folder.subfolders {
-      if isSelectedFileInFolder(subfolder, selectedFile: selectedFile) {
-        return true
-      }
-    }
-    
-    return false
+    let folderPath = folder.relativePath.isEmpty ? "" : folder.relativePath + "/"
+    return selectedFile.relativePath.hasPrefix(folderPath)
   }
   
   private func isCurrentFileInFolder(_ folder: Folder) -> Bool {
     guard let currentFile = playerManager.currentFile else {
       return false
     }
+    guard !currentFile.relativePath.isEmpty else { return false }
     
-    if folder.audioFiles.contains(where: { $0.id == currentFile.id }) {
-      return true
-    }
-    
-    for subfolder in folder.subfolders {
-      if isCurrentFileInFolder(subfolder) {
-        return true
-      }
-    }
-    
-    return false
+    let folderPath = folder.relativePath.isEmpty ? "" : folder.relativePath + "/"
+    return currentFile.relativePath.hasPrefix(folderPath)
   }
   
   private func deleteFolderContents(

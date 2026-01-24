@@ -107,6 +107,7 @@ final class FolderImporter {
       try await processAudioFile(
         at: audioURL,
         folder: folder,
+        relativePath: relativePath,
         subtitleFiles: subtitleFiles,
         pdfFiles: pdfFiles
       )
@@ -121,12 +122,10 @@ final class FolderImporter {
     return folder
   }
 
-  /// 查找或创建文件夹
   private func findOrCreateFolder(at url: URL, relativePath: String) -> Folder {
     let name = url.lastPathComponent
-    let folderId = Folder.generateDeterministicID(from: url)
+    let folderId = Folder.generateDeterministicID(from: relativePath)
 
-    // 尝试查找已有记录
     let descriptor = FetchDescriptor<Folder>(
       predicate: #Predicate<Folder> { $0.id == folderId }
     )
@@ -148,44 +147,45 @@ final class FolderImporter {
 
   // MARK: - Audio File Handling
 
-  /// 处理音频文件（Insert-or-Update）
   private func processAudioFile(
     at url: URL,
     folder: Folder,
+    relativePath: String,
     subtitleFiles: [URL],
     pdfFiles: [URL]
   ) async throws {
+    let fileRelativePath = "\(relativePath)/\(url.lastPathComponent)"
+    let deterministicID = ABFile.generateDeterministicID(from: fileRelativePath)
+    
     let bookmarkData = try url.bookmarkData(
       options: [.withSecurityScope],
       includingResourceValuesForKeys: nil,
       relativeTo: nil
     )
 
-    let deterministicID = ABFile.generateDeterministicID(from: bookmarkData)
-
-    // 尝试查找已有记录
     let descriptor = FetchDescriptor<ABFile>(
       predicate: #Predicate<ABFile> { $0.id == deterministicID }
     )
 
     let audioFile: ABFile
+    
     if let existing = try? modelContext.fetch(descriptor).first {
       audioFile = existing
-      // 更新文件夹关联（如果需要）
       if audioFile.folder?.id != folder.id {
         audioFile.folder = folder
         if !folder.audioFiles.contains(where: { $0.id == audioFile.id }) {
           folder.audioFiles.append(audioFile)
         }
       }
+      audioFile.relativePath = fileRelativePath
     } else {
-      // 创建新记录
       audioFile = ABFile(
         id: deterministicID,
         displayName: url.lastPathComponent,
         bookmarkData: bookmarkData,
         createdAt: getFileCreationDate(from: url),
-        folder: folder
+        folder: folder,
+        relativePath: fileRelativePath
       )
       modelContext.insert(audioFile)
       folder.audioFiles.append(audioFile)
