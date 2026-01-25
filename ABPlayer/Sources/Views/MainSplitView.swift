@@ -127,6 +127,11 @@ public struct MainSplitView: View {
         playerManager.playbackQueue.updateQueue([])
       }
     }
+    .onChange(of: folderNavigationViewModel?.selectedFile?.isVideo) { _, isVideo in
+      if let isVideo {
+        mainSplitViewModel.switchMediaType(to: isVideo ? .video : .audio)
+      }
+    }
     #if os(macOS)
       .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification))
       { _ in
