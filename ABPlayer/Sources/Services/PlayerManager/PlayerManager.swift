@@ -19,18 +19,7 @@ final class PlayerManager {
   private var loadingFileID: UUID?
 
   var currentFile: ABFile?
-  var selectedFile: ABFile?
   var sessionTracker: SessionTracker?
-  
-  var lastSelectedAudioFileID: String? {
-    get { UserDefaults.standard.string(forKey: "lastSelectedAudioFileID") }
-    set { UserDefaults.standard.set(newValue, forKey: "lastSelectedAudioFileID") }
-  }
-  
-  var lastFolderID: String? {
-    get { UserDefaults.standard.string(forKey: "lastFolderID") }
-    set { UserDefaults.standard.set(newValue, forKey: "lastFolderID") }
-  }
 
   var avPlayer: AVPlayer? {
     get async { await _engine.currentPlayer }
@@ -96,12 +85,18 @@ final class PlayerManager {
   // MARK: - Public API
 
   func load(audioFile: ABFile, fromStart: Bool = false) async {
+    guard audioFile.isBookmarkValid else {
+      Logger.audio.error("Load aborted: Bookmark invalid or file missing for \(audioFile.displayName)")
+      return
+    }
+
     if let cached = audioFile.cachedDuration, cached > 0 {
       duration = cached
     }
 
     let fileID = audioFile.id
     loadingFileID = fileID
+    audioFile.loadError = nil
 
     currentFile = audioFile
     currentTime = 0
@@ -169,7 +164,8 @@ final class PlayerManager {
       await _engine.setVolume(volume)
     } catch {
       if loadingFileID == fileID {
-        assertionFailure("Failed to load audio file: \(error)")
+        audioFile.loadError = error.localizedDescription
+        Logger.audio.error("Failed to load audio file: \(error, privacy: .public)")
       }
     }
   }
@@ -185,7 +181,6 @@ final class PlayerManager {
       let success = await _engine.play()
       if success {
         self.isPlaying = true
-        self.sessionTracker?.startSessionIfNeeded()
         if let file = self.currentFile {
           if file.playbackRecord == nil {
             file.playbackRecord = PlaybackRecord(audioFile: file)
@@ -253,7 +248,6 @@ final class PlayerManager {
       Task { [weak self] in
         guard let self else { return }
         await _engine.syncPlayState()
-        self.sessionTracker?.startSessionIfNeeded()
         if let file = self.currentFile {
           if file.playbackRecord == nil {
             file.playbackRecord = PlaybackRecord(audioFile: file)
@@ -328,7 +322,6 @@ final class PlayerManager {
     self.isPlaying = isPlaying
 
     if isPlaying {
-      sessionTracker?.startSessionIfNeeded()
       if let file = currentFile {
         if file.playbackRecord == nil {
           file.playbackRecord = PlaybackRecord(audioFile: file)
@@ -370,9 +363,6 @@ final class PlayerManager {
     fromStart: Bool = false,
     debounce: Bool = true
   ) async {
-    lastSelectedAudioFileID = file.id.uuidString
-    lastFolderID = file.folder?.id.uuidString
-
     playbackQueue.setCurrentFile(file)
 
     if currentFile?.id == file.id,
@@ -382,7 +372,6 @@ final class PlayerManager {
       return
     }
 
-    selectedFile = file
 
     loadAudioTask?.cancel()
     if debounce {

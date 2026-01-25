@@ -1,3 +1,24 @@
+## [0.2.9.61] - 2026-01-24
+
+### Features
+- implement managed media library system
+- handle file load errors and add session reset
+
+### Bug Fixes
+- force UI refresh after folder rescan by saving context
+
+### Improvements
+- move SortingUtility to Utils folder
+- support in-place import and use relative paths for IDs
+- extract services from FolderNavigationViewModel
+- switch to MainActor and use absolute paths for folder IDs
+- move file load error tracking to ABFile model
+
+### Chores
+- replace hardcoded selection color with asset
+- update business logic tests for PlayerManager and circular queue
+
+
 ## [0.2.9.60] - 2026-01-20
 
 ### Features

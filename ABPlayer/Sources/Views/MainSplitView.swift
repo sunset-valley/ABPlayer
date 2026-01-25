@@ -3,16 +3,35 @@ import OSLog
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
+import Observation
 
 #if os(macOS)
   import AppKit
 #endif
 
+@MainActor
 public struct MainSplitView: View {
+  public enum ImportType {
+    case file
+    case folder
+    
+    var allowedContentTypes: [UTType] {
+      switch self {
+      case .file:
+        return [.audio, .movie]
+      case .folder:
+        return [.folder]
+      }
+    }
+  }
+  
   @Environment(PlayerManager.self) private var playerManager: PlayerManager
   @Environment(SessionTracker.self) private var sessionTracker: SessionTracker
+  @Environment(LibrarySettings.self) private var librarySettings
   @Environment(\.modelContext) private var modelContext
   @Environment(\.openURL) private var openURL
+
+  @State private var folderNavigationViewModel: FolderNavigationViewModel?
 
   @Query(sort: \ABFile.createdAt, order: .forward)
   private var allAudioFiles: [ABFile]
@@ -20,11 +39,6 @@ public struct MainSplitView: View {
   @Query(sort: \Folder.name)
   private var allFolders: [Folder]
 
-  @State private var currentFolder: Folder?
-  @State private var navigationPath: [Folder] = []
-  @State private var isImportingFile: Bool = false
-  @State private var isImportingFolder: Bool = false
-  @State private var importErrorMessage: String?
   @State private var isClearingData: Bool = false
 
   public init() {}
@@ -34,14 +48,8 @@ public struct MainSplitView: View {
       sidebar
         .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 400)
         .background(Color.asset.bgPrimary)
-        .fileImporter(
-          isPresented: $isImportingFile,
-          allowedContentTypes: [UTType.audio, UTType.movie],
-          allowsMultipleSelection: false,
-          onCompletion: handleFileImportResult
-        )
     } detail: {
-      if let selectedFile = playerManager.selectedFile {
+      if let selectedFile = folderNavigationViewModel?.selectedFile {
         if selectedFile.isVideo {
           VideoPlayerView(audioFile: selectedFile)
         } else {
@@ -53,22 +61,34 @@ public struct MainSplitView: View {
     }
     .frame(minWidth: 1000, minHeight: 600)
     .fileImporter(
-      isPresented: $isImportingFolder,
-      allowedContentTypes: [UTType.folder],
+      isPresented: Binding(
+        get: { folderNavigationViewModel?.presetnImportType != nil },
+        set: { if !$0 { folderNavigationViewModel?.presetnImportType = nil } }
+      ),
+      allowedContentTypes: folderNavigationViewModel?.importType?.allowedContentTypes ?? [],
       allowsMultipleSelection: false,
-      onCompletion: handleFolderImportResult
+      onCompletion: { result in
+        folderNavigationViewModel?.handleImportResult(result)
+      }
     )
     .onAppear {
       sessionTracker.setModelContainer(modelContext.container)
       playerManager.sessionTracker = sessionTracker
+      if folderNavigationViewModel == nil {
+        folderNavigationViewModel = FolderNavigationViewModel(
+          modelContext: modelContext,
+          playerManager: playerManager,
+          librarySettings: librarySettings
+        )
+      }
       restoreLastSelectionIfNeeded()
       setupPlaybackEndedHandler()
     }
     .task(id: allAudioFiles.map(\.id)) {
       restoreLastSelectionIfNeeded()
     }
-    .onChange(of: currentFolder?.id, initial: true) { _, _ in
-      if let folder = currentFolder {
+    .onChange(of: folderNavigationViewModel?.currentFolder?.id, initial: true) { _, _ in
+      if let folder = folderNavigationViewModel?.currentFolder {
         playerManager.playbackQueue.updateQueue(folder.sortedAudioFiles)
       } else {
         playerManager.playbackQueue.updateQueue([])
@@ -83,11 +103,11 @@ public struct MainSplitView: View {
     #endif
     .alert(
       "Import Failed",
-      isPresented: .constant(importErrorMessage != nil),
-      presenting: importErrorMessage
+      isPresented: .constant(folderNavigationViewModel?.importErrorMessage != nil),
+      presenting: folderNavigationViewModel?.importErrorMessage
     ) { _ in
       Button("OK", role: .cancel) {
-        importErrorMessage = nil
+        folderNavigationViewModel?.importErrorMessage = nil
       }
     } message: { message in
       Text(message)
@@ -97,16 +117,13 @@ public struct MainSplitView: View {
   // MARK: - Sidebar
 
   private var sidebar: some View {
-    @Bindable var playerManager = playerManager
     return Group {
       if isClearingData {
         ProgressView("Clearing...")
           .frame(maxWidth: .infinity, maxHeight: .infinity)
-      } else {
+      } else if let folderNavigationViewModel {
         FolderNavigationView(
-          selectedFile: $playerManager.selectedFile,
-          currentFolder: $currentFolder,
-          navigationPath: $navigationPath,
+          viewModel: folderNavigationViewModel,
           onSelectFile: { file in await selectFile(file) }
         )
       }
@@ -115,13 +132,15 @@ public struct MainSplitView: View {
       ToolbarItemGroup(placement: .primaryAction) {
         Menu {
           Button {
-            isImportingFile = true
+            folderNavigationViewModel?.importType = .file
+            folderNavigationViewModel?.presetnImportType = .file
           } label: {
             Label("Import Media File", systemImage: "tray.and.arrow.down")
           }
 
           Button {
-            isImportingFolder = true
+            folderNavigationViewModel?.importType = .folder
+            folderNavigationViewModel?.presetnImportType = .folder
           } label: {
             Label("Import Folder", systemImage: "folder.badge.plus")
           }
@@ -175,78 +194,6 @@ public struct MainSplitView: View {
     Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
   }
 
-  // MARK: - Import Handlers
-
-  private func handleFileImportResult(_ result: Result<[URL], Error>) {
-    switch result {
-    case .failure(let error):
-      importErrorMessage = error.localizedDescription
-    case .success(let urls):
-      guard let url = urls.first else { return }
-      addAudioFile(from: url)
-    }
-  }
-
-  private func handleFolderImportResult(_ result: Result<[URL], Error>) {
-    switch result {
-    case .failure(let error):
-      importErrorMessage = error.localizedDescription
-    case .success(let urls):
-      guard let url = urls.first else { return }
-      importFolder(from: url)
-    }
-  }
-
-  private func addAudioFile(from url: URL) {
-    do {
-      let bookmarkData = try url.bookmarkData(
-        options: [.withSecurityScope],
-        includingResourceValuesForKeys: nil,
-        relativeTo: nil
-      )
-
-      let displayName = url.lastPathComponent
-      let deterministicID = ABFile.generateDeterministicID(from: bookmarkData)
-
-      let audioFile = ABFile(
-        id: deterministicID,
-        displayName: displayName,
-        bookmarkData: bookmarkData,
-        folder: currentFolder
-      )
-
-      modelContext.insert(audioFile)
-      currentFolder?.audioFiles.append(audioFile)
-      Task { await selectFile(audioFile) }
-    } catch {
-      importErrorMessage = "Failed to import file: \(error.localizedDescription)"
-    }
-  }
-
-  private func importFolder(from url: URL) {
-    Task {
-      let importer = FolderImporter(modelContainer: modelContext.container)
-
-      do {
-        if let folderID = try await importer.syncFolder(at: url) {
-          // Select first audio file if available
-          await MainActor.run {
-            if let folder = modelContext.model(for: folderID) as? Folder,
-               let firstFile = folder.audioFiles.first {
-              Task {
-                await selectFile(firstFile)
-              }
-            }
-          }
-        }
-      } catch {
-        await MainActor.run {
-          importErrorMessage = "Failed to import folder: \(error.localizedDescription)"
-        }
-      }
-    }
-  }
-
   // MARK: - Selection
 
   private func selectFile(_ file: ABFile, fromStart: Bool = false, debounce: Bool = true) async {
@@ -258,8 +205,11 @@ public struct MainSplitView: View {
   }
 
   private func restoreLastSelectionIfNeeded() {
-    if currentFolder == nil, navigationPath.isEmpty,
-      let lastFolderID = playerManager.lastFolderID,
+    guard let folderNavigationViewModel else { return }
+    guard !folderNavigationViewModel.navigationPath.isEmpty else { return }
+
+    if folderNavigationViewModel.currentFolder == nil, folderNavigationViewModel.navigationPath.isEmpty,
+      let lastFolderID = folderNavigationViewModel.lastFolderID,
       let folderUUID = UUID(uuidString: lastFolderID),
       let folder = allFolders.first(where: { $0.id == folderUUID })
     {
@@ -269,15 +219,15 @@ public struct MainSplitView: View {
         path.insert(f, at: 0)
         current = f.parent
       }
-      navigationPath = path
-      currentFolder = folder
+      folderNavigationViewModel.navigationPath = path
+      folderNavigationViewModel.currentFolder = folder
     }
 
-    guard playerManager.selectedFile == nil else {
+    guard folderNavigationViewModel.selectedFile == nil else {
       if let currentFile = playerManager.currentFile,
         let matchedFile = allAudioFiles.first(where: { $0.id == currentFile.id })
       {
-        playerManager.selectedFile = matchedFile
+        folderNavigationViewModel.selectedFile = matchedFile
         playerManager.currentFile = matchedFile
       }
       return
@@ -286,19 +236,23 @@ public struct MainSplitView: View {
     if let currentFile = playerManager.currentFile,
       let matchedFile = allAudioFiles.first(where: { $0.id == currentFile.id })
     {
-      playerManager.selectedFile = matchedFile
+      folderNavigationViewModel.selectedFile = matchedFile
       playerManager.currentFile = matchedFile
       return
     }
 
-    guard let lastSelectedAudioFileID = playerManager.lastSelectedAudioFileID,
-      let lastID = UUID(uuidString: lastSelectedAudioFileID),
-      let file = allAudioFiles.first(where: { $0.id == lastID })
-    else {
+    if let lastSelectedAudioFileID = folderNavigationViewModel.lastSelectedAudioFileID,
+       let lastID = UUID(uuidString: lastSelectedAudioFileID),
+       let file = allAudioFiles.first(where: { $0.id == lastID })
+    {
+      Task { await selectFile(file) }
       return
     }
 
-    Task { await selectFile(file) }
+    if let folder = folderNavigationViewModel.currentFolder,
+       let firstFile = folder.audioFiles.first {
+      _ = firstFile
+    }
   }
 
   // MARK: - Playback Loop Handling
@@ -331,9 +285,9 @@ public struct MainSplitView: View {
       }
 
       // Step 2: Clear UI state and player references immediately
-      playerManager.selectedFile = nil
-      currentFolder = nil
-      navigationPath = []
+      folderNavigationViewModel?.selectedFile = nil
+      folderNavigationViewModel?.currentFolder = nil
+      folderNavigationViewModel?.navigationPath = []
       playerManager.currentFile = nil
 
       // Step 3: Delete entities in correct order to handle relationship constraints
@@ -365,7 +319,7 @@ public struct MainSplitView: View {
       // Step 4: Save all deletions
       try modelContext.save()
     } catch {
-      importErrorMessage = "Failed to clear data: \(error.localizedDescription)"
+      folderNavigationViewModel?.importErrorMessage = "Failed to clear data: \(error.localizedDescription)"
     }
   }
 

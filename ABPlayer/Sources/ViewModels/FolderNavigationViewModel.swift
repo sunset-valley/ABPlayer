@@ -8,106 +8,114 @@ final class FolderNavigationViewModel {
   private let modelContext: ModelContext
   private let playerManager: PlayerManager
   
-  // MARK: - State Properties
-  
+  private let navigationService: NavigationService
+  private let selectionService: SelectionStateService
+  private let deletionService: DeletionService
+  private let importService: ImportService
+
   var sortOrder: SortOrder = .nameAZ
-  var isRescanningFolder = false
-  var selection: SelectionItem?
   var hovering: SelectionItem?
   var pressing: SelectionItem?
   
-  // MARK: - Initialization
+  var importType: MainSplitView.ImportType?
+  var presetnImportType: MainSplitView.ImportType?
   
-  init(modelContext: ModelContext, playerManager: PlayerManager) {
-    self.modelContext = modelContext
-    self.playerManager = playerManager
+  var currentFolder: Folder? {
+    get { navigationService.currentFolder }
+    set { navigationService.currentFolder = newValue }
   }
   
-  // MARK: - Computed Properties for Sorting
+  var navigationPath: [Folder] {
+    get { navigationService.navigationPath }
+    set { navigationService.navigationPath = newValue }
+  }
   
-  /// Extracts the leading number from a filename for number-based sorting
-  /// Returns Int.max if the filename doesn't start with a number
-  private func extractLeadingNumber(_ name: String) -> Int {
-    let digits = name.prefix(while: { $0.isNumber })
-    return Int(digits) ?? Int.max
+  var selectedFile: ABFile? {
+    get { selectionService.selectedFile }
+    set { selectionService.selectedFile = newValue }
+  }
+  
+  var selection: SelectionItem? {
+    get { selectionService.selection }
+    set { selectionService.selection = newValue }
+  }
+  
+  var lastSelectedAudioFileID: String? {
+    get { selectionService.lastSelectedAudioFileID }
+    set { selectionService.lastSelectedAudioFileID = newValue }
+  }
+  
+  var lastFolderID: String? {
+    get { selectionService.lastFolderID }
+    set { selectionService.lastFolderID = newValue }
+  }
+  
+  var lastSelectionItemID: String? {
+    get { selectionService.lastSelectionItemID }
+    set { selectionService.lastSelectionItemID = newValue }
+  }
+  
+  var importErrorMessage: String? {
+    get { importService.importErrorMessage }
+    set { importService.importErrorMessage = newValue }
+  }
+
+  init(
+    modelContext: ModelContext,
+    playerManager: PlayerManager,
+    librarySettings: LibrarySettings,
+    selectedFile: ABFile? = nil
+  ) {
+    self.modelContext = modelContext
+    self.playerManager = playerManager
+    
+    self.navigationService = NavigationService()
+    self.selectionService = SelectionStateService()
+    self.deletionService = DeletionService(
+      modelContext: modelContext,
+      playerManager: playerManager,
+      librarySettings: librarySettings
+    )
+    self.importService = ImportService(
+      modelContext: modelContext,
+      librarySettings: librarySettings
+    )
+    
+    self.selectionService.selectedFile = selectedFile
   }
   
   func sortedFolders(_ folders: [Folder]) -> [Folder] {
-    switch sortOrder {
-    case .nameAZ:
-      return folders.sorted { $0.name < $1.name }
-    case .nameZA:
-      return folders.sorted { $0.name > $1.name }
-    case .numberAsc:
-      return folders.sorted { extractLeadingNumber($0.name) < extractLeadingNumber($1.name) }
-    case .numberDesc:
-      return folders.sorted { extractLeadingNumber($0.name) > extractLeadingNumber($1.name) }
-    case .dateCreatedNewestFirst:
-      return folders.sorted { $0.createdAt > $1.createdAt }
-    case .dateCreatedOldestFirst:
-      return folders.sorted { $0.createdAt < $1.createdAt }
-    }
+    SortingUtility.sortFolders(folders, by: sortOrder)
   }
   
   func sortedAudioFiles(_ files: [ABFile]) -> [ABFile] {
-    switch sortOrder {
-    case .nameAZ:
-      return files.sorted { $0.displayName < $1.displayName }
-    case .nameZA:
-      return files.sorted { $0.displayName > $1.displayName }
-    case .numberAsc:
-      return files.sorted {
-        extractLeadingNumber($0.displayName) < extractLeadingNumber($1.displayName)
-      }
-    case .numberDesc:
-      return files.sorted {
-        extractLeadingNumber($0.displayName) > extractLeadingNumber($1.displayName)
-      }
-    case .dateCreatedNewestFirst:
-      return files.sorted { $0.createdAt > $1.createdAt }
-    case .dateCreatedOldestFirst:
-      return files.sorted { $0.createdAt < $1.createdAt }
-    }
+    SortingUtility.sortAudioFiles(files, by: sortOrder)
   }
   
-  // MARK: - Navigation Actions
-  
-  func navigateInto(
-    _ folder: Folder,
-    navigationPath: inout [Folder],
-    currentFolder: inout Folder?
-  ) {
-    navigationPath.append(folder)
-    currentFolder = folder
+  func navigateInto(_ folder: Folder) {
+    navigationService.navigateInto(folder)
   }
   
-  func navigateBack(
-    navigationPath: inout [Folder],
-    currentFolder: inout Folder?
-  ) {
-    guard !navigationPath.isEmpty else { return }
-    navigationPath.removeLast()
-    currentFolder = navigationPath.last
+  func navigateBack() {
+    navigationService.navigateBack()
   }
   
-  func canNavigateBack(navigationPath: [Folder]) -> Bool {
-    !navigationPath.isEmpty
+  func canNavigateBack() -> Bool {
+    navigationService.canNavigateBack()
   }
-  
-  // MARK: - Selection Handling
   
   func handleSelectionChange(
     _ newSelection: SelectionItem?,
-    navigationPath: inout [Folder],
-    currentFolder: inout Folder?,
     onSelectFile: @escaping (ABFile) async -> Void
   ) {
     guard let newSelection else { return }
-    
+
+    selection = newSelection
+
     switch newSelection {
     case .folder(let folder):
-      navigateInto(folder, navigationPath: &navigationPath, currentFolder: &currentFolder)
-      
+      navigateInto(folder)
+
     case .audioFile(let file):
       Task {
         await onSelectFile(file)
@@ -118,161 +126,64 @@ final class FolderNavigationViewModel {
     }
   }
   
-  // MARK: - Rescan Action
-  
-  func rescanCurrentFolder(_ folder: Folder?) {
-    guard let folder else { return }
-    
-    let rootFolder = folder.rootFolder
-    
-    guard let url = try? rootFolder.resolveURL() else {
-      Logger.data.warning("⚠️ No root folder bookmark found")
-      return
-    }
-    
-    isRescanningFolder = true
-    
-    Task {
-      defer {
-        Task { @MainActor in
-          isRescanningFolder = false
-        }
-      }
-      
-      do {
-        let importer = FolderImporter(modelContainer: modelContext.container)
-        _ = try await importer.syncFolder(at: url)
-        Logger.data.info("✅ Successfully rescanned folder: \(rootFolder.name)")
-      } catch {
-        Logger.data.error("❌ Failed to rescan folder: \(error.localizedDescription)")
-      }
-    }
-  }
-  
-  // MARK: - Deletion Actions
-  
   func deleteFolder(
     _ folder: Folder,
-    currentFolder: inout Folder?,
-    selectedFile: inout ABFile?,
-    navigationPath: inout [Folder]
+    deleteFromDisk: Bool = true
   ) {
-    do {
-      try modelContext.save()
-    } catch {
-      Logger.data.error(
-        "⚠️ Failed to save context before folder deletion: \(error.localizedDescription)")
+    var selectedFileRef = selectedFile
+    deletionService.deleteFolder(
+      folder,
+      deleteFromDisk: deleteFromDisk,
+      selectedFile: &selectedFileRef
+    )
+    selectedFile = selectedFileRef
+
+    if deletionService.isSelectedFileInFolder(folder, selectedFile: selectedFile) {
+      selectionService.clearSelection()
     }
-    
-    if isCurrentFileInFolder(folder) {
-      if playerManager.isPlaying {
-        playerManager.togglePlayPause()
-      }
-      playerManager.currentFile = nil
-    }
-    
-    if isSelectedFileInFolder(folder, selectedFile: selectedFile) {
-      selectedFile = nil
-    }
-    
+
     if currentFolder?.id == folder.id {
-      navigateBack(navigationPath: &navigationPath, currentFolder: &currentFolder)
+      navigateBack()
     }
-    
-    for subfolder in folder.subfolders {
-      deleteFolder(
-        subfolder,
-        currentFolder: &currentFolder,
-        selectedFile: &selectedFile,
-        navigationPath: &navigationPath
-      )
+
+    if lastFolderID == folder.id.uuidString {
+      lastFolderID = nil
     }
-    
-    for audioFile in folder.audioFiles {
-      deleteAudioFile(audioFile, updateSelection: false, checkPlayback: false, selectedFile: &selectedFile)
-    }
-    
-    modelContext.delete(folder)
   }
   
   func deleteAudioFile(
     _ file: ABFile,
+    deleteFromDisk: Bool = true,
     updateSelection: Bool = true,
     checkPlayback: Bool = true,
     selectedFile: inout ABFile?
   ) {
-    if checkPlayback {
-      do {
-        try modelContext.save()
-      } catch {
-        Logger.data.error(
-          "⚠️ Failed to save context before file deletion: \(error.localizedDescription)")
-      }
-    }
-    
-    if checkPlayback && playerManager.isPlaying && playerManager.currentFile?.id == file.id {
-      playerManager.togglePlayPause()
-    }
-    
-    if updateSelection && selectedFile?.id == file.id {
-      selectedFile = nil
-      playerManager.currentFile = nil
-    }
-    
-    for segment in file.segments {
-      modelContext.delete(segment)
-    }
-    
-    if let subtitleFile = file.subtitleFile {
-      modelContext.delete(subtitleFile)
-    }
-    
-    let fileIdString = file.id.uuidString
-    let descriptor = FetchDescriptor<Transcription>(
-      predicate: #Predicate<Transcription> { $0.audioFileId == fileIdString }
+    deletionService.deleteAudioFile(
+      file,
+      deleteFromDisk: deleteFromDisk,
+      updateSelection: updateSelection,
+      checkPlayback: checkPlayback,
+      selectedFile: &selectedFile
     )
-    if let transcriptions = try? modelContext.fetch(descriptor) {
-      for transcription in transcriptions {
-        modelContext.delete(transcription)
-      }
-    }
     
-    modelContext.delete(file)
+    if updateSelection && selectedFile == nil {
+      selectionService.clearSelection()
+    }
   }
   
-  // MARK: - Helper Methods
-  
-  private func isCurrentFileInFolder(_ folder: Folder) -> Bool {
-    guard let currentFile = playerManager.currentFile else {
-      return false
-    }
-    
-    if folder.audioFiles.contains(where: { $0.id == currentFile.id }) {
-      return true
-    }
-    
-    for subfolder in folder.subfolders {
-      if isCurrentFileInFolder(subfolder) {
-        return true
-      }
-    }
-    
-    return false
+  func handleImportResult(_ result: Result<[URL], Error>) {
+    importService.handleImportResult(
+      result,
+      importType: importType,
+      currentFolder: currentFolder
+    )
   }
   
-  private func isSelectedFileInFolder(_ folder: Folder, selectedFile: ABFile?) -> Bool {
-    guard let selectedFile else { return false }
-    
-    if folder.audioFiles.contains(where: { $0.id == selectedFile.id }) {
-      return true
-    }
-    
-    for subfolder in folder.subfolders {
-      if isSelectedFileInFolder(subfolder, selectedFile: selectedFile) {
-        return true
-      }
-    }
-    
-    return false
+  func addAudioFile(from url: URL) {
+    importService.addAudioFile(from: url, currentFolder: currentFolder)
+  }
+  
+  func importFolder(from url: URL) {
+    importService.importFolder(from: url, currentFolder: currentFolder)
   }
 }

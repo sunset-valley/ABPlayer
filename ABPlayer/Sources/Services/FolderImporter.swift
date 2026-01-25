@@ -6,8 +6,15 @@ import UniformTypeIdentifiers
 
 /// Handles recursive folder import with automatic file pairing
 /// Supports idempotent sync operations (safe to call multiple times)
-@ModelActor
-actor FolderImporter {
+@MainActor
+final class FolderImporter {
+  private let modelContext: ModelContext
+  private let librarySettings: LibrarySettings
+
+  init(modelContext: ModelContext, librarySettings: LibrarySettings) {
+    self.modelContext = modelContext
+    self.librarySettings = librarySettings
+  }
 
   /// Supported file extensions
   static let audioExtensions: Set<String> = [
@@ -21,7 +28,7 @@ actor FolderImporter {
   /// 同步文件夹（支持首次导入和重新扫描）
   /// - Parameter url: 根文件夹 URL
   /// - Returns: 同步后的根 Folder ID
-  func syncFolder(at url: URL) async throws -> PersistentIdentifier? {
+  func syncFolder(at url: URL, parentFolder: Folder?) async throws -> PersistentIdentifier? {
     guard url.startAccessingSecurityScopedResource() else {
       throw ImportError.accessDenied
     }
@@ -30,20 +37,19 @@ actor FolderImporter {
       url.stopAccessingSecurityScopedResource()
     }
 
-    // 创建 bookmark 用于后续 rescan
-    let bookmarkData = try url.bookmarkData(
-      options: [.withSecurityScope],
-      includingResourceValuesForKeys: nil,
-      relativeTo: nil
-    )
+    try librarySettings.ensureLibraryDirectoryExists()
 
-    let rootPath = url.lastPathComponent
-    let folder = try await processDirectory(at: url, relativePath: rootPath, parent: nil)
+    let destinationURL: URL
+    if isInLibrary(url) {
+      destinationURL = url
+    } else {
+      let destinationDirectory = folderLibraryURL(for: parentFolder) ?? librarySettings.libraryDirectoryURL
+      destinationURL = try copyItemToLibrary(from: url, destinationDirectory: destinationDirectory)
+    }
 
-    // 仅根文件夹存储 bookmark
-    folder.bookmarkData = bookmarkData
-    
-    // Save context before returning to avoid deinitialization warning
+    let rootPath = destinationURL.lastPathComponent
+    let folder = try await processDirectory(at: destinationURL, relativePath: rootPath, parent: parentFolder)
+
     try modelContext.save()
 
     return folder.persistentModelID
@@ -101,6 +107,7 @@ actor FolderImporter {
       try await processAudioFile(
         at: audioURL,
         folder: folder,
+        relativePath: relativePath,
         subtitleFiles: subtitleFiles,
         pdfFiles: pdfFiles
       )
@@ -115,12 +122,10 @@ actor FolderImporter {
     return folder
   }
 
-  /// 查找或创建文件夹
   private func findOrCreateFolder(at url: URL, relativePath: String) -> Folder {
     let name = url.lastPathComponent
     let folderId = Folder.generateDeterministicID(from: relativePath)
 
-    // 尝试查找已有记录
     let descriptor = FetchDescriptor<Folder>(
       predicate: #Predicate<Folder> { $0.id == folderId }
     )
@@ -142,44 +147,45 @@ actor FolderImporter {
 
   // MARK: - Audio File Handling
 
-  /// 处理音频文件（Insert-or-Update）
   private func processAudioFile(
     at url: URL,
     folder: Folder,
+    relativePath: String,
     subtitleFiles: [URL],
     pdfFiles: [URL]
   ) async throws {
+    let fileRelativePath = "\(relativePath)/\(url.lastPathComponent)"
+    let deterministicID = ABFile.generateDeterministicID(from: fileRelativePath)
+    
     let bookmarkData = try url.bookmarkData(
       options: [.withSecurityScope],
       includingResourceValuesForKeys: nil,
       relativeTo: nil
     )
 
-    let deterministicID = ABFile.generateDeterministicID(from: bookmarkData)
-
-    // 尝试查找已有记录
     let descriptor = FetchDescriptor<ABFile>(
       predicate: #Predicate<ABFile> { $0.id == deterministicID }
     )
 
     let audioFile: ABFile
+    
     if let existing = try? modelContext.fetch(descriptor).first {
       audioFile = existing
-      // 更新文件夹关联（如果需要）
       if audioFile.folder?.id != folder.id {
         audioFile.folder = folder
         if !folder.audioFiles.contains(where: { $0.id == audioFile.id }) {
           folder.audioFiles.append(audioFile)
         }
       }
+      audioFile.relativePath = fileRelativePath
     } else {
-      // 创建新记录
       audioFile = ABFile(
         id: deterministicID,
         displayName: url.lastPathComponent,
         bookmarkData: bookmarkData,
         createdAt: getFileCreationDate(from: url),
-        folder: folder
+        folder: folder,
+        relativePath: fileRelativePath
       )
       modelContext.insert(audioFile)
       folder.audioFiles.append(audioFile)
@@ -315,6 +321,53 @@ actor FolderImporter {
   private func getFileCreationDate(from url: URL) -> Date {
     let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
     return attributes?[.creationDate] as? Date ?? Date()
+  }
+
+  private func copyItemToLibrary(from url: URL, destinationDirectory: URL) throws -> URL {
+    let fileManager = FileManager.default
+
+    var destinationURL = destinationDirectory.appendingPathComponent(url.lastPathComponent)
+    if fileManager.fileExists(atPath: destinationURL.path) {
+      destinationURL = uniqueURL(for: destinationURL)
+    }
+
+    try fileManager.copyItem(at: url, to: destinationURL)
+    return destinationURL
+  }
+
+  private func isInLibrary(_ url: URL) -> Bool {
+    let libraryURL = librarySettings.libraryDirectoryURL.standardizedFileURL
+    let candidateURL = url.standardizedFileURL
+    return candidateURL.path.hasPrefix(libraryURL.path)
+  }
+
+  private func folderLibraryURL(for folder: Folder?) -> URL? {
+    guard let folder else { return nil }
+    let relativePath = folder.relativePath
+    guard !relativePath.isEmpty else { return nil }
+    return librarySettings.libraryDirectoryURL.appendingPathComponent(relativePath)
+  }
+
+  private func uniqueURL(for url: URL) -> URL {
+    let fileManager = FileManager.default
+    let directory = url.deletingLastPathComponent()
+    let baseName = url.deletingPathExtension().lastPathComponent
+    let fileExtension = url.pathExtension
+
+    var counter = 1
+    var candidate = url
+
+    while fileManager.fileExists(atPath: candidate.path) {
+      let newName = "\(baseName) \(counter)"
+      if fileExtension.isEmpty {
+        candidate = directory.appendingPathComponent(newName)
+      } else {
+        candidate = directory.appendingPathComponent(newName).appendingPathExtension(fileExtension)
+      }
+      counter += 1
+    }
+
+    return candidate
   }
 }
 
