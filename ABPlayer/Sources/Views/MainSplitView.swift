@@ -81,7 +81,6 @@ public struct MainSplitView: View {
           librarySettings: librarySettings
         )
       }
-      restoreLastSelectionIfNeeded()
       setupPlaybackEndedHandler()
     }
     .task(id: allAudioFiles.map(\.id)) {
