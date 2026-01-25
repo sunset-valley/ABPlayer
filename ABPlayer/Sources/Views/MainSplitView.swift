@@ -32,6 +32,7 @@ public struct MainSplitView: View {
   @Environment(\.openURL) private var openURL
 
   @State private var folderNavigationViewModel: FolderNavigationViewModel?
+  @State private var mainSplitViewModel = MainSplitViewModel()
 
   @Query(sort: \ABFile.createdAt, order: .forward)
   private var allAudioFiles: [ABFile]
@@ -50,10 +51,43 @@ public struct MainSplitView: View {
         .background(Color.asset.bgPrimary)
     } detail: {
       if let selectedFile = folderNavigationViewModel?.selectedFile {
-        if selectedFile.isVideo {
-          VideoPlayerView(audioFile: selectedFile)
-        } else {
-          AudioPlayerView(audioFile: selectedFile)
+        ThreePanelLayout(
+          isRightVisible: $mainSplitViewModel.showContentPanel,
+          leftColumnWidth: $mainSplitViewModel.playerSectionWidth,
+          draggingLeftColumnWidth: $mainSplitViewModel.draggingWidth,
+          minLeftColumnWidth: mainSplitViewModel.minWidthOfPlayerSection,
+          minRightWidth: mainSplitViewModel.minWidthOfContentPanel,
+          clampLeftColumnWidth: mainSplitViewModel.clampWidth,
+          isBottomLeftVisible: $mainSplitViewModel.showBottomPanel,
+          topLeftHeight: $mainSplitViewModel.topPanelHeight,
+          draggingTopLeftHeight: $mainSplitViewModel.draggingHeight,
+          minTopLeftHeight: mainSplitViewModel.minHeightOfTopPanel,
+          minBottomLeftHeight: mainSplitViewModel.minHeightOfBottomPanel,
+          clampTopLeftHeight: mainSplitViewModel.clampHeight,
+          dividerThickness: mainSplitViewModel.dividerWidth
+        ) {
+          if selectedFile.isVideo {
+            VideoPlayerView(audioFile: selectedFile)
+          } else {
+            AudioPlayerView(audioFile: selectedFile)
+          }
+        } bottomLeft: {
+          ContentPanelView(audioFile: selectedFile)
+        } right: {
+          SegmentsSection(audioFile: selectedFile)
+        }
+        .toolbar {
+          ToolbarItem(placement: .primaryAction) {
+            Button {
+              mainSplitViewModel.showContentPanel.toggle()
+            } label: {
+              Label(
+                mainSplitViewModel.showContentPanel ? "Hide Panel" : "Show Panel",
+                systemImage: mainSplitViewModel.showContentPanel ? "sidebar.trailing" : "sidebar.trailing"
+              )
+            }
+            .help(mainSplitViewModel.showContentPanel ? "Hide content panel" : "Show content panel")
+          }
         }
       } else {
         EmptyStateView()
