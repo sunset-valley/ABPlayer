@@ -17,11 +17,6 @@ struct VideoPlayerView: View {
 
   var body: some View {
     videoPlayerSection
-      .toolbar {
-        ToolbarItem(placement: .automatic) {
-          sessionTimeDisplay
-        }
-      }
       .task {
         viewModel.setup(with: playerManager)
         if playerManager.currentFile?.id != audioFile.id,
@@ -34,31 +29,6 @@ struct VideoPlayerView: View {
 
   // MARK: - Components
   
-  private var sessionTimeDisplay: some View {
-    HStack(spacing: 6) {
-      Image(systemName: "timer")
-        .font(.system(size: 14))
-        .foregroundStyle(.secondary)
-      Text(viewModel.timeString(from: Double(sessionTracker.displaySeconds)))
-        .font(.system(size: 13, weight: .medium, design: .monospaced))
-        .foregroundStyle(.primary)
-
-      Button {
-        sessionTracker.resetSession()
-      } label: {
-        Image(systemName: "arrow.counterclockwise")
-          .font(.system(size: 12))
-          .foregroundStyle(.secondary)
-      }
-      .buttonStyle(.plain)
-      .help("Reset session")
-    }
-    .padding(.horizontal, 10)
-    .padding(.vertical, 5)
-    .background(.ultraThinMaterial, in: Capsule())
-    .help("Session practice time")
-  }
-
   private var videoPlayerSection: some View {
     VStack(alignment: .leading, spacing: 0) {
       // 1. Video Player Area

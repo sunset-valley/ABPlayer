@@ -77,6 +77,9 @@ public struct MainSplitView: View {
           SegmentsSection(audioFile: selectedFile)
         }
         .toolbar {
+          ToolbarItem(placement: .automatic) {
+            sessionTimeDisplay
+          }
           ToolbarItem(placement: .primaryAction) {
             Button {
               mainSplitViewModel.showContentPanel.toggle()
@@ -150,6 +153,45 @@ public struct MainSplitView: View {
     } message: { message in
       Text(message)
     }
+  }
+
+  // MARK: - Components
+
+  private var sessionTimeDisplay: some View {
+    HStack(spacing: 6) {
+      Image(systemName: "timer")
+        .font(.system(size: 14))
+        .foregroundStyle(.secondary)
+      Text(timeString(from: Double(sessionTracker.displaySeconds)))
+        .font(.system(size: 13, weight: .medium, design: .monospaced))
+        .foregroundStyle(.primary)
+
+      Button {
+        sessionTracker.resetSession()
+      } label: {
+        Image(systemName: "arrow.counterclockwise")
+          .font(.system(size: 12))
+          .foregroundStyle(.secondary)
+      }
+      .buttonStyle(.plain)
+      .help("Reset session")
+    }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 5)
+    .background(.ultraThinMaterial, in: Capsule())
+    .help("Session practice time")
+  }
+
+  private func timeString(from value: Double) -> String {
+    guard value.isFinite, value >= 0 else {
+      return "0:00"
+    }
+
+    let totalSeconds = Int(value.rounded())
+    let minutes = totalSeconds / 60
+    let seconds = totalSeconds % 60
+    
+    return String(format: "%d:%02d", minutes, seconds)
   }
 
   // MARK: - Sidebar

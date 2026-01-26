@@ -15,11 +15,6 @@ struct AudioPlayerView: View {
 
   var body: some View {
     topPanel
-      .toolbar {
-        ToolbarItem(placement: .automatic) {
-          sessionTimeDisplay
-        }
-      }
       .onAppear {
         viewModel.setup(with: playerManager)
         if playerManager.currentFile?.id != audioFile.id,
@@ -38,21 +33,6 @@ struct AudioPlayerView: View {
   }
   
   // MARK: - Components
-  
-  private var sessionTimeDisplay: some View {
-    HStack(spacing: 6) {
-      Image(systemName: "timer")
-        .font(.system(size: 14))
-        .foregroundStyle(.secondary)
-      Text(viewModel.timeString(from: Double(sessionTracker.displaySeconds)))
-        .font(.system(size: 13, weight: .medium, design: .monospaced))
-        .foregroundStyle(.primary)
-    }
-    .padding(.horizontal, 10)
-    .padding(.vertical, 5)
-    .background(.ultraThinMaterial, in: Capsule())
-    .help("Session practice time")
-  }
   
   private var topPanel: some View {
     VStack(alignment: .leading, spacing: 16) {
