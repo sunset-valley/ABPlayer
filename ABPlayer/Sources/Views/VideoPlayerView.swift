@@ -46,6 +46,7 @@ struct VideoPlayerView: View {
           }
         }
         .aspectRatio(16 / 9, contentMode: .fit)
+        .frame(maxWidth: .infinity)
         .layoutPriority(1)
         
         if let message = viewModel.hudMessage {
@@ -53,6 +54,7 @@ struct VideoPlayerView: View {
             .font(.title)
             .padding(.all, 16)
             .background(.black.opacity(0.6))
+            .foregroundStyle(.white)
             .cornerRadius(8)
             .id(message)
             .opacity(viewModel.isHudVisible ? 1 : 0)
