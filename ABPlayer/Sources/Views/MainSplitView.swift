@@ -71,10 +71,18 @@ public struct MainSplitView: View {
           } else {
             AudioPlayerView(audioFile: selectedFile)
           }
-        } bottomLeft: {
-          ContentPanelView(audioFile: selectedFile)
+          } bottomLeft: {
+          SwitchablePaneView(
+            title: "Bottom Pane",
+            audioFile: selectedFile,
+            selection: $mainSplitViewModel.bottomLeftPaneContent
+          )
         } right: {
-          SegmentsSection(audioFile: selectedFile)
+          SwitchablePaneView(
+            title: "Right Pane",
+            audioFile: selectedFile,
+            selection: $mainSplitViewModel.rightPaneContent
+          )
         }
         .toolbar {
           ToolbarItem(placement: .automatic) {

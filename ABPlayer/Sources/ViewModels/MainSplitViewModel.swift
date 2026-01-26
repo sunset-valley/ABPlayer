@@ -43,6 +43,19 @@ final class MainSplitViewModel {
     }
   }
 
+  // MARK: - Pane Content State
+  var bottomLeftPaneContent: PaneContent {
+    didSet {
+      UserDefaults.standard.set(bottomLeftPaneContent.rawValue, forKey: userDefaultsKey(for: "BottomLeftPaneContent"))
+    }
+  }
+
+  var rightPaneContent: PaneContent {
+    didSet {
+      UserDefaults.standard.set(rightPaneContent.rawValue, forKey: userDefaultsKey(for: "RightPaneContent"))
+    }
+  }
+
   // MARK: - Constants
   let minWidthOfPlayerSection: CGFloat = 480
   let minWidthOfContentPanel: CGFloat = 300
@@ -56,6 +69,10 @@ final class MainSplitViewModel {
     self.showContentPanel = Self.loadShowContentPanel(for: .audio)
     self.topPanelHeight = Self.loadHeight(for: .audio)
     self.showBottomPanel = Self.loadShowBottomPanel(for: .audio)
+    
+    // Preserve existing behavior as sensible defaults
+    self.bottomLeftPaneContent = Self.loadPaneContent(for: .audio, suffix: "BottomLeftPaneContent", default: .transcription)
+    self.rightPaneContent = Self.loadPaneContent(for: .audio, suffix: "RightPaneContent", default: .segments)
   }
 
   // MARK: - UserDefaults Key Generation
@@ -95,6 +112,20 @@ final class MainSplitViewModel {
     }
     return UserDefaults.standard.bool(forKey: key)
   }
+
+  private static func loadPaneContent(
+    for mediaType: MediaType,
+    suffix: String,
+    default defaultValue: PaneContent
+  ) -> PaneContent {
+    let key = userDefaultsKey(for: suffix, mediaType: mediaType)
+    guard let rawValue = UserDefaults.standard.string(forKey: key),
+          let value = PaneContent(rawValue: rawValue)
+    else {
+      return defaultValue
+    }
+    return value
+  }
   
   // MARK: - Media Type Switching
   func switchMediaType(to mediaType: MediaType) {
@@ -106,6 +137,9 @@ final class MainSplitViewModel {
     showContentPanel = Self.loadShowContentPanel(for: mediaType)
     topPanelHeight = Self.loadHeight(for: mediaType)
     showBottomPanel = Self.loadShowBottomPanel(for: mediaType)
+    
+    bottomLeftPaneContent = Self.loadPaneContent(for: mediaType, suffix: "BottomLeftPaneContent", default: .transcription)
+    rightPaneContent = Self.loadPaneContent(for: mediaType, suffix: "RightPaneContent", default: .segments)
   }
 
   // MARK: - Logic
