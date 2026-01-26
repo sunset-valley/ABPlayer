@@ -317,11 +317,10 @@ final class PlayerManager {
   }
 
   fileprivate func handlePlaybackStateUpdate(_ isPlaying: Bool) {
-    guard self.isPlaying != isPlaying else { return }
-
     self.isPlaying = isPlaying
 
     if isPlaying {
+      sessionTracker?.startSessionIfNeeded()
       if let file = currentFile {
         if file.playbackRecord == nil {
           file.playbackRecord = PlaybackRecord(audioFile: file)

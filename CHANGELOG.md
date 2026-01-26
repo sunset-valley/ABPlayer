@@ -1,3 +1,17 @@
+## [0.2.9.65] - 2026-01-26
+
+### Features
+- add tab removal and dynamic view allocation for MainSplitView
+- implement dynamic view allocation system for main split view
+- add dynamic pane content switching for bottomLeft and right panels
+
+### Bug Fixes
+- sync player state with navigation selection on restore
+
+### Improvements
+- centralize session timer in MainSplitView
+
+
 ## [0.2.9.64] - 2026-01-25
 
 ### Bug Fixes
