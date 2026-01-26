@@ -7,6 +7,9 @@ struct DynamicPaneView<PaneBody: View>: View {
 
   let addOptions: [PaneContent]
   let onAdd: (PaneContent) -> Void
+  let onRemove: (PaneContent) -> Void
+
+  @State private var hoveredTab: PaneContent?
 
   @ViewBuilder let bodyContent: (PaneContent) -> PaneBody
 
@@ -69,14 +72,23 @@ struct DynamicPaneView<PaneBody: View>: View {
     } else {
       HStack(spacing: 6) {
         ForEach(tabs) { tab in
-          Button {
-            selection = tab
-          } label: {
+          HStack(spacing: 6) {
             Text(tab.title)
               .font(.subheadline.weight(.medium))
               .lineLimit(1)
+
+            Button {
+              onRemove(tab)
+            } label: {
+              Image(systemName: "xmark")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 14, height: 14)
+            }
+            .buttonStyle(.plain)
+            .opacity(hoveredTab == tab || selection == tab ? 1 : 0)
+            .help("Remove \(tab.title) from this pane")
           }
-          .buttonStyle(.plain)
           .padding(.horizontal, 10)
           .padding(.vertical, 6)
           .background(selection == tab ? Color.accentColor.opacity(0.18) : Color.clear, in: Capsule())
@@ -84,6 +96,26 @@ struct DynamicPaneView<PaneBody: View>: View {
             Capsule()
               .strokeBorder(.quaternary, lineWidth: 1)
           )
+          .contentShape(Capsule())
+          .onTapGesture {
+            selection = tab
+          }
+#if os(macOS)
+          .onHover { isHovering in
+            if isHovering {
+              hoveredTab = tab
+            } else if hoveredTab == tab {
+              hoveredTab = nil
+            }
+          }
+#endif
+          .contextMenu {
+            Button(role: .destructive) {
+              onRemove(tab)
+            } label: {
+              Label("Remove", systemImage: "xmark")
+            }
+          }
         }
       }
     }

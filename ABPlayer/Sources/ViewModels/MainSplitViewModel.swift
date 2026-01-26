@@ -120,61 +120,43 @@ final class MainSplitViewModel {
     normalizeSelection(for: .right)
   }
 
-  // MARK: - Public Allocation API
-
   func availableContents(for panel: Panel) -> [PaneContent] {
-    let assigned = tabs(for: panel)
-    return PaneContent.allocatableCases.filter { !assigned.contains($0) }
+    let currentTabs = tabs(for: panel)
+    return PaneContent.allocatableCases.filter { !currentTabs.contains($0) }
   }
 
   func move(content: PaneContent, to panel: Panel) {
-    guard content.isAllocatable else { return }
-
-    let isInLeft = leftTabs.contains(content)
-    let isInRight = rightTabs.contains(content)
-
-    // If already in destination panel, just select it.
-    if panel == .bottomLeft, isInLeft {
-      leftSelection = content
-      normalizeSelection(for: .bottomLeft)
-      return
-    }
-    if panel == .right, isInRight {
-      rightSelection = content
-      normalizeSelection(for: .right)
-      return
-    }
-
-    if isInLeft {
-      leftTabs.removeAll { $0 == content }
-      if leftSelection == content {
-        leftSelection = nil
-      }
-    }
-
-    if isInRight {
-      rightTabs.removeAll { $0 == content }
-      if rightSelection == content {
-        rightSelection = nil
-      }
-    }
-
     switch panel {
     case .bottomLeft:
+      remove(content: content, from: .right)
       if !leftTabs.contains(content) {
         leftTabs.append(content)
       }
       leftSelection = content
-
     case .right:
+      remove(content: content, from: .bottomLeft)
       if !rightTabs.contains(content) {
         rightTabs.append(content)
       }
       rightSelection = content
     }
+  }
 
-    normalizeSelection(for: .bottomLeft)
-    normalizeSelection(for: .right)
+  func remove(content: PaneContent, from panel: Panel) {
+    switch panel {
+    case .bottomLeft:
+      leftTabs.removeAll { $0 == content }
+      if leftSelection == content {
+        leftSelection = nil
+      }
+    case .right:
+      rightTabs.removeAll { $0 == content }
+      if rightSelection == content {
+        rightSelection = nil
+      }
+    }
+    
+    normalizeSelection(for: panel)
   }
 
   // MARK: - Media Type Switching
