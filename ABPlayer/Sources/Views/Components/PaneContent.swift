@@ -26,3 +26,8 @@ enum PaneContent: String, CaseIterable, Identifiable {
     }
   }
 }
+
+extension PaneContent {
+  static var allocatableCases: [PaneContent] { [.transcription, .pdf, .segments] }
+  var isAllocatable: Bool { self != .none }
+}

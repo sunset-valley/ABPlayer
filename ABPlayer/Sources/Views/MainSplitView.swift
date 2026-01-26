@@ -72,16 +72,30 @@ public struct MainSplitView: View {
             AudioPlayerView(audioFile: selectedFile)
           }
           } bottomLeft: {
-          SwitchablePaneView(
+          DynamicPaneView(
             title: "Bottom Pane",
-            audioFile: selectedFile,
-            selection: $mainSplitViewModel.bottomLeftPaneContent
+            tabs: mainSplitViewModel.leftTabs,
+            selection: $mainSplitViewModel.leftSelection,
+            addOptions: mainSplitViewModel.availableContents(for: .bottomLeft),
+            onAdd: { content in
+              mainSplitViewModel.move(content: content, to: .bottomLeft)
+            },
+            bodyContent: { content in
+              paneContentView(for: content, audioFile: selectedFile)
+            }
           )
         } right: {
-          SwitchablePaneView(
+          DynamicPaneView(
             title: "Right Pane",
-            audioFile: selectedFile,
-            selection: $mainSplitViewModel.rightPaneContent
+            tabs: mainSplitViewModel.rightTabs,
+            selection: $mainSplitViewModel.rightSelection,
+            addOptions: mainSplitViewModel.availableContents(for: .right),
+            onAdd: { content in
+              mainSplitViewModel.move(content: content, to: .right)
+            },
+            bodyContent: { content in
+              paneContentView(for: content, audioFile: selectedFile)
+            }
           )
         }
         .toolbar {
@@ -160,6 +174,40 @@ public struct MainSplitView: View {
       }
     } message: { message in
       Text(message)
+    }
+  }
+
+  @ViewBuilder
+  private func paneContentView(for content: PaneContent, audioFile: ABFile) -> some View {
+    switch content {
+    case .none:
+      ContentUnavailableView(
+        "Nothing Selected",
+        systemImage: "rectangle.2.swap",
+        description: Text("Use + to add Transcription, PDF, or Segments.")
+      )
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+    case .transcription:
+      TranscriptionView(audioFile: audioFile)
+
+    case .pdf:
+      #if os(macOS)
+      if let pdfData = audioFile.pdfBookmarkData {
+        PDFContentView(pdfBookmarkData: pdfData)
+      } else {
+        PDFEmptyView()
+      }
+      #else
+      ContentUnavailableView(
+        "PDF Not Available",
+        systemImage: "doc.text",
+        description: Text("PDF viewing is only available on macOS")
+      )
+      #endif
+
+    case .segments:
+      SegmentsSection(audioFile: audioFile)
     }
   }
 
