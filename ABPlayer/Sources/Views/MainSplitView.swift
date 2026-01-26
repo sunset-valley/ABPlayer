@@ -286,7 +286,6 @@ public struct MainSplitView: View {
 
   private func restoreLastSelectionIfNeeded() {
     guard let folderNavigationViewModel else { return }
-    guard !folderNavigationViewModel.navigationPath.isEmpty else { return }
 
     if folderNavigationViewModel.currentFolder == nil, folderNavigationViewModel.navigationPath.isEmpty,
       let lastFolderID = folderNavigationViewModel.lastFolderID,
@@ -309,6 +308,13 @@ public struct MainSplitView: View {
       {
         folderNavigationViewModel.selectedFile = matchedFile
         playerManager.currentFile = matchedFile
+        return
+      }
+
+      if let selectedFile = folderNavigationViewModel.selectedFile,
+        playerManager.currentFile?.id != selectedFile.id
+      {
+        Task { await selectFile(selectedFile) }
       }
       return
     }
