@@ -1,3 +1,9 @@
+## [0.2.10.71] - 2026-01-27
+
+### Features
+- display audio file name in video player
+
+
 ## [0.2.10.70] - 2026-01-27
 
 ### Chores
