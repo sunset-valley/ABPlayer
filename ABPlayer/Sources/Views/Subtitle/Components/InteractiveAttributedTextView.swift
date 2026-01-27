@@ -17,11 +17,14 @@ struct InteractiveAttributedTextView: NSViewRepresentable {
   let onRemembered: (String) -> Void
   let onRemove: (String) -> Void
   let onWordRectChanged: (CGRect?) -> Void
+  let lookupWord: String?
+  let lookupIndex: Int?
+  let lookupRequestID: Int
   let onHeightChanged: (CGFloat) -> Void
   let forgotCount: (String) -> Int
   let rememberedCount: (String) -> Int
   let createdAt: (String) -> Date?
-
+  
   func makeNSView(context: Context) -> InteractiveNSTextView {
     let textView = InteractiveNSTextView()
     textView.isEditable = false
@@ -35,24 +38,24 @@ struct InteractiveAttributedTextView: NSViewRepresentable {
     textView.isHorizontallyResizable = false
     textView.autoresizingMask = [.width]
     textView.coordinator = context.coordinator
- 
+    
     textView.setContentHuggingPriority(.defaultHigh, for: .vertical)
     textView.setContentCompressionResistancePriority(.required, for: .vertical)
-
+    
     return textView
   }
-
+  
   func updateNSView(_ textView: InteractiveNSTextView, context: Context) {
     let isFirstRender = context.coordinator.cachedAttributedString == nil
-    let needsContentUpdate = isFirstRender 
-        || context.coordinator.cueID != cueID
-        || context.coordinator.fontSize != fontSize 
-        || context.coordinator.defaultTextColor != defaultTextColor
-        || context.coordinator.words != words
-        || context.coordinator.vocabularyVersion != vocabularyVersion
-
+    let needsContentUpdate = isFirstRender
+    || context.coordinator.cueID != cueID
+    || context.coordinator.fontSize != fontSize
+    || context.coordinator.defaultTextColor != defaultTextColor
+    || context.coordinator.words != words
+    || context.coordinator.vocabularyVersion != vocabularyVersion
+    
     let needsSelectionUpdate = context.coordinator.selectedWordIndex != selectedWordIndex
-
+    
     context.coordinator.difficultyLevelProvider = difficultyLevelProvider
     context.coordinator.vocabularyVersion = vocabularyVersion
     context.coordinator.onWordSelected = onWordSelected
@@ -65,7 +68,16 @@ struct InteractiveAttributedTextView: NSViewRepresentable {
     context.coordinator.rememberedCount = rememberedCount
     context.coordinator.createdAt = createdAt
     context.coordinator.isScrolling = isScrolling
-
+    
+    if context.coordinator.lastLookupRequestID != lookupRequestID {
+      if let lookupWord, let lookupIndex {
+        textView.scheduleAfterViewUpdate {
+          textView.showDefinition(for: lookupWord, wordIndex: lookupIndex)
+        }
+      }
+      context.coordinator.lastLookupRequestID = lookupRequestID
+    }
+    
     if needsContentUpdate {
       if context.coordinator.vocabularyVersion != vocabularyVersion {
         context.coordinator.cachedAttributedString = nil
@@ -81,41 +93,41 @@ struct InteractiveAttributedTextView: NSViewRepresentable {
       textView.textStorage?.setAttributedString(context.coordinator.buildAttributedString())
       textView.invalidateIntrinsicContentSize()
     }
-
+    
     if needsSelectionUpdate {
+      context.coordinator.lastSelectedIndex = context.coordinator.selectedWordIndex
+      context.coordinator.selectedWordIndex = selectedWordIndex
       textView.updateHoverState(
         oldHoveredIndex: context.coordinator.lastHoveredIndex,
         newHoveredIndex: textView.hoveredWordIndex,
         oldSelectedIndex: context.coordinator.lastSelectedIndex,
-        newSelectedIndex: selectedWordIndex
+        newSelectedIndex: context.coordinator.selectedWordIndex
       )
-      context.coordinator.selectedWordIndex = selectedWordIndex
-      context.coordinator.lastSelectedIndex = selectedWordIndex
-      context.coordinator.updateSelectedRect(in: textView)
+      textView.scheduleSelectedRectUpdate()
     } else if !isScrolling {
       if textView.hoveredWordIndex != context.coordinator.lastHoveredIndex {
-         textView.updateHoverState(
+        textView.updateHoverState(
           oldHoveredIndex: context.coordinator.lastHoveredIndex,
           newHoveredIndex: textView.hoveredWordIndex,
           oldSelectedIndex: nil,
           newSelectedIndex: nil
-         )
-         context.coordinator.lastHoveredIndex = textView.hoveredWordIndex
+        )
+        context.coordinator.lastHoveredIndex = textView.hoveredWordIndex
       }
     } else if isScrolling {
-       if context.coordinator.lastHoveredIndex != nil {
-         textView.updateHoverState(
+      if context.coordinator.lastHoveredIndex != nil {
+        textView.updateHoverState(
           oldHoveredIndex: context.coordinator.lastHoveredIndex,
           newHoveredIndex: nil,
           oldSelectedIndex: nil,
           newSelectedIndex: nil
-         )
-         context.coordinator.lastHoveredIndex = nil
-         textView.hoveredWordIndex = nil
-       }
+        )
+        context.coordinator.lastHoveredIndex = nil
+        textView.hoveredWordIndex = nil
+      }
     }
   }
-
+  
   func sizeThatFits(_ proposal: ProposedViewSize, nsView: InteractiveNSTextView, context: Context) -> CGSize? {
     guard let layoutManager = nsView.layoutManager,
           let textContainer = nsView.textContainer else {
@@ -156,7 +168,7 @@ struct InteractiveAttributedTextView: NSViewRepresentable {
     
     return size
   }
-
+  
   func makeCoordinator() -> Coordinator {
     Coordinator(
       cueID: cueID,
@@ -177,9 +189,9 @@ struct InteractiveAttributedTextView: NSViewRepresentable {
       createdAt: createdAt
     )
   }
-
-    @MainActor
-    class Coordinator: NSObject {
+  
+  @MainActor
+  class Coordinator: NSObject {
     var cueID: UUID
     var words: [String]
     var selectedWordIndex: Int?
@@ -197,12 +209,13 @@ struct InteractiveAttributedTextView: NSViewRepresentable {
     var rememberedCount: (String) -> Int
     var createdAt: (String) -> Date?
     var isScrolling = false
-
+    
     var cachedAttributedString: NSAttributedString?
     var cachedVocabularyVersion: Int = 0
     var cachedDefaultTextColor: NSColor?
     var lastSelectedIndex: Int?
     var lastHoveredIndex: Int?
+    var lastLookupRequestID: Int = 0
     var wordRanges: [NSRange] = []
     var cachedWidth: CGFloat?
     var cachedSize: CGSize?
@@ -215,7 +228,7 @@ struct InteractiveAttributedTextView: NSViewRepresentable {
         difficultyLevelProvider: difficultyLevelProvider
       )
     }
-
+    
     init(
       cueID: UUID,
       words: [String],
@@ -251,7 +264,7 @@ struct InteractiveAttributedTextView: NSViewRepresentable {
       self.rememberedCount = rememberedCount
       self.createdAt = createdAt
     }
-
+    
     func updateState(
       cueID: UUID,
       words: [String],
@@ -265,16 +278,16 @@ struct InteractiveAttributedTextView: NSViewRepresentable {
       self.fontSize = fontSize
       self.defaultTextColor = defaultTextColor
     }
-
+    
     func buildAttributedString() -> NSAttributedString {
       if let cached = cachedAttributedString,
          !wordRanges.isEmpty,
          cached.string.split(separator: " ").count == words.count,
          cachedVocabularyVersion == vocabularyVersion,
          cachedDefaultTextColor == defaultTextColor {
-         return cached
+        return cached
       }
-
+      
       cachedDefaultTextColor = defaultTextColor
       cachedVocabularyVersion = vocabularyVersion
       
@@ -288,27 +301,22 @@ struct InteractiveAttributedTextView: NSViewRepresentable {
     func cacheWordFrames(in textView: NSTextView) {
       layoutManager.cacheWordFrames(wordRanges: wordRanges, in: textView)
     }
-
+    
     func baseColorForWord(_ word: String) -> NSColor {
       stringBuilder.colorForWord(word)
     }
-
+    
     @MainActor
     func updateSelectedRect(in textView: NSTextView) {
-      Task { @MainActor in
-        guard let index = selectedWordIndex else {
-          onWordRectChanged(nil)
-          return
-        }
-        
-        if let rect = layoutManager.boundingRect(forWordAt: index, wordRanges: wordRanges, in: textView) {
-          onWordRectChanged(rect)
-        } else {
-          onWordRectChanged(nil)
-        }
+      guard let index = selectedWordIndex else {
+        onWordRectChanged(nil)
+        return
       }
+      
+      let rect = layoutManager.boundingRect(forWordAt: index, wordRanges: wordRanges, in: textView)
+      onWordRectChanged(rect)
     }
-
+    
     @MainActor
     func handleClick(at point: NSPoint, in textView: NSTextView) {
       guard let wordIndex = layoutManager.findWordIndex(at: point, in: textView, wordRanges: wordRanges) else {
@@ -317,7 +325,7 @@ struct InteractiveAttributedTextView: NSViewRepresentable {
       }
       onWordSelected(wordIndex)
     }
-
+    
     @MainActor
     func handleMouseMoved(at point: NSPoint, in textView: NSTextView) -> Int? {
       if isScrolling { return nil }
@@ -331,7 +339,7 @@ class InteractiveNSTextView: NSTextView {
   private var trackingArea: NSTrackingArea?
   var hoveredWordIndex: Int?
   weak var popoverViewController: NSViewController?
-
+  
   override var firstBaselineOffsetFromTop: CGFloat {
     guard let layoutManager = layoutManager,
           let textContainer = textContainer,
@@ -354,12 +362,12 @@ class InteractiveNSTextView: NSTextView {
     
     return textContainerInset.height + firstLineFragmentRect.origin.y + firstLineBaselineOffset
   }
-
+  
   override func updateTrackingAreas() {
     super.updateTrackingAreas()
     
     coordinator?.cacheWordFrames(in: self)
-    coordinator?.updateSelectedRect(in: self)
+    scheduleSelectedRectUpdate()
     
     if let trackingArea = trackingArea {
       removeTrackingArea(trackingArea)
@@ -369,16 +377,16 @@ class InteractiveNSTextView: NSTextView {
     trackingArea = NSTrackingArea(rect: bounds, options: options, owner: self, userInfo: nil)
     addTrackingArea(trackingArea!)
   }
-
+  
   override func mouseDown(with event: NSEvent) {
     let point = convert(event.locationInWindow, from: nil)
     coordinator?.handleClick(at: point, in: self)
   }
-
+  
   override func mouseMoved(with event: NSEvent) {
     let point = convert(event.locationInWindow, from: nil)
     let newHoveredWordIndex = coordinator?.handleMouseMoved(at: point, in: self)
-
+    
     if newHoveredWordIndex != hoveredWordIndex {
       let oldIndex = hoveredWordIndex
       hoveredWordIndex = newHoveredWordIndex
@@ -390,7 +398,7 @@ class InteractiveNSTextView: NSTextView {
       )
     }
   }
-
+  
   override func mouseExited(with event: NSEvent) {
     if hoveredWordIndex != nil {
       let oldIndex = hoveredWordIndex
@@ -403,41 +411,74 @@ class InteractiveNSTextView: NSTextView {
       )
     }
   }
-
+  
   func updateHoverState(oldHoveredIndex: Int?, newHoveredIndex: Int?, oldSelectedIndex: Int?, newSelectedIndex: Int?) {
     guard let textStorage = textStorage, let coordinator = coordinator else { return }
-
+    
     var indicesToUpdate = [oldHoveredIndex, newHoveredIndex].compactMap { $0 }
-
+    
     if let oldIndex = oldSelectedIndex, oldSelectedIndex != newSelectedIndex {
       indicesToUpdate.append(oldIndex)
     }
     if let newIndex = newSelectedIndex, oldSelectedIndex != newSelectedIndex {
       indicesToUpdate.append(newIndex)
     }
-
+    
     let uniqueIndices = Array(Set(indicesToUpdate))
     if uniqueIndices.isEmpty { return }
-
+    
     textStorage.beginEditing()
-
+    
     for wordIndex in uniqueIndices {
-       guard wordIndex < coordinator.wordRanges.count else { continue }
-       let range = coordinator.wordRanges[wordIndex]
-
-       let isHovered = wordIndex == newHoveredIndex
-       let isSelected = wordIndex == newSelectedIndex
-       let isHighlighted = isHovered || isSelected
-
-       let word = coordinator.words[wordIndex]
-       let baseColor = coordinator.baseColorForWord(word)
-       let foregroundColor = isHighlighted ? NSColor.controlAccentColor : baseColor
-       let backgroundColor = isHighlighted ? NSColor.controlAccentColor.withAlphaComponent(0.15) : .clear
-
-       textStorage.addAttribute(.foregroundColor, value: foregroundColor, range: range)
-       textStorage.addAttribute(.backgroundColor, value: backgroundColor, range: range)
+      guard wordIndex < coordinator.wordRanges.count else { continue }
+      let range = coordinator.wordRanges[wordIndex]
+      
+      let isHovered = wordIndex == newHoveredIndex
+      let isSelected = wordIndex == newSelectedIndex
+      let isHighlighted = isHovered || isSelected
+      
+      let word = coordinator.words[wordIndex]
+      let baseColor = coordinator.baseColorForWord(word)
+      let foregroundColor = isHighlighted ? NSColor.controlAccentColor : baseColor
+      let backgroundColor = isHighlighted ? NSColor.controlAccentColor.withAlphaComponent(0.15) : .clear
+      
+      textStorage.addAttribute(.foregroundColor, value: foregroundColor, range: range)
+      textStorage.addAttribute(.backgroundColor, value: backgroundColor, range: range)
     }
-
+    
     textStorage.endEditing()
+  }
+  
+  @MainActor
+  func scheduleSelectedRectUpdate() {
+    scheduleAfterViewUpdate { [weak self] in
+      guard let self else { return }
+      coordinator?.updateSelectedRect(in: self)
+    }
+  }
+  
+  @MainActor
+  func scheduleAfterViewUpdate(_ action: @escaping @MainActor () -> Void) {
+    DispatchQueue.main.async { @MainActor in
+      action()
+    }
+  }
+  
+  @MainActor
+  func showDefinition(for word: String, wordIndex: Int) {
+    let trimmedWord = word.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedWord.isEmpty,
+          let coordinator,
+          wordIndex >= 0,
+          wordIndex < coordinator.wordRanges.count else { return }
+    
+    let range = coordinator.wordRanges[wordIndex]
+    let attributed = NSAttributedString(string: trimmedWord)
+    
+    showDefinition(
+      for: attributed,
+      range: range,
+      options: nil,
+    )
   }
 }
