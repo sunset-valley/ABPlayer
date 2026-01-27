@@ -88,12 +88,9 @@ struct SubtitleCueRow: View {
     .contentShape(Rectangle())
     .onTapGesture {
       guard !isWordInteracting else { return }
+      guard selectedWordIndex == nil else { return }
 
-      if selectedWordIndex == nil {
-        onTap()
-      } else {
-        onWordSelected(selectedWordIndex)
-      }
+      onTap()
     }
     .onHover { hovering in
       withAnimation(.easeInOut(duration: 0.15)) {
@@ -204,6 +201,7 @@ struct SubtitleCueRow: View {
         }
       }
       .onDisappear {
+        guard popoverSourceRect != nil else { return }
         onHidePopover()
       }
   }

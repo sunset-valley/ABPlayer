@@ -23,8 +23,8 @@ struct SubtitleView: View {
                 isActive: cue.id == viewModel.currentCueID,
                 isScrolling: viewModel.scrollState.isUserScrolling,
                 fontSize: fontSize,
-                selectedWordIndex: viewModel.wordSelection.selectedWord?.cueID == cue.id 
-                  ? viewModel.wordSelection.selectedWord?.wordIndex 
+                selectedWordIndex: viewModel.wordSelection.selectedWord?.cueID == cue.id
+                  ? viewModel.wordSelection.selectedWord?.wordIndex
                   : nil,
                 onWordSelected: { wordIndex in
                   viewModel.handleWordSelection(
