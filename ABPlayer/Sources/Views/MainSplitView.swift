@@ -96,6 +96,9 @@ public struct MainSplitView: View {
         mainSplitViewModel.switchMediaType(to: isVideo ? .video : .audio)
       }
     }
+    .onChange(of: playerManager.currentFile?.id) { _, _ in
+      folderNavigationViewModel?.syncSelectedFileWithPlayer(allAudioFiles: allAudioFiles)
+    }
 #if os(macOS)
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification))
     { _ in

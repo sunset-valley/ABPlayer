@@ -68,9 +68,6 @@ struct TranscriptionView: View {
         modelContext: modelContext
       )
     }
-    .onChange(of: audioFile.id) { _, _ in
-      viewModel.resetState()
-    }
   }
 
   // MARK: - Content View

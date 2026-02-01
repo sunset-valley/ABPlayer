@@ -44,6 +44,11 @@ final class TranscriptionViewModel {
     settings: TranscriptionSettings,
     modelContext: ModelContext
   ) {
+    let didChangeFile = self.audioFile?.id != audioFile.id
+    if didChangeFile {
+      resetState()
+    }
+
     self.audioFile = audioFile
     self.transcriptionManager = transcriptionManager
     self.queueManager = queueManager
@@ -57,9 +62,13 @@ final class TranscriptionViewModel {
   }
   
   func resetState() {
+    loadCachedTask?.cancel()
+    loadCachedTask = nil
+
     cachedCues = []
     hasCheckedCache = false
     isLoadingCache = false
+    pauseCountdown = nil
     transcriptionManager?.reset()
   }
   
