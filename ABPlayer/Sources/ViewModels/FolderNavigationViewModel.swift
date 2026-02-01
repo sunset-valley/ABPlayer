@@ -186,4 +186,18 @@ final class FolderNavigationViewModel {
   func importFolder(from url: URL) {
     importService.importFolder(from: url, currentFolder: currentFolder)
   }
+  
+  func syncSelectedFileWithPlayer(allAudioFiles: [ABFile]) {
+    guard let newFileID = playerManager.currentFile?.id else { return }
+    
+    if selectedFile?.id == newFileID {
+      return
+    }
+    
+    guard let matchedFile = allAudioFiles.first(where: { $0.id == newFileID }) else {
+      return
+    }
+    
+    selectedFile = matchedFile
+  }
 }
