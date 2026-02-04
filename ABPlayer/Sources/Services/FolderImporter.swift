@@ -264,12 +264,6 @@ final class FolderImporter {
       audioFile: audioFile
     )
 
-    // 解析并缓存字幕内容
-    if url.startAccessingSecurityScopedResource() {
-      defer { url.stopAccessingSecurityScopedResource() }
-      subtitleFile.cues = (try? SubtitleParser.parse(from: url)) ?? []
-    }
-
     modelContext.insert(subtitleFile)
     audioFile.subtitleFile = subtitleFile
   }

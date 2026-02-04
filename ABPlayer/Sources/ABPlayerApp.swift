@@ -40,6 +40,7 @@ struct ABPlayerApp: App {
   private let transcriptionSettings = TranscriptionSettings()
   private let librarySettings = LibrarySettings()
   private let vocabularyService: VocabularyService
+  private let subtitleLoader = SubtitleLoader()
 
   private let queueManager: TranscriptionQueueManager
   private let updater = SparkleUpdater()
@@ -180,6 +181,7 @@ struct ABPlayerApp: App {
         .environment(librarySettings)
         .environment(queueManager)
         .environment(vocabularyService)
+        .environment(subtitleLoader)
     }
     .defaultSize(width: 1600, height: 900)
     .windowResizability(.contentSize)

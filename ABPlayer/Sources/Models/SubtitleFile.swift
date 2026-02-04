@@ -27,10 +27,6 @@ final class SubtitleFile {
   var createdAt: Date
   var audioFile: ABFile?
 
-  /// Cached parsed cues (stored as JSON)
-  @Attribute(.externalStorage)
-  private var cachedCuesData: Data?
-
   init(
     id: UUID = UUID(),
     displayName: String,
@@ -43,19 +39,6 @@ final class SubtitleFile {
     self.bookmarkData = bookmarkData
     self.createdAt = createdAt
     self.audioFile = audioFile
-  }
-
-  /// Parsed subtitle cues
-  var cues: [SubtitleCue] {
-    get {
-      guard let data = cachedCuesData else {
-        return []
-      }
-      return (try? JSONDecoder().decode([SubtitleCue].self, from: data)) ?? []
-    }
-    set {
-      cachedCuesData = try? JSONEncoder().encode(newValue)
-    }
   }
 }
 

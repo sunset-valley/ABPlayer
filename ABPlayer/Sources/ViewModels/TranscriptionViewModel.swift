@@ -11,6 +11,7 @@ final class TranscriptionViewModel {
   var queueManager: TranscriptionQueueManager?
   var settings: TranscriptionSettings?
   var modelContext: ModelContext?
+  var subtitleLoader: SubtitleLoader?
   
   // MARK: - Data Source
   var audioFile: ABFile?
@@ -42,7 +43,8 @@ final class TranscriptionViewModel {
     transcriptionManager: TranscriptionManager,
     queueManager: TranscriptionQueueManager,
     settings: TranscriptionSettings,
-    modelContext: ModelContext
+    modelContext: ModelContext,
+    subtitleLoader: SubtitleLoader
   ) {
     let didChangeFile = self.audioFile?.id != audioFile.id
     if didChangeFile {
@@ -54,6 +56,7 @@ final class TranscriptionViewModel {
     self.queueManager = queueManager
     self.settings = settings
     self.modelContext = modelContext
+    self.subtitleLoader = subtitleLoader
     
     // Reset state if file changed or not loaded
     if cachedCues.isEmpty && !hasCheckedCache && !isLoadingCache {
@@ -80,7 +83,7 @@ final class TranscriptionViewModel {
   }
   
   func loadCachedTranscription() async {
-    guard let audioFile = audioFile, let modelContext = modelContext else { return }
+    guard let audioFile = audioFile, let subtitleLoader = subtitleLoader else { return }
     
     loadCachedTask?.cancel()
     loadCachedTask = Task {
@@ -91,44 +94,11 @@ final class TranscriptionViewModel {
       try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
       guard !Task.isCancelled else { return }
 
-      // 1. Check SRT file
-      if audioFile.hasTranscriptionRecord
-        || FileManager.default.fileExists(atPath: audioFile.srtFileURL?.path ?? "")
-      {
-        guard !Task.isCancelled else { return }
-        if let srtCues = await loadSRTFile(audioFile: audioFile) {
-          cachedCues = srtCues
-          hasCheckedCache = true
-          return
-        }
-      }
-
-      // 2. Check Database
-      let audioFileId = audioFile.id.uuidString
-      let descriptor = FetchDescriptor<Transcription>(
-        predicate: #Predicate { $0.audioFileId == audioFileId }
-      )
-
-      guard !Task.isCancelled else { return }
-      if let cached = try? modelContext.fetch(descriptor).first {
-        cachedCues = cached.cues
-      }
+      // Load subtitles from file using SubtitleLoader
+      let cues = await subtitleLoader.loadSubtitles(for: audioFile)
+      cachedCues = cues
       hasCheckedCache = true
     }
-  }
-  
-  private func loadSRTFile(audioFile: ABFile) async -> [SubtitleCue]? {
-    guard let srtURL = audioFile.srtFileURL else { return nil }
-
-    // Security-scoped access
-    guard let audioURL = try? resolveURL(from: audioFile.bookmarkData) else { return nil }
-
-    let gotAccess = audioURL.startAccessingSecurityScopedResource()
-    defer { if gotAccess { audioURL.stopAccessingSecurityScopedResource() } }
-
-    return try? await Task.detached {
-      try SubtitleParser.parse(from: srtURL)
-    }.value
   }
   
   func startTranscription() {
