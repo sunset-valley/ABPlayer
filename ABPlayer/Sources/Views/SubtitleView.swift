@@ -18,33 +18,31 @@ struct SubtitleView: View {
         ScrollView {
           LazyVStack(alignment: .leading, spacing: 8) {
             ForEach(cues) { cue in
-              SubtitleCueRow(
-                cue: cue,
-                isActive: cue.id == viewModel.currentCueID,
-                isScrolling: viewModel.scrollState.isUserScrolling,
-                fontSize: fontSize,
-                selectedWordIndex: viewModel.wordSelection.selectedWord?.cueID == cue.id
-                  ? viewModel.wordSelection.selectedWord?.wordIndex
-                  : nil,
-                onWordSelected: { wordIndex in
-                  viewModel.handleWordSelection(
-                    wordIndex: wordIndex,
-                    cueID: cue.id,
-                    isPlaying: playerManager.isPlaying,
-                    onPause: { playerManager.pause() }
-                  )
-                },
-                onHidePopover: {
-                  viewModel.hidePopover()
-                },
-                onTap: {
-                  viewModel.handleCueTap(
-                    cueID: cue.id,
-                    onSeek: { playerManager.seek(to: $0) },
-                    cueStartTime: cue.startTime
-                  )
-                }
-              )
+                SubtitleCueRow(
+                  cue: cue,
+                  isActive: cue.id == viewModel.currentCueID,
+                  isScrolling: viewModel.scrollState.isUserScrolling,
+                  fontSize: fontSize,
+                  selectedWordIndex: viewModel.wordSelection.selectedWord?.cueID == cue.id
+                    ? viewModel.wordSelection.selectedWord?.wordIndex
+                    : nil,
+                  onWordSelected: { wordIndex in
+                    viewModel.handleWordSelection(
+                      wordIndex: wordIndex,
+                      cueID: cue.id,
+                      isPlaying: playerManager.isPlaying,
+                      onPause: { playerManager.pause() },
+                      onPlay: { playerManager.play() }
+                    )
+                  },
+                  onTap: {
+                    viewModel.handleCueTap(
+                      cueID: cue.id,
+                      onSeek: { playerManager.seek(to: $0) },
+                      cueStartTime: cue.startTime
+                    )
+                  }
+                )
               .id(cue.id)
             }
           }
