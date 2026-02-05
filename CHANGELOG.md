@@ -1,3 +1,10 @@
+## [0.2.10.74] - 2026-02-04
+
+### Improvements
+- streamline word selection logic and fix playback restoration
+- load cues on demand via SubtitleLoader
+
+
 ## [0.2.10.73] - 2026-01-31
 
 ### Features
