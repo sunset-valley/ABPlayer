@@ -12,10 +12,6 @@ final class Transcription {
   /// Original audio file name for display
   var audioFileName: String
 
-  /// Cached cues stored as JSON
-  @Attribute(.externalStorage)
-  private var cachedCuesData: Data?
-
   /// Transcription creation date
   var createdAt: Date
 
@@ -28,7 +24,6 @@ final class Transcription {
   init(
     audioFileId: String,
     audioFileName: String,
-    cues: [SubtitleCue],
     modelUsed: String = "distil-large-v3",
     language: String? = nil
   ) {
@@ -38,16 +33,5 @@ final class Transcription {
     self.createdAt = Date()
     self.modelUsed = modelUsed
     self.language = language
-    self.cues = cues
-  }
-
-  var cues: [SubtitleCue] {
-    get {
-      guard let data = cachedCuesData else { return [] }
-      return (try? JSONDecoder().decode([SubtitleCue].self, from: data)) ?? []
-    }
-    set {
-      cachedCuesData = try? JSONEncoder().encode(newValue)
-    }
   }
 }

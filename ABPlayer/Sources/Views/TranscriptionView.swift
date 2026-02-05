@@ -9,6 +9,7 @@ struct TranscriptionView: View {
   @Environment(TranscriptionQueueManager.self) private var queueManager
   @Environment(TranscriptionSettings.self) private var settings
   @Environment(PlayerManager.self) private var playerManager
+  @Environment(SubtitleLoader.self) private var subtitleLoader
   @Environment(\.modelContext) private var modelContext
 
   @State private var viewModel = TranscriptionViewModel()
@@ -65,7 +66,8 @@ struct TranscriptionView: View {
         transcriptionManager: transcriptionManager,
         queueManager: queueManager,
         settings: settings,
-        modelContext: modelContext
+        modelContext: modelContext,
+        subtitleLoader: subtitleLoader
       )
     }
   }

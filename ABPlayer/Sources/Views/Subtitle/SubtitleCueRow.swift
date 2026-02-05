@@ -10,7 +10,6 @@ struct SubtitleCueRow: View {
   let fontSize: Double
   let selectedWordIndex: Int?
   let onWordSelected: (Int?) -> Void
-  let onHidePopover: () -> Void
   let onTap: () -> Void
 
   @State private var isHovered = false
@@ -30,7 +29,6 @@ struct SubtitleCueRow: View {
     fontSize: Double,
     selectedWordIndex: Int?,
     onWordSelected: @escaping (Int?) -> Void,
-    onHidePopover: @escaping () -> Void,
     onTap: @escaping () -> Void
   ) {
     self.cue = cue
@@ -39,7 +37,6 @@ struct SubtitleCueRow: View {
     self.fontSize = fontSize
     self.selectedWordIndex = selectedWordIndex
     self.onWordSelected = onWordSelected
-    self.onHidePopover = onHidePopover
     self.onTap = onTap
     self.words = cue.text.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
   }
@@ -202,7 +199,7 @@ struct SubtitleCueRow: View {
       }
       .onDisappear {
         guard popoverSourceRect != nil else { return }
-        onHidePopover()
+        onWordSelected(nil)
       }
   }
 

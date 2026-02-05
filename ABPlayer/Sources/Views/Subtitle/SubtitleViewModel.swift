@@ -83,7 +83,13 @@ class SubtitleViewModel {
     scrollState = .autoScrolling
   }
   
-  func handleWordSelection(wordIndex: Int?, cueID: UUID, isPlaying: Bool, onPause: () -> Void) {
+  func handleWordSelection(
+    wordIndex: Int?,
+    cueID: UUID,
+    isPlaying: Bool,
+    onPause: () -> Void,
+    onPlay: () -> Void
+  ) {
     if let wordIndex {
       assert(wordIndex >= 0, "Word index must be non-negative")
       
@@ -96,12 +102,8 @@ class SubtitleViewModel {
       wordSelection = .selected(cueID: cueID, wordIndex: wordIndex)
       Self.logger.debug("Selected word at index \(wordIndex) in cue \(cueID)")
     } else {
-      dismissWord(onPlay: onPause)
+      dismissWord(onPlay: onPlay)
     }
-  }
-  
-  func hidePopover() {
-    wordSelection = .none
   }
   
   func dismissWord(onPlay: () -> Void) {

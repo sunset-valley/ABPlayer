@@ -76,3 +76,6 @@ build_output.log
 buildServer.json
 .keys/
 .nvim/
+
+# Opencode
+.sisyphus/

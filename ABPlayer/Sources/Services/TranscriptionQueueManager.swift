@@ -258,7 +258,6 @@ final class TranscriptionQueueManager {
     )
 
     if let existing = try? context.fetch(descriptor).first {
-      existing.cues = cues
       existing.createdAt = Date()
       existing.modelUsed = settings.modelName
       existing.language = settings.language
@@ -266,7 +265,6 @@ final class TranscriptionQueueManager {
       let cache = Transcription(
         audioFileId: audioFileIdString,
         audioFileName: audioFileName,
-        cues: cues,
         modelUsed: settings.modelName,
         language: settings.language == "auto" ? nil : settings.language
       )
