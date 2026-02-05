@@ -204,7 +204,8 @@ struct SubtitleViewModelTests {
       wordIndex: 0,
       cueID: cueID,
       isPlaying: true,
-      onPause: { pauseCalled = true }
+      onPause: { pauseCalled = true },
+      onPlay: {}
     )
     
     #expect(pauseCalled)
@@ -227,7 +228,8 @@ struct SubtitleViewModelTests {
       wordIndex: 0,
       cueID: cueID,
       isPlaying: true,
-      onPause: {}
+      onPause: {},
+      onPlay: {}
     )
     
     viewModel.dismissWord(onPlay: { playCalled = true })
@@ -281,7 +283,7 @@ struct SubtitleViewModelTests {
     let cueID = UUID()
     
     viewModel.handleUserScroll()
-    viewModel.handleWordSelection(wordIndex: 0, cueID: cueID, isPlaying: false, onPause: {})
+    viewModel.handleWordSelection(wordIndex: 0, cueID: cueID, isPlaying: false, onPause: {}, onPlay: {})
     
     viewModel.reset()
     
@@ -410,4 +412,3 @@ struct SubtitleViewModelTests {
     #expect(rect == nil)
   }
 }
-
