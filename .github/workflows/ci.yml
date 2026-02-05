@@ -58,6 +58,36 @@ jobs:
           -enableCodeCoverage YES \
           -derivedDataPath DerivedData
 
+    - name: Send Telegram Notification (Tests Failed)
+      if: ${{ failure() && github.event.pull_request.head.repo.full_name == github.repository }}
+      env:
+        TELEGRAM_TO: ${{ secrets.TELEGRAM_TO }}
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      run: |
+        REPO="${{ github.repository }}"
+        ACTOR="${{ github.actor }}"
+        REF="${{ github.ref }}"
+        SHA="${{ github.sha }}"
+        RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        PR_NUMBER="${{ github.event.pull_request.number }}"
+        PR_URL="${{ github.event.pull_request.html_url }}"
+
+        MESSAGE="$(cat <<EOF
+        CI tests failed
+        Repo: $REPO
+        Actor: $ACTOR
+        PR: #$PR_NUMBER $PR_URL
+        Ref: $REF
+        SHA: $SHA
+        Run: $RUN_URL
+        EOF
+        )"
+
+        curl -sS -X POST "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" \
+          -d chat_id="$TELEGRAM_TO" \
+          --data-urlencode text="$MESSAGE" \
+          -d disable_web_page_preview=true
+
   # Build and Release job - runs only on push to main (merge)
   build-and-release:
     name: Build and Release
