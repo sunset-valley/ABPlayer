@@ -58,18 +58,25 @@ struct SubtitleCueRow: View {
   }
 
   var body: some View {
-    GeometryReader { geometry in
-      let availableWidth = geometry.size.width
-      let textWidth = availableWidth - 52 - 12
-      
-      HStack(alignment: .firstTextBaseline, spacing: 12) {
-        Text(timeString(from: cue.startTime))
-          .font(.system(size: max(11, fontSize - 4), design: .monospaced))
-          .foregroundStyle(isActive ? Color.primary : Color.secondary)
-          .frame(width: 52, alignment: .trailing)
+    HStack(alignment: .firstTextBaseline, spacing: 12) {
+      Text(timeString(from: cue.startTime))
+        .font(.system(size: max(11, fontSize - 4), design: .monospaced))
+        .foregroundStyle(isActive ? Color.primary : Color.secondary)
+        .frame(width: 52, alignment: .trailing)
 
-        subtitleTextView(textWidth: textWidth)
+      subtitleTextView()
+      
+      Menu {
+        Button(action: {}, label: {
+          Text("Edit")
+        })
+      } label: {
+        Image(systemName: "ellipsis")
       }
+      .menuStyle(.borderlessButton)
+      .menuIndicator(.hidden)
+      .frame(width: 24)
+      .opacity(isHovered ? 1 : 0)
     }
     .frame(height: max(contentHeight, 23), alignment: .center)
     .padding(.vertical, 8)
@@ -112,7 +119,7 @@ struct SubtitleCueRow: View {
     }
   }
 
-  private func subtitleTextView(textWidth: CGFloat) -> some View {
+  private func subtitleTextView() -> some View {
     InteractiveAttributedTextView(
         cueID: cue.id,
         isScrolling: isScrolling,
@@ -164,7 +171,6 @@ struct SubtitleCueRow: View {
         let lineHeight = font.ascender + font.leading
         return lineHeight
       }
-      .frame(width: textWidth, alignment: .leading)
       .popover(
         isPresented: Binding(
           get: { popoverSourceRect != nil },
