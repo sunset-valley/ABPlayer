@@ -9,6 +9,7 @@ struct SubtitleView: View {
   let cues: [SubtitleCue]
   @Binding var countdownSeconds: Int?
   let fontSize: Double
+  let onEditSubtitle: (UUID, String) -> Void
 
   @State private var viewModel = SubtitleViewModel()
 
@@ -41,7 +42,8 @@ struct SubtitleView: View {
                       onSeek: { playerManager.seek(to: $0) },
                       cueStartTime: cue.startTime
                     )
-                  }
+                  },
+                  onEditSubtitle: onEditSubtitle
                 )
               .id(cue.id)
             }

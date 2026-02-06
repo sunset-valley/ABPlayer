@@ -11,6 +11,7 @@ struct SubtitleCueRow: View {
   let selectedWordIndex: Int?
   let onWordSelected: (Int?) -> Void
   let onTap: () -> Void
+  let onEditSubtitle: (UUID, String) -> Void
 
   @State private var isHovered = false
   @State private var popoverSourceRect: CGRect?
@@ -19,6 +20,7 @@ struct SubtitleCueRow: View {
   @State private var lookupWord: String?
   @State private var lookupIndex: Int?
   @State private var lookupRequestID: Int = 0
+  @State private var isShowingEditWindow = false
 
   private let words: [String]
 
@@ -29,7 +31,8 @@ struct SubtitleCueRow: View {
     fontSize: Double,
     selectedWordIndex: Int?,
     onWordSelected: @escaping (Int?) -> Void,
-    onTap: @escaping () -> Void
+    onTap: @escaping () -> Void,
+    onEditSubtitle: @escaping (UUID, String) -> Void
   ) {
     self.cue = cue
     self.isActive = isActive
@@ -38,6 +41,7 @@ struct SubtitleCueRow: View {
     self.selectedWordIndex = selectedWordIndex
     self.onWordSelected = onWordSelected
     self.onTap = onTap
+    self.onEditSubtitle = onEditSubtitle
     self.words = cue.text.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
   }
 
@@ -58,18 +62,27 @@ struct SubtitleCueRow: View {
   }
 
   var body: some View {
-    GeometryReader { geometry in
-      let availableWidth = geometry.size.width
-      let textWidth = availableWidth - 52 - 12
-      
-      HStack(alignment: .firstTextBaseline, spacing: 12) {
-        Text(timeString(from: cue.startTime))
-          .font(.system(size: max(11, fontSize - 4), design: .monospaced))
-          .foregroundStyle(isActive ? Color.primary : Color.secondary)
-          .frame(width: 52, alignment: .trailing)
+    HStack(alignment: .firstTextBaseline, spacing: 12) {
+      Text(timeString(from: cue.startTime))
+        .font(.system(size: max(11, fontSize - 4), design: .monospaced))
+        .foregroundStyle(isActive ? Color.primary : Color.secondary)
+        .frame(width: 52, alignment: .trailing)
 
-        subtitleTextView(textWidth: textWidth)
+      subtitleTextView()
+      
+      Menu {
+        Button(action: {
+          isShowingEditWindow = true
+        }, label: {
+          Text("Edit")
+        })
+      } label: {
+        Image(systemName: "ellipsis")
       }
+      .menuStyle(.borderlessButton)
+      .menuIndicator(.hidden)
+      .frame(width: 24)
+      .opacity(isHovered ? 1 : 0)
     }
     .frame(height: max(contentHeight, 23), alignment: .center)
     .padding(.vertical, 8)
@@ -100,6 +113,11 @@ struct SubtitleCueRow: View {
       }
     }
     .animation(.easeInOut(duration: 0.2), value: isActive)
+    .sheet(isPresented: $isShowingEditWindow) {
+      SubtitleEditView(subtitle: cue.text) { newSubtitle in
+        onEditSubtitle(cue.id, newSubtitle)
+      }
+    }
   }
 
   private var backgroundColor: Color {
@@ -112,7 +130,7 @@ struct SubtitleCueRow: View {
     }
   }
 
-  private func subtitleTextView(textWidth: CGFloat) -> some View {
+  private func subtitleTextView() -> some View {
     InteractiveAttributedTextView(
         cueID: cue.id,
         isScrolling: isScrolling,
@@ -164,7 +182,6 @@ struct SubtitleCueRow: View {
         let lineHeight = font.ascender + font.leading
         return lineHeight
       }
-      .frame(width: textWidth, alignment: .leading)
       .popover(
         isPresented: Binding(
           get: { popoverSourceRect != nil },
