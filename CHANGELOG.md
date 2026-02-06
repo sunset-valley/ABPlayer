@@ -1,3 +1,16 @@
+## [0.2.10.75] - 2026-02-06
+
+### Features
+- allow editing subtitles directly from the cue row
+- add cue row overflow menu
+
+### Chores
+- cleanup CHANGELOG.md
+- refactor rules into separate files and update AGENTS.md
+- add telegram notification for failed tests
+- fix handleWordSelection call sites with missing onPlay argument
+
+
 ## [0.2.10.74] - 2026-02-04
 
 ### Improvements
