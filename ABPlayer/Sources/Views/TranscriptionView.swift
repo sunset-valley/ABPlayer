@@ -116,7 +116,16 @@ struct TranscriptionView: View {
 
       Divider()
 
-      SubtitleView(cues: viewModel.cachedCues, countdownSeconds: $viewModel.pauseCountdown, fontSize: viewModel.subtitleFontSize)
+      SubtitleView(
+        cues: viewModel.cachedCues,
+        countdownSeconds: $viewModel.pauseCountdown,
+        fontSize: viewModel.subtitleFontSize,
+        onEditSubtitle: { cueID, subtitle in
+          Task {
+            await viewModel.updateSubtitle(cueID: cueID, subtitle: subtitle)
+          }
+        }
+      )
     }
   }
 

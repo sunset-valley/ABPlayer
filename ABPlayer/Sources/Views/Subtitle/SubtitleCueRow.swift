@@ -11,6 +11,7 @@ struct SubtitleCueRow: View {
   let selectedWordIndex: Int?
   let onWordSelected: (Int?) -> Void
   let onTap: () -> Void
+  let onEditSubtitle: (UUID, String) -> Void
 
   @State private var isHovered = false
   @State private var popoverSourceRect: CGRect?
@@ -19,6 +20,7 @@ struct SubtitleCueRow: View {
   @State private var lookupWord: String?
   @State private var lookupIndex: Int?
   @State private var lookupRequestID: Int = 0
+  @State private var isShowingEditWindow = false
 
   private let words: [String]
 
@@ -29,7 +31,8 @@ struct SubtitleCueRow: View {
     fontSize: Double,
     selectedWordIndex: Int?,
     onWordSelected: @escaping (Int?) -> Void,
-    onTap: @escaping () -> Void
+    onTap: @escaping () -> Void,
+    onEditSubtitle: @escaping (UUID, String) -> Void
   ) {
     self.cue = cue
     self.isActive = isActive
@@ -38,6 +41,7 @@ struct SubtitleCueRow: View {
     self.selectedWordIndex = selectedWordIndex
     self.onWordSelected = onWordSelected
     self.onTap = onTap
+    self.onEditSubtitle = onEditSubtitle
     self.words = cue.text.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
   }
 
@@ -67,7 +71,9 @@ struct SubtitleCueRow: View {
       subtitleTextView()
       
       Menu {
-        Button(action: {}, label: {
+        Button(action: {
+          isShowingEditWindow = true
+        }, label: {
           Text("Edit")
         })
       } label: {
@@ -107,6 +113,11 @@ struct SubtitleCueRow: View {
       }
     }
     .animation(.easeInOut(duration: 0.2), value: isActive)
+    .sheet(isPresented: $isShowingEditWindow) {
+      SubtitleEditView(subtitle: cue.text) { newSubtitle in
+        onEditSubtitle(cue.id, newSubtitle)
+      }
+    }
   }
 
   private var backgroundColor: Color {

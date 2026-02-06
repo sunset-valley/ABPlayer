@@ -139,6 +139,41 @@ final class TranscriptionViewModel {
     resetState()
     startTranscription()
   }
+
+  func updateSubtitle(cueID: UUID, subtitle: String) async {
+    guard let audioFile = audioFile else { return }
+    guard let index = cachedCues.firstIndex(where: { $0.id == cueID }) else { return }
+
+    let updatedCue = SubtitleCue(
+      id: cachedCues[index].id,
+      startTime: cachedCues[index].startTime,
+      endTime: cachedCues[index].endTime,
+      text: subtitle
+    )
+
+    var updatedCues = cachedCues
+    updatedCues[index] = updatedCue
+
+    guard let srtURL = audioFile.srtFileURL else { return }
+    guard let audioURL = try? resolveURL(from: audioFile.bookmarkData) else { return }
+
+    let gotAccess = audioURL.startAccessingSecurityScopedResource()
+    defer {
+      if gotAccess {
+        audioURL.stopAccessingSecurityScopedResource()
+      }
+    }
+
+    guard gotAccess else { return }
+
+    do {
+      try SubtitleParser.writeSRT(cues: updatedCues, to: srtURL)
+    } catch {
+      return
+    }
+
+    cachedCues = updatedCues
+  }
   
   private func resolveURL(from bookmarkData: Data) throws -> URL {
     var isStale = false
