@@ -49,7 +49,6 @@ public struct MainSplitView: View {
     NavigationSplitView {
       sidebar
         .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 400)
-        .background(Color.asset.bgPrimary)
     } detail: {
       if let selectedFile = folderNavigationViewModel?.selectedFile {
         threePanelLayout(for: selectedFile)
@@ -281,10 +280,14 @@ public struct MainSplitView: View {
         ProgressView("Clearing...")
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else if let folderNavigationViewModel {
-        FolderNavigationView(
-          viewModel: folderNavigationViewModel,
-          onSelectFile: { file in await selectFile(file) }
-        )
+        VStack(spacing: 0) {
+          FolderNavigationView(
+            viewModel: folderNavigationViewModel,
+            onSelectFile: { file in await selectFile(file) }
+          )
+          Divider()
+          versionFooter
+        }
       }
     }
     .toolbar {
@@ -317,13 +320,6 @@ public struct MainSplitView: View {
           Label("Add", systemImage: "plus")
         }
       }
-    }
-    .safeAreaInset(edge: .bottom) {
-      VStack(spacing: 0) {
-        Divider()
-        versionFooter
-      }
-      .background(Color.asset.bgPrimary)
     }
   }
   

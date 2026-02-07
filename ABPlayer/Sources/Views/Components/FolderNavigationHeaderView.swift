@@ -18,23 +18,17 @@ struct FolderNavigationHeaderView: View {
             onNavigateBack()
           }
         } label: {
-          HStack(spacing: 4) {
-            Label(" ", systemImage: "chevron.left")
-              .font(.title2)
-              .labelStyle(.titleAndIcon)
-          }
-          .contentShape(Rectangle())
+          Image(systemName: "chevron.left")
+            .font(.title2)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
       }
       
       Spacer()
 
-      HStack {
-        Image(systemName: "folder.fill")
-          .foregroundStyle(.secondary)
-        Text(currentFolder?.name ?? "Liberary")
-      }
+      Text(currentFolder?.name ?? "Liberary")
+        .lineLimit(1)
 
       Spacer()
 
@@ -60,6 +54,5 @@ struct FolderNavigationHeaderView: View {
     .font(.title3)
     .frame(height: 44)
     .padding(.horizontal, 16)
-    .background(Color.asset.bgTertiary)
   }
 }
