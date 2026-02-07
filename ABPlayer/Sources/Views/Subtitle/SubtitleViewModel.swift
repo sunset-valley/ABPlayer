@@ -35,7 +35,6 @@ class SubtitleViewModel {
   private(set) var currentCueID: UUID?
   private(set) var scrollState: ScrollState = .autoScrolling
   private(set) var wordSelection: WordSelectionState = .none
-  private(set) var tappedCueID: UUID?
   
   private var wasPlayingBeforeSelection = false
   private var scrollResumeTask: Task<Void, Never>?
@@ -115,12 +114,12 @@ class SubtitleViewModel {
     }
   }
   
-  func handleCueTap(cueID: UUID, onSeek: (Double) -> Void, cueStartTime: Double) {
+  @MainActor
+  func handleCueTap(cueID: UUID, onSeek: @escaping (Double) -> Void, cueStartTime: Double) {
     assert(cueStartTime >= 0, "Cue start time must be non-negative")
     assert(cueStartTime.isFinite, "Cue start time must be finite")
     
-    tappedCueID = cueID
-    onSeek(cueStartTime)
+    onSeek(cueStartTime+0.001)
     cancelScrollResume()
     Self.logger.debug("Tapped cue at time \(cueStartTime)")
   }

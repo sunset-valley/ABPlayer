@@ -142,7 +142,6 @@ struct InteractiveAttributedTextView: NSViewRepresentable {
     if let cachedWidth = context.coordinator.cachedWidth,
        let cachedSize = context.coordinator.cachedSize,
        abs(cachedWidth - width) < 1.0 {
-      Logger.ui.debug("hit cache \(words.first ?? "nil") w:\(cachedSize.width), h:\(cachedSize.height)")
       return cachedSize
     }
     
@@ -166,8 +165,6 @@ struct InteractiveAttributedTextView: NSViewRepresentable {
     DispatchQueue.main.async {
       onHeightChanged(height)
     }
-    
-    Logger.ui.debug("\(words.first ?? "nil") w:\(width), h:\(height)")
     
     return size
   }

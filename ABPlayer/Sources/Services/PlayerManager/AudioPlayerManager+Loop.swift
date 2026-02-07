@@ -32,10 +32,12 @@ extension PlayerManager {
     currentSegmentID = segment.id
     pointA = segment.startTime
     pointB = segment.endTime
-    seek(to: segment.startTime)
+    Task {
+      await seek(to: segment.startTime)
 
-    if autoPlay && !isPlaying {
-      togglePlayPause()
+      if autoPlay && !isPlaying {
+        await togglePlayPause()
+      }
     }
   }
 }

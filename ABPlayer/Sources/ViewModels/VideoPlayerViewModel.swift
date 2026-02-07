@@ -49,7 +49,9 @@ final class VideoPlayerViewModel {
     }
     
     // Sync volume
-    manager.setVolume(Float(playerVolume))
+    Task { @MainActor in
+      await manager.setVolume(Float(playerVolume))
+    }
   }
 
   // MARK: - Logic
@@ -61,30 +63,36 @@ final class VideoPlayerViewModel {
   
   private func debounceVolumeUpdate() {
     volumeDebounceTask?.cancel()
-    volumeDebounceTask = Task {
+    volumeDebounceTask = Task { @MainActor [weak self] in
       try? await Task.sleep(for: .milliseconds(100))
       guard !Task.isCancelled else { return }
-      await MainActor.run {
-        playerManager?.setVolume(Float(playerVolume))
-      }
+      guard let self else { return }
+      await playerManager?.setVolume(Float(playerVolume))
     }
   }
   
   func togglePlayPause() {
-    playerManager?.togglePlayPause()
+    guard let playerManager else { return }
+    Task {
+      await playerManager.togglePlayPause()
+    }
   }
   
   func seekBack() {
     guard let manager = playerManager else { return }
     let targetTime = manager.currentTime - 5
-    manager.seek(to: targetTime)
+    Task {
+      await manager.seek(to: targetTime)
+    }
     showHUDMessage("- 5")
   }
   
   func seekForward() {
     guard let manager = playerManager else { return }
     let targetTime = manager.currentTime + 10
-    manager.seek(to: targetTime)
+    Task {
+      await manager.seek(to: targetTime)
+    }
     showHUDMessage("+ 10s")
   }
   

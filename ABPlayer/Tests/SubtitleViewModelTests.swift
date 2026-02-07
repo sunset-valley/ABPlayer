@@ -307,7 +307,6 @@ struct SubtitleViewModelTests {
       cueStartTime: 10.0
     )
     
-    #expect(viewModel.tappedCueID == cueID)
     #expect(seekTime == 10.0)
     #expect(viewModel.scrollState == .autoScrolling)
   }

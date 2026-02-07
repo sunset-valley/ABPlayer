@@ -32,14 +32,14 @@ struct SubtitleView: View {
                       wordIndex: wordIndex,
                       cueID: cue.id,
                       isPlaying: playerManager.isPlaying,
-                      onPause: { playerManager.pause() },
-                      onPlay: { playerManager.play() }
+                      onPause: pausePlayback,
+                      onPlay: playPlayback
                     )
                   },
                   onTap: {
                     viewModel.handleCueTap(
                       cueID: cue.id,
-                      onSeek: { playerManager.seek(to: $0) },
+                      onSeek: seekPlayback,
                       cueStartTime: cue.startTime
                     )
                   },
@@ -57,12 +57,7 @@ struct SubtitleView: View {
         }
         .onChange(of: viewModel.currentCueID) { _, newValue in
           guard !viewModel.scrollState.isUserScrolling, let id = newValue else { return }
-          withAnimation(.easeInOut(duration: 0.3)) {
-            proxy.scrollTo(id, anchor: .center)
-          }
-        }
-        .onChange(of: viewModel.tappedCueID) { _, newValue in
-          guard let id = newValue else { return }
+          Logger.ui.info("[currentCueID] \(id.uuidString)")
           withAnimation(.easeInOut(duration: 0.3)) {
             proxy.scrollTo(id, anchor: .center)
           }
@@ -83,10 +78,10 @@ struct SubtitleView: View {
     }
     .animation(.easeInOut(duration: 0.2), value: viewModel.scrollState.countdown != nil)
     .task {
-      await viewModel.trackPlayback(
-        timeProvider: { @MainActor in playerManager.currentTime },
-        cues: cues
-      )
+//      await viewModel.trackPlayback(
+//        timeProvider: { @MainActor in playerManager.currentTime },
+//        cues: cues
+//      )
     }
     .onChange(of: viewModel.scrollState.countdown) { _, newValue in
       countdownSeconds = newValue
@@ -96,6 +91,24 @@ struct SubtitleView: View {
   private func handleScrollPhaseChange(_ phase: ScrollPhase) {
     guard case .interacting = phase else { return }
     viewModel.handleUserScroll()
+  }
+
+  private func pausePlayback() {
+    Task {
+      await playerManager.pause()
+    }
+  }
+
+  private func playPlayback() {
+    Task {
+      await playerManager.play()
+    }
+  }
+
+  private func seekPlayback(to time: Double) {
+    Task {
+      await playerManager.seek(to: time)
+    }
   }
 }
 

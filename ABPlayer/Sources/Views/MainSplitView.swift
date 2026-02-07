@@ -439,14 +439,14 @@ public struct MainSplitView: View {
   
   // MARK: - Data Management
   
-  private func clearAllData() {
+  private func clearAllData() async {
     // Clear all data from SwiftData
     // IMPORTANT: Clear UI state and player references FIRST to prevent
     // accessing detached/faulted entities during deletion
     do {
       // Step 1: Stop playback if currently playing
       if playerManager.isPlaying {
-        playerManager.togglePlayPause()
+        await playerManager.togglePlayPause()
       }
       
       // Step 2: Clear UI state and player references immediately
@@ -493,7 +493,7 @@ public struct MainSplitView: View {
     isClearingData = true
     // Give SwiftUI a moment to unmount views that observe this data
     try? await Task.sleep(nanoseconds: 200_000_000)  // 0.2s
-    clearAllData()
+    await clearAllData()
     isClearingData = false
   }
 }
