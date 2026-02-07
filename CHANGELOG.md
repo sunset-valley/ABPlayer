@@ -1,3 +1,9 @@
+## [0.2.10.76] - 2026-02-06
+
+### Improvements
+- clean up layout backgrounds and footer positioning
+
+
 ## [0.2.10.75] - 2026-02-06
 
 ### Features
