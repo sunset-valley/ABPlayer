@@ -68,7 +68,10 @@ struct SubtitleCueRow: View {
         .foregroundStyle(isActive ? Color.primary : Color.secondary)
         .frame(width: 52, alignment: .trailing)
 
-      subtitleTextView()
+      GeometryReader { proxy in
+        subtitleTextView()
+        .frame(width: proxy.size.width)
+      }
       
       Menu {
         Button(action: {

@@ -134,7 +134,10 @@ struct InteractiveAttributedTextView: NSViewRepresentable {
       return nil
     }
     
-    let width = proposal.width ?? 400
+    guard let width = proposal.width, width.isFinite, width > 0 else {
+      assertionFailure("InteractiveAttributedTextView requires a valid proposed width")
+      return nil
+    }
     
     if let cachedWidth = context.coordinator.cachedWidth,
        let cachedSize = context.coordinator.cachedSize,
