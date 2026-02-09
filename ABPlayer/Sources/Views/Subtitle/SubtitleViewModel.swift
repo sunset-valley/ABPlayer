@@ -3,8 +3,10 @@ import OSLog
 import SwiftUI
 
 @Observable
+@MainActor
 class SubtitleViewModel {
   private static let logger = Logger(subsystem: "com.abplayer", category: "SubtitleViewModel")
+
   enum ScrollState: Equatable {
     case autoScrolling
     case userScrolling(countdown: Int)
@@ -38,7 +40,19 @@ class SubtitleViewModel {
   
   private var wasPlayingBeforeSelection = false
   private var scrollResumeTask: Task<Void, Never>?
+  @ObservationIgnored
+  private var playbackObserverID: UUID?
   private static let pauseDuration = 3
+  @ObservationIgnored
+  private(set) weak var playerManager: PlayerManager?
+
+  init(playerManager: PlayerManager? = nil) {
+    self.playerManager = playerManager
+  }
+
+  func setPlayerManager(_ playerManager: PlayerManager) {
+    self.playerManager = playerManager
+  }
   
   @MainActor
   func handleUserScroll() {
@@ -115,11 +129,11 @@ class SubtitleViewModel {
   }
   
   @MainActor
-  func handleCueTap(cueID: UUID, onSeek: @escaping (Double) -> Void, cueStartTime: Double) {
+  func handleCueTap(cueID: UUID, cueStartTime: Double) async {
     assert(cueStartTime >= 0, "Cue start time must be non-negative")
     assert(cueStartTime.isFinite, "Cue start time must be finite")
     
-    onSeek(cueStartTime+0.001)
+    await playerManager?.seek(to: cueStartTime+0.001)
     cancelScrollResume()
     Self.logger.debug("Tapped cue at time \(cueStartTime)")
   }
@@ -135,7 +149,9 @@ class SubtitleViewModel {
     }
   }
   
+  @MainActor
   func reset() {
+    stopTrackingPlayback()
     scrollResumeTask?.cancel()
     scrollResumeTask = nil
     scrollState = .autoScrolling
@@ -144,46 +160,60 @@ class SubtitleViewModel {
   }
   
   @MainActor
-  func trackPlayback(timeProvider: @escaping @MainActor () -> Double, cues: [SubtitleCue]) async {
+  func trackPlayback(cues: [SubtitleCue]) async {
     let epsilon: Double = 0.001
+    stopTrackingPlayback()
     
     guard !cues.isEmpty else {
       Self.logger.warning("trackPlayback called with empty cues array")
+      currentCueID = nil
       return
     }
     
-    Self.logger.debug("Started tracking playback for \(cues.count) cues")
-    
-    while !Task.isCancelled {
-      if !scrollState.isUserScrolling {
-        let currentTime = timeProvider()
-        
-        guard currentTime.isFinite && currentTime >= 0 else {
-          Self.logger.error("Invalid time from provider: \(currentTime)")
-          continue
-        }
-        
-        let activeCue = findActiveCue(at: currentTime, in: cues, epsilon: epsilon)
-        
-        if activeCue?.id != currentCueID {
-          currentCueID = activeCue?.id
-          if let cue = activeCue {
-            Self.logger.debug("Active cue changed: \(cue.text.prefix(30))...")
-          }
-        }
+    guard let playerManager else {
+      Self.logger.warning("trackPlayback called without playerManager")
+      currentCueID = nil
+      return
+    }
+
+    playbackObserverID = playerManager.addPlaybackTimeObserver { [weak self] currentTime in
+      guard let self else { return }
+      guard currentTime.isFinite && currentTime >= 0 else {
+        Self.logger.error("Invalid playback time from PlayerManager: \(currentTime)")
+        return
       }
-      
-      do {
-        try await Task.sleep(for: .milliseconds(100))
-      } catch {
-        Self.logger.debug("Playback tracking cancelled: \(error.localizedDescription)")
-        break
+
+      self.trackCurrentCue(at: currentTime, in: cues, epsilon: epsilon)
+    }
+
+    Self.logger.debug("Started tracking playback for \(cues.count) cues")
+    do {
+      try await Task.sleep(nanoseconds: UInt64.max)
+    } catch {
+      Self.logger.debug("Playback tracking cancelled: \(error.localizedDescription)")
+    }
+  }
+
+  @MainActor
+  func stopTrackingPlayback() {
+    if let playbackObserverID {
+      playerManager?.removePlaybackTimeObserver(playbackObserverID)
+    }
+    playbackObserverID = nil
+  }
+
+  private func trackCurrentCue(at currentTime: Double, in cues: [SubtitleCue], epsilon: Double) {
+    guard !scrollState.isUserScrolling else { return }
+
+    let activeCue = findActiveCue(at: currentTime, in: cues, epsilon: epsilon)
+    if activeCue?.id != currentCueID {
+      currentCueID = activeCue?.id
+      if let cue = activeCue {
+        Self.logger.debug("Active cue changed: \(cue.text.prefix(30))...")
       }
     }
-    
-    Self.logger.debug("Stopped tracking playback")
   }
-  
+
   private func findActiveCue(at time: Double, in cues: [SubtitleCue], epsilon: Double = 0.001) -> SubtitleCue? {
     assert(epsilon > 0, "Epsilon must be positive")
     assert(time.isFinite, "Time must be finite")

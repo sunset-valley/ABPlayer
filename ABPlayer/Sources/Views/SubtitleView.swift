@@ -11,7 +11,14 @@ struct SubtitleView: View {
   let fontSize: Double
   let onEditSubtitle: (UUID, String) -> Void
 
-  @State private var viewModel = SubtitleViewModel()
+  @State private var viewModel = SubtitleViewModel(playerManager: nil)
+
+  private var playbackTrackingID: String {
+    let fileID = playerManager.currentFile?.id.uuidString ?? "nil"
+    let firstCueID = cues.first?.id.uuidString ?? "nil"
+    let lastCueID = cues.last?.id.uuidString ?? "nil"
+    return "\(playerManager.isPlaying)-\(fileID)-\(cues.count)-\(firstCueID)-\(lastCueID)"
+  }
 
   var body: some View {
     ZStack(alignment: .topTrailing) {
@@ -37,11 +44,12 @@ struct SubtitleView: View {
                     )
                   },
                   onTap: {
-                    viewModel.handleCueTap(
-                      cueID: cue.id,
-                      onSeek: seekPlayback,
-                      cueStartTime: cue.startTime
-                    )
+                    Task {
+                      await viewModel.handleCueTap(
+                        cueID: cue.id,
+                        cueStartTime: cue.startTime
+                      )
+                    }
                   },
                   onEditSubtitle: onEditSubtitle
                 )
@@ -77,11 +85,16 @@ struct SubtitleView: View {
       .padding(12)
     }
     .animation(.easeInOut(duration: 0.2), value: viewModel.scrollState.countdown != nil)
-    .task {
-//      await viewModel.trackPlayback(
-//        timeProvider: { @MainActor in playerManager.currentTime },
-//        cues: cues
-//      )
+    .task(id: playbackTrackingID) {
+      viewModel.setPlayerManager(playerManager)
+
+      await withTaskCancellationHandler {
+        await viewModel.trackPlayback(cues: cues)
+      } onCancel: {
+        Task { @MainActor in
+          viewModel.stopTrackingPlayback()
+        }
+      }
     }
     .onChange(of: viewModel.scrollState.countdown) { _, newValue in
       countdownSeconds = newValue

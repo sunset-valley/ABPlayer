@@ -51,6 +51,7 @@ final class PlayerManager {
   private var lastPersistedTime: Double = 0
   private var endOfFileTask: Task<Void, Never>?
   private var loadAudioTask: Task<Void, Never>?
+  private var playbackTimeObservers: [UUID: @MainActor (Double) -> Void] = [:]
 
   var hasValidLoopRange: Bool {
     guard let pointA, let pointB else {
@@ -269,6 +270,23 @@ final class PlayerManager {
     await _engine.setVolume(volume)
   }
 
+  @discardableResult
+  func addPlaybackTimeObserver(_ observer: @escaping @MainActor (Double) -> Void) -> UUID {
+    let id = UUID()
+    playbackTimeObservers[id] = observer
+    return id
+  }
+
+  func removePlaybackTimeObserver(_ id: UUID) {
+    playbackTimeObservers[id] = nil
+  }
+
+  private func notifyPlaybackTimeObservers(_ time: Double) {
+    for observer in playbackTimeObservers.values {
+      observer(time)
+    }
+  }
+
   // MARK: - Internal Handlers
 
   fileprivate func handleTimeUpdate(_ seconds: Double) {
@@ -280,6 +298,7 @@ final class PlayerManager {
     }
 
     if isPlaying {
+      notifyPlaybackTimeObservers(seconds)
       sessionTracker?.addListeningTime(0.1)
     }
   }
