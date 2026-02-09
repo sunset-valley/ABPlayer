@@ -11,9 +11,18 @@ struct SubtitleView: View {
   let fontSize: Double
   let onEditSubtitle: (UUID, String) -> Void
 
-  @State private var viewModel = SubtitleViewModel()
+  @State private var viewModel = SubtitleViewModel(playerManager: nil)
+
+  private var playbackTrackingID: String {
+    let fileID = playerManager.currentFile?.id.uuidString ?? "nil"
+    let firstCueID = cues.first?.id.uuidString ?? "nil"
+    let lastCueID = cues.last?.id.uuidString ?? "nil"
+    return "\(playerManager.isPlaying)-\(fileID)-\(cues.count)-\(firstCueID)-\(lastCueID)"
+  }
 
   var body: some View {
+    let output = viewModel.output
+
     ZStack(alignment: .topTrailing) {
       ScrollViewReader { proxy in
         ScrollView {
@@ -21,27 +30,34 @@ struct SubtitleView: View {
             ForEach(cues) { cue in
                 SubtitleCueRow(
                   cue: cue,
-                  isActive: cue.id == viewModel.currentCueID,
-                  isScrolling: viewModel.scrollState.isUserScrolling,
+                  isActive: cue.id == output.currentCueID,
+                  isScrolling: output.scrollState.isUserScrolling,
                   fontSize: fontSize,
-                  selectedWordIndex: viewModel.wordSelection.selectedWord?.cueID == cue.id
-                    ? viewModel.wordSelection.selectedWord?.wordIndex
+                  selectedWordIndex: output.selectedWord?.cueID == cue.id
+                    ? output.selectedWord?.wordIndex
                     : nil,
                   onWordSelected: { wordIndex in
-                    viewModel.handleWordSelection(
-                      wordIndex: wordIndex,
-                      cueID: cue.id,
-                      isPlaying: playerManager.isPlaying,
-                      onPause: { playerManager.pause() },
-                      onPlay: { playerManager.play() }
-                    )
+                    Task {
+                      await viewModel.perform(
+                        action: .handleWordSelection(
+                          wordIndex: wordIndex,
+                          cueID: cue.id,
+                          isPlaying: playerManager.isPlaying,
+                          onPause: pausePlayback,
+                          onPlay: playPlayback
+                        )
+                      )
+                    }
                   },
                   onTap: {
-                    viewModel.handleCueTap(
-                      cueID: cue.id,
-                      onSeek: { playerManager.seek(to: $0) },
-                      cueStartTime: cue.startTime
-                    )
+                    Task {
+                      await viewModel.perform(
+                        action: .handleCueTap(
+                          cueID: cue.id,
+                          cueStartTime: cue.startTime
+                        )
+                      )
+                    }
                   },
                   onEditSubtitle: onEditSubtitle
                 )
@@ -55,38 +71,39 @@ struct SubtitleView: View {
         .onScrollPhaseChange { _, newPhase in
           handleScrollPhaseChange(newPhase)
         }
-        .onChange(of: viewModel.currentCueID) { _, newValue in
-          guard !viewModel.scrollState.isUserScrolling, let id = newValue else { return }
-          withAnimation(.easeInOut(duration: 0.3)) {
-            proxy.scrollTo(id, anchor: .center)
-          }
-        }
-        .onChange(of: viewModel.tappedCueID) { _, newValue in
-          guard let id = newValue else { return }
+        .onChange(of: viewModel.currentCueID) { _, newCueID in
+          guard !viewModel.scrollState.isUserScrolling, let id = newCueID else { return }
+          Logger.ui.info("[currentCueID] \(id.uuidString)")
           withAnimation(.easeInOut(duration: 0.3)) {
             proxy.scrollTo(id, anchor: .center)
           }
         }
         .onChange(of: cues) { _, _ in
-          viewModel.reset()
-          countdownSeconds = nil
+          Task {
+            await viewModel.perform(action: .reset)
+          }
         }
       }
 
       VStack(alignment: .trailing, spacing: 8) {
-        if let countdown = viewModel.scrollState.countdown {
+        if let countdown = output.countdown {
           CountdownRingView(countdown: countdown, total: 3)
             .transition(.scale.combined(with: .opacity))
         }
       }
       .padding(12)
     }
-    .animation(.easeInOut(duration: 0.2), value: viewModel.scrollState.countdown != nil)
-    .task {
-      await viewModel.trackPlayback(
-        timeProvider: { @MainActor in playerManager.currentTime },
-        cues: cues
-      )
+    .animation(.easeInOut(duration: 0.2), value: output.countdown != nil)
+    .task(id: playbackTrackingID) {
+      await viewModel.perform(action: .setPlayerManager(playerManager))
+
+      await withTaskCancellationHandler {
+        await viewModel.perform(action: .trackPlayback(cues: cues))
+      } onCancel: {
+        Task { @MainActor in
+          await viewModel.perform(action: .stopTrackingPlayback)
+        }
+      }
     }
     .onChange(of: viewModel.scrollState.countdown) { _, newValue in
       countdownSeconds = newValue
@@ -95,8 +112,23 @@ struct SubtitleView: View {
 
   private func handleScrollPhaseChange(_ phase: ScrollPhase) {
     guard case .interacting = phase else { return }
-    viewModel.handleUserScroll()
+    Task {
+      await viewModel.perform(action: .handleUserScroll)
+    }
   }
+
+  private func pausePlayback() {
+    Task {
+      await playerManager.pause()
+    }
+  }
+
+  private func playPlayback() {
+    Task {
+      await playerManager.play()
+    }
+  }
+
 }
 
 struct SubtitleEmptyView: View {

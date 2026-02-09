@@ -38,7 +38,9 @@ final class DeletionService {
     
     if isCurrentFileInFolder(folder) {
       if playerManager.isPlaying {
-        playerManager.togglePlayPause()
+        Task {
+          await playerManager.togglePlayPause()
+        }
       }
       playerManager.currentFile = nil
     }
@@ -78,7 +80,9 @@ final class DeletionService {
     }
     
     if checkPlayback && playerManager.isPlaying && playerManager.currentFile?.id == file.id {
-      playerManager.togglePlayPause()
+      Task {
+        await playerManager.togglePlayPause()
+      }
     }
     
     if updateSelection && selectedFile?.id == file.id {

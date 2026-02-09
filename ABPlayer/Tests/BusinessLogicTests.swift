@@ -890,7 +890,7 @@ struct PlayerManagerIntegrationTests {
     manager.isPlaying = true
 
     // When: Toggle
-    manager.togglePlayPause()
+    await manager.togglePlayPause()
 
     // Then: State updates immediately
     #expect(manager.isPlaying == false)

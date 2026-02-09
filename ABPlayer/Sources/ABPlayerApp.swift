@@ -93,19 +93,19 @@ struct ABPlayerApp: App {
 
       KeyboardShortcuts.onKeyUp(for: .playPause) { [playerManager] in
         Task { @MainActor in
-          playerManager.togglePlayPause()
+          await playerManager.togglePlayPause()
         }
       }
 
       KeyboardShortcuts.onKeyUp(for: .rewind5s) { [playerManager] in
         Task { @MainActor in
-          playerManager.seek(to: -5)
+          await playerManager.seek(to: -5)
         }
       }
 
       KeyboardShortcuts.onKeyUp(for: .forward10s) { [playerManager] in
         Task { @MainActor in
-          playerManager.seek(to: 10)
+          await playerManager.seek(to: 10)
         }
       }
 

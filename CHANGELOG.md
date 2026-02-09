@@ -1,3 +1,14 @@
+## [0.2.10.77] - 2026-02-09
+
+### Bug Fixes
+- fix alignment guide for cue row textView
+- improve layout sizing for cue rows
+
+### Improvements
+- switch to observer-based playback tracking
+- migrate PlayerManager to async/await and update call sites
+
+
 ## [0.2.10.76] - 2026-02-06
 
 ### Improvements

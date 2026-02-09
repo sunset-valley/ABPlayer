@@ -1,29 +1,71 @@
 import Foundation
 import OSLog
-import SwiftUI
 
 @Observable
-class SubtitleViewModel {
+@MainActor
+final class SubtitleViewModel {
   private static let logger = Logger(subsystem: "com.abplayer", category: "SubtitleViewModel")
+
+  // MARK: - Input / Output
+
+  struct Input {
+    enum Action {
+      case setPlayerManager(PlayerManager)
+      case handleUserScroll
+      case cancelScrollResume
+      case handleWordSelection(
+        wordIndex: Int?,
+        cueID: UUID,
+        isPlaying: Bool,
+        onPause: () -> Void,
+        onPlay: () -> Void
+      )
+      case dismissWord(onPlay: () -> Void)
+      case handleCueTap(cueID: UUID, cueStartTime: Double)
+      case updateCurrentCue(time: Double, cues: [SubtitleCue])
+      case reset
+      case trackPlayback(cues: [SubtitleCue])
+      case stopTrackingPlayback
+    }
+
+    let action: Action
+  }
+
+  struct Output: Equatable {
+    let currentCueID: UUID?
+    let scrollState: ScrollState
+    let wordSelection: WordSelectionState
+
+    var countdown: Int? {
+      scrollState.countdown
+    }
+
+    var selectedWord: (cueID: UUID, wordIndex: Int)? {
+      wordSelection.selectedWord
+    }
+  }
+
+  // MARK: - Types
+
   enum ScrollState: Equatable {
     case autoScrolling
     case userScrolling(countdown: Int)
-    
+
     var isUserScrolling: Bool {
       if case .userScrolling = self { return true }
       return false
     }
-    
+
     var countdown: Int? {
       if case .userScrolling(let value) = self { return value }
       return nil
     }
   }
-  
+
   enum WordSelectionState: Equatable {
     case none
     case selected(cueID: UUID, wordIndex: Int)
-    
+
     var selectedWord: (cueID: UUID, wordIndex: Int)? {
       if case .selected(let cueID, let wordIndex) = self {
         return (cueID, wordIndex)
@@ -31,21 +73,215 @@ class SubtitleViewModel {
       return nil
     }
   }
-  
+
+  // MARK: - Dependencies
+
+  @ObservationIgnored
+  private(set) weak var playerManager: PlayerManager?
+
+  // MARK: - UI State
+
   private(set) var currentCueID: UUID?
   private(set) var scrollState: ScrollState = .autoScrolling
   private(set) var wordSelection: WordSelectionState = .none
-  private(set) var tappedCueID: UUID?
-  
+
+  var output: Output {
+    makeOutput()
+  }
+
+  // MARK: - Internal State
+
+  private static let pauseDuration = 3
   private var wasPlayingBeforeSelection = false
   private var scrollResumeTask: Task<Void, Never>?
-  private static let pauseDuration = 3
-  
+
+  // MARK: - Observation
+
+  @ObservationIgnored
+  private var playbackObserverID: UUID?
+
+  // MARK: - Initialization
+
+  init(playerManager: PlayerManager? = nil) {
+    self.playerManager = playerManager
+  }
+
+  // MARK: - Transform
+
+  @discardableResult
+  func transform(input: Input) async -> Output {
+    await perform(action: input.action)
+    return makeOutput()
+  }
+
+  @discardableResult
+  func transform(_ action: Input.Action) async -> Output {
+    await transform(input: .init(action: action))
+  }
+
+  func perform(action: Input.Action) async {
+    switch action {
+    case .setPlayerManager(let playerManager):
+      setPlayerManager(playerManager)
+    case .handleUserScroll:
+      handleUserScroll()
+    case .cancelScrollResume:
+      cancelScrollResume()
+    case .handleWordSelection(let wordIndex, let cueID, let isPlaying, let onPause, let onPlay):
+      handleWordSelection(
+        wordIndex: wordIndex,
+        cueID: cueID,
+        isPlaying: isPlaying,
+        onPause: onPause,
+        onPlay: onPlay
+      )
+    case .dismissWord(let onPlay):
+      dismissWord(onPlay: onPlay)
+    case .handleCueTap(let cueID, let cueStartTime):
+      await handleCueTap(cueID: cueID, cueStartTime: cueStartTime)
+    case .updateCurrentCue(let time, let cues):
+      updateCurrentCue(time: time, cues: cues)
+    case .reset:
+      reset()
+    case .trackPlayback(let cues):
+      await trackPlayback(cues: cues)
+    case .stopTrackingPlayback:
+      stopTrackingPlayback()
+    }
+  }
+
+  // MARK: - Public API
+
+  func setPlayerManager(_ playerManager: PlayerManager) {
+    self.playerManager = playerManager
+  }
+
   @MainActor
   func handleUserScroll() {
+    startScrollResumeCountdown()
+  }
+
+  func cancelScrollResume() {
+    stopScrollResumeCountdown()
+  }
+
+  func handleWordSelection(
+    wordIndex: Int?,
+    cueID: UUID,
+    isPlaying: Bool,
+    onPause: () -> Void,
+    onPlay: () -> Void
+  ) {
+    if let wordIndex {
+      assert(wordIndex >= 0, "Word index must be non-negative")
+
+      if wordSelection == .none {
+        wasPlayingBeforeSelection = isPlaying
+        if isPlaying {
+          onPause()
+        }
+      }
+      wordSelection = .selected(cueID: cueID, wordIndex: wordIndex)
+      Self.logger.debug("Selected word at index \(wordIndex) in cue \(cueID)")
+    } else {
+      dismissWord(onPlay: onPlay)
+    }
+  }
+
+  func dismissWord(onPlay: () -> Void) {
+    guard wordSelection != .none else { return }
+    wordSelection = .none
+    if wasPlayingBeforeSelection {
+      onPlay()
+      wasPlayingBeforeSelection = false
+    }
+  }
+
+  @MainActor
+  func handleCueTap(cueID: UUID, cueStartTime: Double) async {
+    assert(cueStartTime >= 0, "Cue start time must be non-negative")
+    assert(cueStartTime.isFinite, "Cue start time must be finite")
+
+    await playerManager?.seek(to: cueStartTime + 0.001)
+    stopScrollResumeCountdown()
+    Self.logger.debug("Tapped cue at time \(cueStartTime)")
+  }
+
+  func updateCurrentCue(time: Double, cues: [SubtitleCue]) {
+    assert(time >= 0, "Time must be non-negative")
+    assert(time.isFinite, "Time must be finite")
+
+    guard !scrollState.isUserScrolling else { return }
+    currentCueID = findActiveCue(at: time, in: cues)?.id
+  }
+
+  @MainActor
+  func reset() {
+    stopTrackingPlayback()
+    stopScrollResumeCountdown()
+    currentCueID = nil
+    scrollState = .autoScrolling
+    wordSelection = .none
+    wasPlayingBeforeSelection = false
+  }
+
+  @MainActor
+  func trackPlayback(cues: [SubtitleCue]) async {
+    let epsilon: Double = 0.001
+    stopTrackingPlayback()
+
+    guard !cues.isEmpty else {
+      Self.logger.warning("trackPlayback called with empty cues array")
+      currentCueID = nil
+      return
+    }
+
+    guard let playerManager else {
+      Self.logger.warning("trackPlayback called without playerManager")
+      currentCueID = nil
+      return
+    }
+
+    playbackObserverID = playerManager.addPlaybackTimeObserver { [weak self] currentTime in
+      guard let self else { return }
+      guard currentTime.isFinite && currentTime >= 0 else {
+        Self.logger.error("Invalid playback time from PlayerManager: \(currentTime)")
+        return
+      }
+
+      self.trackCurrentCue(at: currentTime, in: cues, epsilon: epsilon)
+    }
+
+    Self.logger.debug("Started tracking playback for \(cues.count) cues")
+    do {
+      try await Task.sleep(nanoseconds: UInt64.max)
+    } catch {
+      Self.logger.debug("Playback tracking cancelled: \(error.localizedDescription)")
+    }
+  }
+
+  @MainActor
+  func stopTrackingPlayback() {
+    if let playbackObserverID {
+      playerManager?.removePlaybackTimeObserver(playbackObserverID)
+    }
+    playbackObserverID = nil
+  }
+
+  // MARK: - Private
+
+  private func makeOutput() -> Output {
+    Output(
+      currentCueID: currentCueID,
+      scrollState: scrollState,
+      wordSelection: wordSelection
+    )
+  }
+
+  private func startScrollResumeCountdown() {
     scrollResumeTask?.cancel()
     scrollState = .userScrolling(countdown: Self.pauseDuration)
-    
+
     scrollResumeTask = Task { @MainActor in
       for await remaining in countdown(from: Self.pauseDuration) {
         guard !Task.isCancelled else {
@@ -58,7 +294,13 @@ class SubtitleViewModel {
       Self.logger.debug("Countdown completed, resumed auto-scrolling")
     }
   }
-  
+
+  private func stopScrollResumeCountdown() {
+    scrollResumeTask?.cancel()
+    scrollResumeTask = nil
+    scrollState = .autoScrolling
+  }
+
   private func countdown(from seconds: Int) -> AsyncStream<Int> {
     AsyncStream { continuation in
       Task {
@@ -76,115 +318,19 @@ class SubtitleViewModel {
       }
     }
   }
-  
-  func cancelScrollResume() {
-    scrollResumeTask?.cancel()
-    scrollResumeTask = nil
-    scrollState = .autoScrolling
-  }
-  
-  func handleWordSelection(
-    wordIndex: Int?,
-    cueID: UUID,
-    isPlaying: Bool,
-    onPause: () -> Void,
-    onPlay: () -> Void
-  ) {
-    if let wordIndex {
-      assert(wordIndex >= 0, "Word index must be non-negative")
-      
-      if wordSelection == .none {
-        wasPlayingBeforeSelection = isPlaying
-        if isPlaying {
-          onPause()
-        }
-      }
-      wordSelection = .selected(cueID: cueID, wordIndex: wordIndex)
-      Self.logger.debug("Selected word at index \(wordIndex) in cue \(cueID)")
-    } else {
-      dismissWord(onPlay: onPlay)
-    }
-  }
-  
-  func dismissWord(onPlay: () -> Void) {
-    guard wordSelection != .none else { return }
-    wordSelection = .none
-    if wasPlayingBeforeSelection {
-      onPlay()
-      wasPlayingBeforeSelection = false
-    }
-  }
-  
-  func handleCueTap(cueID: UUID, onSeek: (Double) -> Void, cueStartTime: Double) {
-    assert(cueStartTime >= 0, "Cue start time must be non-negative")
-    assert(cueStartTime.isFinite, "Cue start time must be finite")
-    
-    tappedCueID = cueID
-    onSeek(cueStartTime)
-    cancelScrollResume()
-    Self.logger.debug("Tapped cue at time \(cueStartTime)")
-  }
-  
-  func updateCurrentCue(time: Double, cues: [SubtitleCue]) {
-    assert(time >= 0, "Time must be non-negative")
-    assert(time.isFinite, "Time must be finite")
-    
+
+  private func trackCurrentCue(at currentTime: Double, in cues: [SubtitleCue], epsilon: Double) {
     guard !scrollState.isUserScrolling else { return }
-    let activeCue = findActiveCue(at: time, in: cues)
+
+    let activeCue = findActiveCue(at: currentTime, in: cues, epsilon: epsilon)
     if activeCue?.id != currentCueID {
       currentCueID = activeCue?.id
-    }
-  }
-  
-  func reset() {
-    scrollResumeTask?.cancel()
-    scrollResumeTask = nil
-    scrollState = .autoScrolling
-    currentCueID = nil
-    wordSelection = .none
-  }
-  
-  @MainActor
-  func trackPlayback(timeProvider: @escaping @MainActor () -> Double, cues: [SubtitleCue]) async {
-    let epsilon: Double = 0.001
-    
-    guard !cues.isEmpty else {
-      Self.logger.warning("trackPlayback called with empty cues array")
-      return
-    }
-    
-    Self.logger.debug("Started tracking playback for \(cues.count) cues")
-    
-    while !Task.isCancelled {
-      if !scrollState.isUserScrolling {
-        let currentTime = timeProvider()
-        
-        guard currentTime.isFinite && currentTime >= 0 else {
-          Self.logger.error("Invalid time from provider: \(currentTime)")
-          continue
-        }
-        
-        let activeCue = findActiveCue(at: currentTime, in: cues, epsilon: epsilon)
-        
-        if activeCue?.id != currentCueID {
-          currentCueID = activeCue?.id
-          if let cue = activeCue {
-            Self.logger.debug("Active cue changed: \(cue.text.prefix(30))...")
-          }
-        }
-      }
-      
-      do {
-        try await Task.sleep(for: .milliseconds(100))
-      } catch {
-        Self.logger.debug("Playback tracking cancelled: \(error.localizedDescription)")
-        break
+      if let cue = activeCue {
+        Self.logger.debug("Active cue changed: \(cue.text.prefix(30))...")
       }
     }
-    
-    Self.logger.debug("Stopped tracking playback")
   }
-  
+
   private func findActiveCue(at time: Double, in cues: [SubtitleCue], epsilon: Double = 0.001) -> SubtitleCue? {
     assert(epsilon > 0, "Epsilon must be positive")
     assert(time.isFinite, "Time must be finite")

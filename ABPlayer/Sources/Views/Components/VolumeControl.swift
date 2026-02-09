@@ -49,7 +49,9 @@ struct VolumeControl: View {
       .padding()
     }
     .onAppear {
-      playerManager.setVolume(Float(playerVolume))
+      Task {
+        await playerManager.setVolume(Float(playerVolume))
+      }
     }
     .help("Volume")
   }

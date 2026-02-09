@@ -294,21 +294,17 @@ struct SubtitleViewModelTests {
   
   @Test
   @MainActor
-  func testHandleCueTap() {
+  func testHandleCueTap() async {
     let viewModel = SubtitleViewModel()
     let cueID = UUID()
-    var seekTime: Double?
     
     viewModel.handleUserScroll()
     
-    viewModel.handleCueTap(
+    await viewModel.handleCueTap(
       cueID: cueID,
-      onSeek: { seekTime = $0 },
       cueStartTime: 10.0
     )
     
-    #expect(viewModel.tappedCueID == cueID)
-    #expect(seekTime == 10.0)
     #expect(viewModel.scrollState == .autoScrolling)
   }
   
@@ -319,42 +315,18 @@ struct SubtitleViewModelTests {
     let cues = [
       SubtitleCue(startTime: 0.0, endTime: 2.0, text: "First")
     ]
-    
-    var callCount = 0
-    let trackingTask = Task {
-      await viewModel.trackPlayback(
-        timeProvider: {
-          callCount += 1
-          if callCount < 3 {
-            return Double.nan
-          } else {
-            return 1.0
-          }
-        },
-        cues: cues
-      )
-    }
-    
-    try? await Task.sleep(for: .milliseconds(500))
-    trackingTask.cancel()
-    
-    #expect(callCount > 0)
+
+    await viewModel.trackPlayback(cues: cues)
+
+    #expect(viewModel.currentCueID == nil)
   }
   
   @Test
   @MainActor
   func testTrackPlaybackWithEmptyCues() async {
     let viewModel = SubtitleViewModel()
-    
-    let trackingTask = Task {
-      await viewModel.trackPlayback(
-        timeProvider: { 0.0 },
-        cues: []
-      )
-    }
-    
-    try? await Task.sleep(for: .milliseconds(100))
-    trackingTask.cancel()
+
+    await viewModel.trackPlayback(cues: [])
     
     #expect(viewModel.currentCueID == nil)
   }

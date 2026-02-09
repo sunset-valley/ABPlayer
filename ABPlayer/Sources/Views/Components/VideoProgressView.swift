@@ -22,13 +22,19 @@ struct VideoProgressView: View {
           isSeeking = true
           wasPlayingBeforeSeek = playerManager.isPlaying
           if playerManager.isPlaying {
-            playerManager.togglePlayPause()
+            Task {
+              await playerManager.togglePlayPause()
+            }
           }
         } else {
-          playerManager.seek(to: seekValue)
+          Task {
+            await playerManager.seek(to: seekValue)
+          }
           isSeeking = false
           if wasPlayingBeforeSeek {
-            playerManager.togglePlayPause()
+            Task {
+              await playerManager.togglePlayPause()
+            }
           }
         }
       }

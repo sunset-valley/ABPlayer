@@ -49,8 +49,9 @@ final class PlayerManager {
   var onPlaybackEnded: ((ABFile?) -> Void)?
 
   private var lastPersistedTime: Double = 0
-  private var endOfFileObserver: Any?
+  private var endOfFileTask: Task<Void, Never>?
   private var loadAudioTask: Task<Void, Never>?
+  private var playbackTimeObservers: [UUID: @MainActor (Double) -> Void] = [:]
 
   var hasValidLoopRange: Bool {
     guard let pointA, let pointB else {
@@ -64,7 +65,7 @@ final class PlayerManager {
     isLoopEnabled && hasValidLoopRange
   }
 
-  func clearPlayer()async {
+  func clearPlayer() async {
     player = nil
     await _engine.teardown()
   }
@@ -76,10 +77,8 @@ final class PlayerManager {
   }
 
   func cleanup() {
-    if let observer = endOfFileObserver {
-      NotificationCenter.default.removeObserver(observer)
-      endOfFileObserver = nil
-    }
+    endOfFileTask?.cancel()
+    endOfFileTask = nil
   }
 
   // MARK: - Public API
@@ -104,10 +103,8 @@ final class PlayerManager {
     clearLoop()
     lastPersistedTime = 0
 
-    if let observer = endOfFileObserver {
-      NotificationCenter.default.removeObserver(observer)
-      endOfFileObserver = nil
-    }
+    endOfFileTask?.cancel()
+    endOfFileTask = nil
 
     let bookmarkData = audioFile.bookmarkData
     let resumeTime = fromStart ? 0 : audioFile.currentPlaybackPosition
@@ -144,14 +141,14 @@ final class PlayerManager {
       }
 
       if let item = playerItem {
-        self.endOfFileObserver = NotificationCenter.default.addObserver(
-          forName: .AVPlayerItemDidPlayToEndTime,
-          object: item,
-          queue: .main
-        ) { [weak self] _ in
-          Task { @MainActor [weak self] in
-            guard let self, self.currentFile?.id == fileID else { return }
-            self.handlePlaybackEnded()
+        self.endOfFileTask = Task { [weak self] in
+          for await _ in NotificationCenter.default.notifications(
+            named: .AVPlayerItemDidPlayToEndTime,
+            object: item
+          ) {
+            guard let self else { return }
+            guard self.currentFile?.id == fileID else { continue }
+            await self.handlePlaybackEnded()
           }
         }
       }
@@ -170,39 +167,33 @@ final class PlayerManager {
     }
   }
 
-  func play(fromStart: Bool = false) {
+  func play(fromStart: Bool = false) async {
     guard !isPlaying else { return }
 
-    Task { [weak self] in
-      guard let self else { return }
-      if fromStart {
-        seek(to: 0)
-      }
-      let success = await _engine.play()
-      if success {
-        self.isPlaying = true
-        if let file = self.currentFile {
-          if file.playbackRecord == nil {
-            file.playbackRecord = PlaybackRecord(audioFile: file)
-          }
-          file.playbackRecord?.lastPlayedAt = Date()
+    if fromStart {
+      await seek(to: 0)
+    }
+    let success = await _engine.play()
+    if success {
+      self.isPlaying = true
+      if let file = self.currentFile {
+        if file.playbackRecord == nil {
+          file.playbackRecord = PlaybackRecord(audioFile: file)
         }
+        file.playbackRecord?.lastPlayedAt = Date()
       }
     }
   }
 
-  func pause() {
+  func pause() async {
     guard isPlaying else { return }
 
-    Task { [weak self] in
-      guard let self else { return }
-      await _engine.pause()
-      self.isPlaying = false
-      self.sessionTracker?.persistProgress()
-    }
+    await _engine.pause()
+    self.isPlaying = false
+    self.sessionTracker?.persistProgress()
   }
 
-  func togglePlayPause() {
+  func togglePlayPause() async {
     let startTime = CFAbsoluteTimeGetCurrent()
     Logger.audio.debug("[Performance] togglePlayPause() called, isPlaying: \(self.isPlaying)")
 
@@ -222,14 +213,11 @@ final class PlayerManager {
         "[Performance] User perceives pause after \((CFAbsoluteTimeGetCurrent() - startTime) * 1000)ms"
       )
 
-      Task { [weak self] in
-        guard let self else { return }
-        await _engine.syncPauseState()
-        self.sessionTracker?.persistProgress()
-        Logger.audio.debug(
-          "[Performance] Background sync completed after \((CFAbsoluteTimeGetCurrent() - startTime) * 1000)ms"
-        )
-      }
+      await _engine.syncPauseState()
+      self.sessionTracker?.persistProgress()
+      Logger.audio.debug(
+        "[Performance] Background sync completed after \((CFAbsoluteTimeGetCurrent() - startTime) * 1000)ms"
+      )
     } else {
       isPlaying = true
       let uiUpdateTime = CFAbsoluteTimeGetCurrent()
@@ -245,23 +233,20 @@ final class PlayerManager {
         "[Performance] User perceives play after \((CFAbsoluteTimeGetCurrent() - startTime) * 1000)ms"
       )
 
-      Task { [weak self] in
-        guard let self else { return }
-        await _engine.syncPlayState()
-        if let file = self.currentFile {
-          if file.playbackRecord == nil {
-            file.playbackRecord = PlaybackRecord(audioFile: file)
-          }
-          file.playbackRecord?.lastPlayedAt = Date()
+      await _engine.syncPlayState()
+      if let file = self.currentFile {
+        if file.playbackRecord == nil {
+          file.playbackRecord = PlaybackRecord(audioFile: file)
         }
-        Logger.audio.debug(
-          "[Performance] Background sync completed after \((CFAbsoluteTimeGetCurrent() - startTime) * 1000)ms"
-        )
+        file.playbackRecord?.lastPlayedAt = Date()
       }
+      Logger.audio.debug(
+        "[Performance] Background sync completed after \((CFAbsoluteTimeGetCurrent() - startTime) * 1000)ms"
+      )
     }
   }
 
-  func seek(to time: Double) {
+  func seek(to time: Double) async {
     let maxTime: Double
     if duration > 0 {
       maxTime = duration
@@ -277,16 +262,28 @@ final class PlayerManager {
       lastPersistedTime = clampedTime
     }
 
-    Task { [weak self] in
-      guard let self else { return }
-      await _engine.seek(to: clampedTime)
-    }
+    await _engine.seek(to: clampedTime)
   }
 
-  func setVolume(_ volume: Float) {
+  func setVolume(_ volume: Float) async {
     self.volume = volume
-    Task {
-      await _engine.setVolume(volume)
+    await _engine.setVolume(volume)
+  }
+
+  @discardableResult
+  func addPlaybackTimeObserver(_ observer: @escaping @MainActor (Double) -> Void) -> UUID {
+    let id = UUID()
+    playbackTimeObservers[id] = observer
+    return id
+  }
+
+  func removePlaybackTimeObserver(_ id: UUID) {
+    playbackTimeObservers[id] = nil
+  }
+
+  private func notifyPlaybackTimeObservers(_ time: Double) {
+    for observer in playbackTimeObservers.values {
+      observer(time)
     }
   }
 
@@ -301,6 +298,7 @@ final class PlayerManager {
     }
 
     if isPlaying {
+      notifyPlaybackTimeObservers(seconds)
       sessionTracker?.addListeningTime(0.1)
     }
   }
@@ -312,7 +310,9 @@ final class PlayerManager {
     else { return }
 
     if seconds >= pointB {
-      seek(to: pointA)
+      Task {
+        await seek(to: pointA)
+      }
     }
   }
 
@@ -332,7 +332,7 @@ final class PlayerManager {
     }
   }
 
-  fileprivate func handlePlaybackEnded() {
+  fileprivate func handlePlaybackEnded() async {
     if let file = currentFile {
       if file.playbackRecord == nil {
         file.playbackRecord = PlaybackRecord(audioFile: file)
@@ -347,8 +347,8 @@ final class PlayerManager {
 
     case .repeatOne:
       isPlaying = false
-      seek(to: 0)
-      play()
+      await seek(to: 0)
+      await play()
 
     case .repeatAll, .shuffle, .autoPlayNext:
       onPlaybackEnded?(currentFile)
@@ -394,7 +394,7 @@ final class PlayerManager {
       fromStart: fromStart,
       debounce: false
     )
-    play()
+    await play()
   }
 
   func playNext() async {
@@ -409,7 +409,7 @@ final class PlayerManager {
       debounce: false
     )
     if isPlaying {
-      play()
+      await play()
     }
   }
 
@@ -423,7 +423,7 @@ final class PlayerManager {
       debounce: false
     )
     if isPlaying {
-      play()
+      await play()
     }
   }
 }

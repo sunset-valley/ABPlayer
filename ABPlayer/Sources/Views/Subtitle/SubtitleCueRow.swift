@@ -68,7 +68,15 @@ struct SubtitleCueRow: View {
         .foregroundStyle(isActive ? Color.primary : Color.secondary)
         .frame(width: 52, alignment: .trailing)
 
-      subtitleTextView()
+      GeometryReader { proxy in
+        subtitleTextView()
+          .frame(width: proxy.size.width)
+      }
+      .alignmentGuide(.firstTextBaseline) { _ in
+        let font = NSFont.systemFont(ofSize: fontSize)
+        let lineHeight = font.ascender + font.leading
+        return lineHeight
+      }
       
       Menu {
         Button(action: {
@@ -177,11 +185,6 @@ struct SubtitleCueRow: View {
         rememberedCount: { rememberedCount(for: $0) },
         createdAt: { createdAt(for: $0) }
       )
-      .alignmentGuide(.firstTextBaseline) { _ in
-        let font = NSFont.systemFont(ofSize: fontSize)
-        let lineHeight = font.ascender + font.leading
-        return lineHeight
-      }
       .popover(
         isPresented: Binding(
           get: { popoverSourceRect != nil },
