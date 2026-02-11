@@ -39,6 +39,8 @@ public struct MainSplitView: View {
   public init() {}
 
   public var body: some View {
+    let _ = Self._printChanges()
+    
     NavigationSplitView {
       sidebar
         .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 400)

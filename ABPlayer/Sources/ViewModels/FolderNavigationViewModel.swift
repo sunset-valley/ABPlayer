@@ -16,6 +16,11 @@ final class FolderNavigationViewModel {
   var sortOrder: SortOrder = .nameAZ
   var hovering: SelectionItem?
   var pressing: SelectionItem?
+  var isDeselecting = false
+  var selectionBeforePress: SelectionItem?
+
+  var deleteTarget: SelectionItem?
+  var showDeleteConfirmation = false
   
   var importType: MainSplitView.ImportType?
   var presetnImportType: MainSplitView.ImportType?
@@ -90,6 +95,163 @@ final class FolderNavigationViewModel {
   
   func sortedAudioFiles(_ files: [ABFile]) -> [ABFile] {
     SortingUtility.sortAudioFiles(files, by: sortOrder)
+  }
+
+  func handleAppear() {
+    restoreSortOrder()
+    restoreSelection()
+  }
+
+  func persistSortOrder(_ newValue: SortOrder) {
+    UserDefaults.standard.set(newValue.rawValue, forKey: "folderNavigationSortOrder")
+  }
+
+  func syncSelectionWithSelectedFile(_ newValue: ABFile?) {
+    if let newValue {
+      selection = .audioFile(newValue)
+    } else if case .audioFile? = selection {
+      selection = nil
+    }
+  }
+
+  func currentFolders() -> [Folder] {
+    let folders = currentFolder.map { Array($0.subfolders) } ?? rootFolders()
+    return sortedFolders(folders)
+  }
+
+  func currentAudioFiles() -> [ABFile] {
+    let files = currentFolder.map { Array($0.audioFiles) } ?? rootAudioFiles()
+    return sortedAudioFiles(files)
+  }
+
+  func setHovering(isHovering: Bool, file: ABFile) {
+    hovering = isHovering ? .audioFile(file) : nil
+  }
+
+  func audioFileRowBackground(for file: ABFile) -> Color {
+    if pressing == .audioFile(file) {
+      return Color.asset.listHighlight
+    }
+
+    if selection == .audioFile(file) {
+      return Color.asset.listHighlight
+    }
+
+    if hovering == .audioFile(file) {
+      return Color.asset.listHighlight.opacity(0.6)
+    }
+
+    return .clear
+  }
+
+  func handlePressChanged(for selection: SelectionItem) {
+    if selectionBeforePress == nil {
+      selectionBeforePress = self.selection
+    }
+    pressing = selection
+  }
+
+  func handlePressEnded(
+    for selection: SelectionItem,
+    isInsideRow: Bool,
+    onSelectFile: @escaping (ABFile) async -> Void
+  ) {
+    pressing = nil
+    let previousSelection = selectionBeforePress
+    selectionBeforePress = nil
+
+    guard isInsideRow else {
+      isDeselecting = true
+      self.selection = previousSelection
+      isDeselecting = false
+      return
+    }
+
+    self.selection = selection
+    handleSelectionChange(
+      selection,
+      onSelectFile: onSelectFile
+    )
+  }
+
+  func requestDelete(_ target: SelectionItem) {
+    deleteTarget = target
+    showDeleteConfirmation = true
+  }
+
+  func cancelDeleteConfirmation() {
+    deleteTarget = nil
+    showDeleteConfirmation = false
+  }
+
+  var deleteConfirmationTitle: String {
+    switch deleteTarget {
+    case .folder:
+      return "Delete Folder?"
+    case .audioFile:
+      return "Delete File?"
+    case .empty, .none:
+      return "Delete?"
+    }
+  }
+
+  var deleteConfirmationMessage: String {
+    switch deleteTarget {
+    case .folder:
+      return "Do you want to move the folder and its contents to the Trash or just remove them from the library?"
+    case .audioFile:
+      return "Do you want to move the file to the Trash or just remove it from the library?"
+    default:
+      return "This action cannot be undone."
+    }
+  }
+
+  func performDeleteConfirmation(deleteFromDisk: Bool) {
+    switch deleteTarget {
+    case let .folder(folder):
+      deleteFolder(
+        folder,
+        deleteFromDisk: deleteFromDisk
+      )
+    case let .audioFile(file):
+      var selectedFile = self.selectedFile
+      deleteAudioFile(
+        file,
+        deleteFromDisk: deleteFromDisk,
+        updateSelection: true,
+        checkPlayback: true,
+        selectedFile: &selectedFile
+      )
+      self.selectedFile = selectedFile
+    case .empty, .none:
+      break
+    }
+
+    cancelDeleteConfirmation()
+  }
+
+  func handleDeleteCommand() {
+    guard let selection else { return }
+
+    switch selection {
+    case let .folder(folder):
+      deleteFolder(
+        folder,
+        deleteFromDisk: false
+      )
+    case let .audioFile(file):
+      var selectedFile = self.selectedFile
+      deleteAudioFile(
+        file,
+        deleteFromDisk: false,
+        updateSelection: true,
+        checkPlayback: true,
+        selectedFile: &selectedFile
+      )
+      self.selectedFile = selectedFile
+    case .empty:
+      break
+    }
   }
   
   func navigateInto(_ folder: Folder) {
@@ -203,5 +365,67 @@ final class FolderNavigationViewModel {
     }
     
     selectedFile = matchedFile
+  }
+
+  private func restoreSortOrder() {
+    if let savedSortOrder = UserDefaults.standard.string(forKey: "folderNavigationSortOrder"),
+       let sortOrder = SortOrder(rawValue: savedSortOrder)
+    {
+      self.sortOrder = sortOrder
+    }
+  }
+
+  private func restoreSelection() {
+    if let selectedFile {
+      selection = .audioFile(selectedFile)
+      return
+    }
+
+    guard let lastSelectionItemID else { return }
+    selection = selectionItem(for: lastSelectionItemID)
+  }
+
+  private func rootFolders() -> [Folder] {
+    let descriptor = FetchDescriptor<Folder>(
+      predicate: #Predicate<Folder> { $0.parent == nil },
+      sortBy: [SortDescriptor(\Folder.name)]
+    )
+    return (try? modelContext.fetch(descriptor)) ?? []
+  }
+
+  private func rootAudioFiles() -> [ABFile] {
+    let descriptor = FetchDescriptor<ABFile>(
+      predicate: #Predicate<ABFile> { $0.folder == nil },
+      sortBy: [SortDescriptor(\ABFile.createdAt)]
+    )
+    return (try? modelContext.fetch(descriptor)) ?? []
+  }
+
+  private func selectionItem(for idString: String) -> SelectionItem? {
+    guard let id = UUID(uuidString: idString) else { return nil }
+
+    if let folder = fetchFolder(id: id) {
+      return .folder(folder)
+    }
+
+    if let file = fetchAudioFile(id: id) {
+      return .audioFile(file)
+    }
+
+    return nil
+  }
+
+  private func fetchFolder(id: UUID) -> Folder? {
+    let descriptor = FetchDescriptor<Folder>(
+      predicate: #Predicate<Folder> { $0.id == id }
+    )
+    return try? modelContext.fetch(descriptor).first
+  }
+
+  private func fetchAudioFile(id: UUID) -> ABFile? {
+    let descriptor = FetchDescriptor<ABFile>(
+      predicate: #Predicate<ABFile> { $0.id == id }
+    )
+    return try? modelContext.fetch(descriptor).first
   }
 }
