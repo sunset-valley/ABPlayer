@@ -187,14 +187,18 @@ final class FolderNavigationViewModel {
     importService.importFolder(from: url, currentFolder: currentFolder)
   }
   
-  func syncSelectedFileWithPlayer(allAudioFiles: [ABFile]) {
+  func syncSelectedFileWithPlayer() {
     guard let newFileID = playerManager.currentFile?.id else { return }
     
     if selectedFile?.id == newFileID {
       return
     }
     
-    guard let matchedFile = allAudioFiles.first(where: { $0.id == newFileID }) else {
+    let descriptor = FetchDescriptor<ABFile>(
+      predicate: #Predicate<ABFile> { $0.id == newFileID }
+    )
+
+    guard let matchedFile = try? modelContext.fetch(descriptor).first else {
       return
     }
     
