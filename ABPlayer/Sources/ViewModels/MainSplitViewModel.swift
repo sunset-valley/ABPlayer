@@ -19,16 +19,7 @@ final class MainSplitViewModel {
 
   // MARK: - Layout State
 
-  var draggingWidth: Double?
-  var draggingHeight: Double?
-
-  private var currentMediaType: MediaType = .audio
-
-  var playerSectionWidth: Double {
-    didSet {
-      UserDefaults.standard.set(playerSectionWidth, forKey: userDefaultsKey(for: "PlayerSectionWidth"))
-    }
-  }
+  private(set) var currentMediaType: MediaType = .audio
 
   var showContentPanel: Bool {
     didSet {
@@ -36,16 +27,18 @@ final class MainSplitViewModel {
     }
   }
 
-  var topPanelHeight: Double {
-    didSet {
-      UserDefaults.standard.set(topPanelHeight, forKey: userDefaultsKey(for: "TopPanelHeight"))
-    }
-  }
-
   var showBottomPanel: Bool {
     didSet {
       UserDefaults.standard.set(showBottomPanel, forKey: userDefaultsKey(for: "ShowBottomPanel"))
     }
+  }
+
+  var horizontalPersistenceKey: String {
+    userDefaultsKey(for: "PlayerSectionWidth")
+  }
+
+  var verticalPersistenceKey: String {
+    userDefaultsKey(for: "TopPanelHeight")
   }
 
   // MARK: - Global Pane Allocation State (Persisted)
@@ -78,16 +71,16 @@ final class MainSplitViewModel {
 
   let minWidthOfPlayerSection: CGFloat = 480
   let minWidthOfContentPanel: CGFloat = 300
+  let defaultPlayerSectionWidth: Double = 480
   let minHeightOfTopPanel: CGFloat = 200
   let minHeightOfBottomPanel: CGFloat = 150
+  let defaultTopPanelHeight: Double = 400
   let dividerWidth: CGFloat = 8
 
   // MARK: - Initialization
 
   init() {
-    self.playerSectionWidth = Self.loadWidth(for: .audio)
     self.showContentPanel = Self.loadShowContentPanel(for: .audio)
-    self.topPanelHeight = Self.loadHeight(for: .audio)
     self.showBottomPanel = Self.loadShowBottomPanel(for: .audio)
 
     let loadedLeftTabs = Self.loadTabs(
@@ -166,9 +159,7 @@ final class MainSplitViewModel {
 
     currentMediaType = mediaType
 
-    playerSectionWidth = Self.loadWidth(for: mediaType)
     showContentPanel = Self.loadShowContentPanel(for: mediaType)
-    topPanelHeight = Self.loadHeight(for: mediaType)
     showBottomPanel = Self.loadShowBottomPanel(for: mediaType)
 
     let loadedLeftTabs = Self.loadTabs(
@@ -199,18 +190,6 @@ final class MainSplitViewModel {
     sanitizeAllocations()
     normalizeSelection(for: .bottomLeft)
     normalizeSelection(for: .right)
-  }
-
-  // MARK: - Layout Logic
-
-  func clampWidth(_ width: Double, availableWidth: CGFloat) -> Double {
-    let maxWidth = Double(availableWidth) - dividerWidth - minWidthOfContentPanel
-    return min(max(width, minWidthOfPlayerSection), max(maxWidth, minWidthOfPlayerSection))
-  }
-
-  func clampHeight(_ height: Double, availableHeight: CGFloat) -> Double {
-    let maxHeight = Double(availableHeight) - dividerWidth - minHeightOfBottomPanel
-    return min(max(height, minHeightOfTopPanel), max(maxHeight, minHeightOfTopPanel))
   }
 
   // MARK: - Private Helpers (Allocation)
@@ -285,24 +264,12 @@ final class MainSplitViewModel {
     }
   }
 
-  private static func loadWidth(for mediaType: MediaType) -> Double {
-    let key = userDefaultsKey(for: "PlayerSectionWidth", mediaType: mediaType)
-    let storedWidth = UserDefaults.standard.double(forKey: key)
-    return storedWidth > 0 ? storedWidth : 480
-  }
-
   private static func loadShowContentPanel(for mediaType: MediaType) -> Bool {
     let key = userDefaultsKey(for: "ShowContentPanel", mediaType: mediaType)
     if UserDefaults.standard.object(forKey: key) == nil {
       return true
     }
     return UserDefaults.standard.bool(forKey: key)
-  }
-
-  private static func loadHeight(for mediaType: MediaType) -> Double {
-    let key = userDefaultsKey(for: "TopPanelHeight", mediaType: mediaType)
-    let storedHeight = UserDefaults.standard.double(forKey: key)
-    return storedHeight > 0 ? storedHeight : 400
   }
 
   private static func loadShowBottomPanel(for mediaType: MediaType) -> Bool {

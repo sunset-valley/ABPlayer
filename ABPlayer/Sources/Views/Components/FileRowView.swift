@@ -11,6 +11,7 @@ struct FileRowView: View {
   private var isAvailable: Bool {
     file.isBookmarkValid && !isFailed
   }
+
   private var hasPlayed: Bool {
     file.currentPlaybackPosition > 0
   }
@@ -30,19 +31,19 @@ struct FileRowView: View {
           Image(systemName: "exclamationmark.triangle.fill")
             .foregroundStyle(file.isBookmarkValid ? .red : .orange)
         }
-        
+
         VStack(alignment: .leading) {
           Text(file.displayName)
             .lineLimit(1)
             .strikethrough(!isAvailable, color: .secondary)
             .bodyStyle()
-          
+
           HStack(spacing: 4) {
             if !file.isBookmarkValid {
               Text("文件不可用")
                 .foregroundStyle(.orange)
             } else if isFailed {
-               Text("无法播放")
+              Text("无法播放")
                 .foregroundStyle(.red)
             } else if let duration = file.cachedDuration, duration > 0 {
               Text(timeString(from: duration))

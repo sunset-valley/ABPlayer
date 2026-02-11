@@ -1,3 +1,21 @@
+## [0.2.11.78] - 2026-02-11
+
+### Features
+- replace XML skill definition with Markdown
+
+### Bug Fixes
+- sync current cue when tapping subtitle
+
+### Improvements
+- isolate split resizing state and add transcription resize placeholder
+- migrate FolderNavigationView logic to ViewModel (MVVM)
+- optimize data fetching in MainSplitView and ViewModel
+
+### Chores
+- cleanup formatting and spacing in view components
+- add MVVM architecture rules and update project formatting
+
+
 ## [0.2.10.77] - 2026-02-09
 
 ### Bug Fixes

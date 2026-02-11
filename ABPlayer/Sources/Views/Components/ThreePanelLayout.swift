@@ -2,21 +2,20 @@ import SwiftUI
 
 struct ThreePanelLayout<TopLeft: View, BottomLeft: View, Right: View>: View {
   @Binding var isRightVisible: Bool
-  @Binding var leftColumnWidth: Double
-  @Binding var draggingLeftColumnWidth: Double?
+  let horizontalPersistenceKey: String
+  let defaultLeftColumnWidth: Double
   let minLeftColumnWidth: CGFloat
   let minRightWidth: CGFloat
-  let clampLeftColumnWidth: (_ proposed: Double, _ availableWidth: CGFloat) -> Double
   
   @Binding var isBottomLeftVisible: Bool
-  @Binding var topLeftHeight: Double
-  @Binding var draggingTopLeftHeight: Double?
+  let verticalPersistenceKey: String
+  let defaultTopLeftHeight: Double
   let minTopLeftHeight: CGFloat
   let minBottomLeftHeight: CGFloat
-  let clampTopLeftHeight: (_ proposed: Double, _ availableHeight: CGFloat) -> Double
   
   let dividerThickness: CGFloat
   let animation: Animation
+  let onDragging: (_ direction: SplitAxis, _ isDragging: Bool) -> Void
   
   @ViewBuilder let topLeft: () -> TopLeft
   @ViewBuilder let bottomLeft: () -> BottomLeft
@@ -24,39 +23,37 @@ struct ThreePanelLayout<TopLeft: View, BottomLeft: View, Right: View>: View {
   
   init(
     isRightVisible: Binding<Bool>,
-    leftColumnWidth: Binding<Double>,
-    draggingLeftColumnWidth: Binding<Double?>,
+    horizontalPersistenceKey: String,
+    defaultLeftColumnWidth: Double,
     minLeftColumnWidth: CGFloat,
     minRightWidth: CGFloat,
-    clampLeftColumnWidth: @escaping (_ proposed: Double, _ availableWidth: CGFloat) -> Double,
     isBottomLeftVisible: Binding<Bool>,
-    topLeftHeight: Binding<Double>,
-    draggingTopLeftHeight: Binding<Double?>,
+    verticalPersistenceKey: String,
+    defaultTopLeftHeight: Double,
     minTopLeftHeight: CGFloat,
     minBottomLeftHeight: CGFloat,
-    clampTopLeftHeight: @escaping (_ proposed: Double, _ availableHeight: CGFloat) -> Double,
     dividerThickness: CGFloat = 8,
     animation: Animation = .easeInOut(duration: 0.25),
+    onDragging: @escaping (_ direction: SplitAxis, _ isDragging: Bool) -> Void = { _, _ in },
     @ViewBuilder topLeft: @escaping () -> TopLeft,
     @ViewBuilder bottomLeft: @escaping () -> BottomLeft,
     @ViewBuilder right: @escaping () -> Right
   ) {
     self._isRightVisible = isRightVisible
-    self._leftColumnWidth = leftColumnWidth
-    self._draggingLeftColumnWidth = draggingLeftColumnWidth
+    self.horizontalPersistenceKey = horizontalPersistenceKey
+    self.defaultLeftColumnWidth = defaultLeftColumnWidth
     self.minLeftColumnWidth = minLeftColumnWidth
     self.minRightWidth = minRightWidth
-    self.clampLeftColumnWidth = clampLeftColumnWidth
     
     self._isBottomLeftVisible = isBottomLeftVisible
-    self._topLeftHeight = topLeftHeight
-    self._draggingTopLeftHeight = draggingTopLeftHeight
+    self.verticalPersistenceKey = verticalPersistenceKey
+    self.defaultTopLeftHeight = defaultTopLeftHeight
     self.minTopLeftHeight = minTopLeftHeight
     self.minBottomLeftHeight = minBottomLeftHeight
-    self.clampTopLeftHeight = clampTopLeftHeight
     
     self.dividerThickness = dividerThickness
     self.animation = animation
+    self.onDragging = onDragging
     
     self.topLeft = topLeft
     self.bottomLeft = bottomLeft
@@ -67,24 +64,28 @@ struct ThreePanelLayout<TopLeft: View, BottomLeft: View, Right: View>: View {
     ResizableSplitPanel(
       axis: .horizontal,
       isSecondaryVisible: $isRightVisible,
-      primarySize: $leftColumnWidth,
-      draggingPrimarySize: $draggingLeftColumnWidth,
+      persistenceKey: horizontalPersistenceKey,
+      defaultPrimarySize: defaultLeftColumnWidth,
       minPrimary: minLeftColumnWidth,
       minSecondary: minRightWidth,
       dividerThickness: dividerThickness,
-      clampPrimarySize: clampLeftColumnWidth,
-      animation: animation
+      animation: animation,
+      onDragging: { isDragging in
+        onDragging(.horizontal, isDragging)
+      }
     ) {
       ResizableSplitPanel(
         axis: .vertical,
         isSecondaryVisible: $isBottomLeftVisible,
-        primarySize: $topLeftHeight,
-        draggingPrimarySize: $draggingTopLeftHeight,
+        persistenceKey: verticalPersistenceKey,
+        defaultPrimarySize: defaultTopLeftHeight,
         minPrimary: minTopLeftHeight,
         minSecondary: minBottomLeftHeight,
         dividerThickness: dividerThickness,
-        clampPrimarySize: clampTopLeftHeight,
-        animation: animation
+        animation: animation,
+        onDragging: { isDragging in
+          onDragging(.vertical, isDragging)
+        }
       ) {
         topLeft()
       } secondary: {

@@ -11,23 +11,25 @@ enum SplitAxis {
 
 struct ResizableSplitPanel<Primary: View, Secondary: View>: View {
   let axis: SplitAxis
+  let onDragging: (_ isDragging: Bool) -> Void
   
   // "secondary exists" toggle (maps to showContentPanel)
   @Binding var isSecondaryVisible: Bool
   
-  // persisted size of primary (width for horizontal, height for vertical)
-  @Binding var primarySize: Double
+  // persistence
+  let persistenceKey: String
+  let defaultPrimarySize: Double
   
-  // transient drag size (maps to draggingWidth today; generalized name)
-  @Binding var draggingPrimarySize: Double?
+  // internal primary size – fully owned by this component
+  @State private var primarySize: Double
+  
+  // transient drag size – kept local to avoid @Observable cascade
+  @State private var draggingPrimarySize: Double?
   
   // sizing rules
   let minPrimary: CGFloat
   let minSecondary: CGFloat
   let dividerThickness: CGFloat
-  
-  // consumer-supplied clamp (keeps existing VM rules + persistence keys)
-  let clampPrimarySize: (_ proposed: Double, _ availablePrimaryAxis: CGFloat) -> Double
   
   // visual behavior
   let animation: Animation
@@ -36,34 +38,35 @@ struct ResizableSplitPanel<Primary: View, Secondary: View>: View {
   // content
   @ViewBuilder let primary: () -> Primary
   @ViewBuilder let secondary: () -> Secondary
+
+  @State private var isDragging = false
   
   // MARK: - Initializer
   
   init(
     axis: SplitAxis,
     isSecondaryVisible: Binding<Bool>,
-    primarySize: Binding<Double>,
-    draggingPrimarySize: Binding<Double?>,
+    persistenceKey: String,
+    defaultPrimarySize: Double,
     minPrimary: CGFloat,
     minSecondary: CGFloat,
     dividerThickness: CGFloat = 8,
-    clampPrimarySize: @escaping (_ proposed: Double, _ availablePrimaryAxis: CGFloat) -> Double,
     animation: Animation = .easeInOut(duration: 0.25),
+    onDragging: @escaping (_ isDragging: Bool) -> Void = { _ in },
     secondaryTransition: AnyTransition? = nil,
     @ViewBuilder primary: @escaping () -> Primary,
     @ViewBuilder secondary: @escaping () -> Secondary
   ) {
     self.axis = axis
     self._isSecondaryVisible = isSecondaryVisible
-    self._primarySize = primarySize
-    self._draggingPrimarySize = draggingPrimarySize
+    self.persistenceKey = persistenceKey
+    self.defaultPrimarySize = defaultPrimarySize
     self.minPrimary = minPrimary
     self.minSecondary = minSecondary
     self.dividerThickness = dividerThickness
-    self.clampPrimarySize = clampPrimarySize
     self.animation = animation
+    self.onDragging = onDragging
     
-    // Default transition based on axis
     if let transition = secondaryTransition {
       self.secondaryTransition = transition
     } else {
@@ -72,6 +75,9 @@ struct ResizableSplitPanel<Primary: View, Secondary: View>: View {
         : .move(edge: .bottom).combined(with: .opacity)
     }
     
+    let stored = UserDefaults.standard.double(forKey: persistenceKey)
+    self._primarySize = State(initialValue: stored > 0 ? stored : defaultPrimarySize)
+    
     self.primary = primary
     self.secondary = secondary
   }
@@ -79,6 +85,8 @@ struct ResizableSplitPanel<Primary: View, Secondary: View>: View {
   // MARK: - Body
   
   var body: some View {
+    let _ = Self._printChanges()
+    
     GeometryReader { geometry in
       let availablePrimaryAxis = axis == .horizontal ? geometry.size.width : geometry.size.height
       let effectiveSize = effectivePrimarySize(available: availablePrimaryAxis)
@@ -118,17 +126,34 @@ struct ResizableSplitPanel<Primary: View, Secondary: View>: View {
       }
       .animation(animation, value: isSecondaryVisible)
       .onChange(of: isSecondaryVisible) { _, isShowing in
-        if isShowing {
-          primarySize = clampPrimarySize(primarySize, availablePrimaryAxis)
+        if !isShowing {
+          setDragging(false)
         }
+        if isShowing {
+          commitPrimarySize(clampPrimarySize(primarySize, available: availablePrimaryAxis))
+        }
+      }
+      .onChange(of: persistenceKey) { _, newKey in
+        let stored = UserDefaults.standard.double(forKey: newKey)
+        primarySize = stored > 0 ? stored : defaultPrimarySize
       }
     }
   }
   
   // MARK: - Private Methods
   
+  private func clampPrimarySize(_ proposed: Double, available: CGFloat) -> Double {
+    let maxSize = available - dividerThickness - minSecondary
+    return min(max(proposed, minPrimary), max(maxSize, minPrimary))
+  }
+  
   private func effectivePrimarySize(available: CGFloat) -> Double {
-    clampPrimarySize(draggingPrimarySize ?? primarySize, available)
+    clampPrimarySize(draggingPrimarySize ?? primarySize, available: available)
+  }
+  
+  private func commitPrimarySize(_ size: Double) {
+    primarySize = size
+    UserDefaults.standard.set(size, forKey: persistenceKey)
   }
   
   private func translationDelta(_ value: DragGesture.Value) -> Double {
@@ -164,18 +189,26 @@ struct ResizableSplitPanel<Primary: View, Secondary: View>: View {
         }
       }
       .gesture(
-        DragGesture(minimumDistance: 1)
+        DragGesture(minimumDistance: 1, coordinateSpace: .global)
           .onChanged { value in
+            setDragging(true)
             let delta = translationDelta(value)
-            let newSize = (draggingPrimarySize ?? primarySize) + delta
-            draggingPrimarySize = clampPrimarySize(newSize, availablePrimaryAxis)
+            let newSize = primarySize + delta
+            draggingPrimarySize = clampPrimarySize(newSize, available: availablePrimaryAxis)
           }
           .onEnded { _ in
             if let finalSize = draggingPrimarySize {
-              primarySize = finalSize
+              commitPrimarySize(finalSize)
             }
             draggingPrimarySize = nil
+            setDragging(false)
           }
       )
+  }
+
+  private func setDragging(_ newValue: Bool) {
+    guard isDragging != newValue else { return }
+    isDragging = newValue
+    onDragging(newValue)
   }
 }
