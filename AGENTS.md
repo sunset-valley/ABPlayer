@@ -16,6 +16,7 @@ Agents act as senior Swift collaborators. Keep responses concise, clarify uncert
 
 - `.agent/rules/workspace.md` - workspace paths and path resolution rules
 - `.agent/rules/swift-style.md` - Swift style, architecture, errors, memory, assertions
+- `.agent/rules/mvvm.md` - MVVM responsibilities, ViewModel contract, boundaries, and testing guidance
 - `.agent/rules/build.md` - build command
 - `.agent/rules/test.md` - test command
 - `.agent/rules/workflow.md` - collaboration and quick-commit convention
