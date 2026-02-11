@@ -52,6 +52,8 @@ struct FolderNavigationView: View {
   let onSelectFile: (ABFile) async -> Void
 
   var body: some View {
+//    let _ = Self._printChanges()
+    
     VStack(spacing: 0) {
       navigationHeader
       fileList
