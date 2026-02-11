@@ -2,9 +2,11 @@
 
 ### Features
 - replace XML skill definition with Markdown
+- add folder refresh flow and library-safe sync paths
 
 ### Bug Fixes
 - sync current cue when tapping subtitle
+- move file importer modifier after lifecycle hooks
 
 ### Improvements
 - isolate split resizing state and add transcription resize placeholder
@@ -14,6 +16,7 @@
 ### Chores
 - cleanup formatting and spacing in view components
 - add MVVM architecture rules and update project formatting
+- rewrite README with simplified project introduction and features including vocabulary marking
 
 
 ## [0.2.10.77] - 2026-02-09
