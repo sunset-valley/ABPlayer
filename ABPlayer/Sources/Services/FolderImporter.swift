@@ -29,25 +29,38 @@ final class FolderImporter {
   /// - Parameter url: 根文件夹 URL
   /// - Returns: 同步后的根 Folder ID
   func syncFolder(at url: URL, parentFolder: Folder?) async throws -> PersistentIdentifier? {
-    guard url.startAccessingSecurityScopedResource() else {
-      throw ImportError.accessDenied
+    let alreadyInLibrary = isInLibrary(url)
+
+    // Library-internal URLs don't carry a security-scoped bookmark;
+    // the app already has natural access to Application Support.
+    if !alreadyInLibrary {
+      guard url.startAccessingSecurityScopedResource() else {
+        throw ImportError.accessDenied
+      }
     }
 
     defer {
-      url.stopAccessingSecurityScopedResource()
+      if !alreadyInLibrary {
+        url.stopAccessingSecurityScopedResource()
+      }
     }
 
     try librarySettings.ensureLibraryDirectoryExists()
 
     let destinationURL: URL
-    if isInLibrary(url) {
+    if alreadyInLibrary {
       destinationURL = url
     } else {
       let destinationDirectory = folderLibraryURL(for: parentFolder) ?? librarySettings.libraryDirectoryURL
       destinationURL = try copyItemToLibrary(from: url, destinationDirectory: destinationDirectory)
     }
 
-    let rootPath = destinationURL.lastPathComponent
+    let libraryURL = librarySettings.libraryDirectoryURL.standardizedFileURL
+    let rootPath = String(
+      destinationURL.standardizedFileURL.path
+        .dropFirst(libraryURL.path.count)
+        .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    )
     let folder = try await processDirectory(at: destinationURL, relativePath: rootPath, parent: parentFolder)
 
     try modelContext.save()

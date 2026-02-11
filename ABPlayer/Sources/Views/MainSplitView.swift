@@ -36,12 +36,11 @@ public struct MainSplitView: View {
   @State private var didAttemptRestoreNavigationPath = false
   @State private var isClearingData: Bool = false
 
-
   public init() {}
 
   public var body: some View {
     let _ = Self._printChanges()
-    
+
     NavigationSplitView {
       sidebar
         .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 400)
@@ -53,17 +52,6 @@ public struct MainSplitView: View {
       }
     }
     .frame(minWidth: 1000, minHeight: 600)
-    .fileImporter(
-      isPresented: Binding(
-        get: { folderNavigationViewModel?.presetnImportType != nil },
-        set: { if !$0 { folderNavigationViewModel?.presetnImportType = nil } }
-      ),
-      allowedContentTypes: folderNavigationViewModel?.importType?.allowedContentTypes ?? [],
-      allowsMultipleSelection: false,
-      onCompletion: { result in
-        folderNavigationViewModel?.handleImportResult(result)
-      }
-    )
     .onAppear {
       sessionTracker.setModelContainer(modelContext.container)
       playerManager.sessionTracker = sessionTracker
@@ -100,6 +88,17 @@ public struct MainSplitView: View {
       sessionTracker.endSessionIfIdle()
     }
     #endif
+    .fileImporter(
+      isPresented: Binding(
+        get: { folderNavigationViewModel?.presetnImportType != nil },
+        set: { if !$0 { folderNavigationViewModel?.presetnImportType = nil } }
+      ),
+      allowedContentTypes: folderNavigationViewModel?.importType?.allowedContentTypes ?? [],
+      allowsMultipleSelection: false,
+      onCompletion: { result in
+        folderNavigationViewModel?.handleImportResult(result)
+      }
+    )
     .alert(
       "Import Failed",
       isPresented: .constant(folderNavigationViewModel?.importErrorMessage != nil),
@@ -241,10 +240,10 @@ public struct MainSplitView: View {
 
   private var sessionTimeDisplay: some View {
     HStack(spacing: 6) {
-#if DEBUG
-      FPSOverlay()
-#endif
-      
+      #if DEBUG
+        FPSOverlay()
+      #endif
+
       Image(systemName: "timer")
         .font(.system(size: 14))
         .foregroundStyle(.secondary)
@@ -314,6 +313,18 @@ public struct MainSplitView: View {
           } label: {
             Label("Import Folder", systemImage: "folder.badge.plus")
           }
+
+          Button {
+            Task {
+              await folderNavigationViewModel?.refreshCurrentFolder()
+              if let folder = folderNavigationViewModel?.currentFolder {
+                playerManager.playbackQueue.updateQueue(folder.sortedAudioFiles)
+              }
+            }
+          } label: {
+            Label("Refresh", systemImage: "arrow.clockwise")
+          }
+          .disabled(folderNavigationViewModel?.currentFolder == nil)
 
           Divider()
 

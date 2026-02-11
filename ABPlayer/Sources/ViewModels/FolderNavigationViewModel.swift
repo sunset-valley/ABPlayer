@@ -25,6 +25,9 @@ final class FolderNavigationViewModel {
   var importType: MainSplitView.ImportType?
   var presetnImportType: MainSplitView.ImportType?
   
+  /// Observation trigger: bumped after import/refresh to invalidate `currentFolders()` / `currentAudioFiles()`.
+  private(set) var refreshToken = 0
+  
   var currentFolder: Folder? {
     get { navigationService.currentFolder }
     set { navigationService.currentFolder = newValue }
@@ -87,6 +90,10 @@ final class FolderNavigationViewModel {
     )
     
     self.selectionService.selectedFile = selectedFile
+    
+    self.importService.onImportCompleted = { [weak self] in
+      self?.refreshToken += 1
+    }
   }
   
   func sortedFolders(_ folders: [Folder]) -> [Folder] {
@@ -115,11 +122,13 @@ final class FolderNavigationViewModel {
   }
 
   func currentFolders() -> [Folder] {
+    _ = refreshToken
     let folders = currentFolder.map { Array($0.subfolders) } ?? rootFolders()
     return sortedFolders(folders)
   }
 
   func currentAudioFiles() -> [ABFile] {
+    _ = refreshToken
     let files = currentFolder.map { Array($0.audioFiles) } ?? rootAudioFiles()
     return sortedAudioFiles(files)
   }
@@ -347,6 +356,11 @@ final class FolderNavigationViewModel {
   
   func importFolder(from url: URL) {
     importService.importFolder(from: url, currentFolder: currentFolder)
+  }
+  
+  func refreshCurrentFolder() async {
+    guard let currentFolder else { return }
+    await importService.refreshFolder(currentFolder)
   }
   
   func syncSelectedFileWithPlayer() {
