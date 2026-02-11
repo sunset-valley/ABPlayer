@@ -52,17 +52,6 @@ public struct MainSplitView: View {
       }
     }
     .frame(minWidth: 1000, minHeight: 600)
-    .fileImporter(
-      isPresented: Binding(
-        get: { folderNavigationViewModel?.presetnImportType != nil },
-        set: { if !$0 { folderNavigationViewModel?.presetnImportType = nil } }
-      ),
-      allowedContentTypes: folderNavigationViewModel?.importType?.allowedContentTypes ?? [],
-      allowsMultipleSelection: false,
-      onCompletion: { result in
-        folderNavigationViewModel?.handleImportResult(result)
-      }
-    )
     .onAppear {
       sessionTracker.setModelContainer(modelContext.container)
       playerManager.sessionTracker = sessionTracker
@@ -99,6 +88,17 @@ public struct MainSplitView: View {
       sessionTracker.endSessionIfIdle()
     }
     #endif
+    .fileImporter(
+      isPresented: Binding(
+        get: { folderNavigationViewModel?.presetnImportType != nil },
+        set: { if !$0 { folderNavigationViewModel?.presetnImportType = nil } }
+      ),
+      allowedContentTypes: folderNavigationViewModel?.importType?.allowedContentTypes ?? [],
+      allowsMultipleSelection: false,
+      onCompletion: { result in
+        folderNavigationViewModel?.handleImportResult(result)
+      }
+    )
     .alert(
       "Import Failed",
       isPresented: .constant(folderNavigationViewModel?.importErrorMessage != nil),
