@@ -36,12 +36,11 @@ public struct MainSplitView: View {
   @State private var didAttemptRestoreNavigationPath = false
   @State private var isClearingData: Bool = false
 
-
   public init() {}
 
   public var body: some View {
     let _ = Self._printChanges()
-    
+
     NavigationSplitView {
       sidebar
         .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 400)
@@ -241,10 +240,10 @@ public struct MainSplitView: View {
 
   private var sessionTimeDisplay: some View {
     HStack(spacing: 6) {
-#if DEBUG
-      FPSOverlay()
-#endif
-      
+      #if DEBUG
+        FPSOverlay()
+      #endif
+
       Image(systemName: "timer")
         .font(.system(size: 14))
         .foregroundStyle(.secondary)
@@ -314,6 +313,18 @@ public struct MainSplitView: View {
           } label: {
             Label("Import Folder", systemImage: "folder.badge.plus")
           }
+
+          Button {
+            Task {
+              await folderNavigationViewModel?.refreshCurrentFolder()
+              if let folder = folderNavigationViewModel?.currentFolder {
+                playerManager.playbackQueue.updateQueue(folder.sortedAudioFiles)
+              }
+            }
+          } label: {
+            Label("Refresh", systemImage: "arrow.clockwise")
+          }
+          .disabled(folderNavigationViewModel?.currentFolder == nil)
 
           Divider()
 

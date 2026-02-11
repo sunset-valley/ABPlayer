@@ -8,6 +8,7 @@ final class ImportService {
   private let librarySettings: LibrarySettings
   
   var importErrorMessage: String?
+  var onImportCompleted: (@MainActor () -> Void)?
   
   init(
     modelContext: ModelContext,
@@ -66,6 +67,7 @@ final class ImportService {
       
       modelContext.insert(audioFile)
       targetFolder?.audioFiles.append(audioFile)
+      onImportCompleted?()
     } catch {
       importErrorMessage = "Failed to import file: \(error.localizedDescription)"
     }
@@ -85,11 +87,24 @@ final class ImportService {
           targetParent = currentFolder
         }
         _ = try await importer.syncFolder(at: url, parentFolder: targetParent)
+        onImportCompleted?()
       } catch {
         await MainActor.run {
           importErrorMessage = "Failed to import folder: \(error.localizedDescription)"
         }
       }
+    }
+  }
+  
+  func refreshFolder(_ folder: Folder) async {
+    let folderURL = librarySettings.libraryDirectoryURL.appendingPathComponent(folder.relativePath)
+    let importer = FolderImporter(modelContext: modelContext, librarySettings: librarySettings)
+    
+    do {
+      _ = try await importer.syncFolder(at: folderURL, parentFolder: folder.parent)
+      onImportCompleted?()
+    } catch {
+      importErrorMessage = "Failed to refresh folder: \(error.localizedDescription)"
     }
   }
   
