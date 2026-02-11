@@ -57,7 +57,7 @@ final class SubtitleViewModel {
     }
 
     var countdown: Int? {
-      if case .userScrolling(let value) = self { return value }
+      if case let .userScrolling(value) = self { return value }
       return nil
     }
   }
@@ -67,7 +67,7 @@ final class SubtitleViewModel {
     case selected(cueID: UUID, wordIndex: Int)
 
     var selectedWord: (cueID: UUID, wordIndex: Int)? {
-      if case .selected(let cueID, let wordIndex) = self {
+      if case let .selected(cueID, wordIndex) = self {
         return (cueID, wordIndex)
       }
       return nil
@@ -121,13 +121,13 @@ final class SubtitleViewModel {
 
   func perform(action: Input.Action) async {
     switch action {
-    case .setPlayerManager(let playerManager):
+    case let .setPlayerManager(playerManager):
       setPlayerManager(playerManager)
     case .handleUserScroll:
       handleUserScroll()
     case .cancelScrollResume:
       cancelScrollResume()
-    case .handleWordSelection(let wordIndex, let cueID, let isPlaying, let onPause, let onPlay):
+    case let .handleWordSelection(wordIndex, cueID, isPlaying, onPause, onPlay):
       handleWordSelection(
         wordIndex: wordIndex,
         cueID: cueID,
@@ -135,15 +135,15 @@ final class SubtitleViewModel {
         onPause: onPause,
         onPlay: onPlay
       )
-    case .dismissWord(let onPlay):
+    case let .dismissWord(onPlay):
       dismissWord(onPlay: onPlay)
-    case .handleCueTap(let cueID, let cueStartTime):
+    case let .handleCueTap(cueID, cueStartTime):
       await handleCueTap(cueID: cueID, cueStartTime: cueStartTime)
-    case .updateCurrentCue(let time, let cues):
+    case let .updateCurrentCue(time, cues):
       updateCurrentCue(time: time, cues: cues)
     case .reset:
       reset()
-    case .trackPlayback(let cues):
+    case let .trackPlayback(cues):
       await trackPlayback(cues: cues)
     case .stopTrackingPlayback:
       stopTrackingPlayback()
@@ -203,6 +203,8 @@ final class SubtitleViewModel {
     assert(cueStartTime.isFinite, "Cue start time must be finite")
 
     await playerManager?.seek(to: cueStartTime + 0.001)
+    currentCueID = cueID
+
     stopScrollResumeCountdown()
     Self.logger.debug("Tapped cue at time \(cueStartTime)")
   }
@@ -227,7 +229,7 @@ final class SubtitleViewModel {
 
   @MainActor
   func trackPlayback(cues: [SubtitleCue]) async {
-    let epsilon: Double = 0.001
+    let epsilon = 0.001
     stopTrackingPlayback()
 
     guard !cues.isEmpty else {
@@ -244,7 +246,7 @@ final class SubtitleViewModel {
 
     playbackObserverID = playerManager.addPlaybackTimeObserver { [weak self] currentTime in
       guard let self else { return }
-      guard currentTime.isFinite && currentTime >= 0 else {
+      guard currentTime.isFinite, currentTime >= 0 else {
         Self.logger.error("Invalid playback time from PlayerManager: \(currentTime)")
         return
       }
@@ -304,7 +306,7 @@ final class SubtitleViewModel {
   private func countdown(from seconds: Int) -> AsyncStream<Int> {
     AsyncStream { continuation in
       Task {
-        for i in (0..<seconds).reversed() {
+        for i in (0 ..< seconds).reversed() {
           continuation.yield(i)
           do {
             try await Task.sleep(for: .seconds(1))
@@ -334,13 +336,13 @@ final class SubtitleViewModel {
   private func findActiveCue(at time: Double, in cues: [SubtitleCue], epsilon: Double = 0.001) -> SubtitleCue? {
     assert(epsilon > 0, "Epsilon must be positive")
     assert(time.isFinite, "Time must be finite")
-    
+
     guard !cues.isEmpty else { return nil }
-    
+
     var low = 0
     var high = cues.count - 1
     var result: Int? = nil
-    
+
     while low <= high {
       let mid = (low + high) / 2
       if cues[mid].startTime <= time + epsilon {
@@ -350,15 +352,15 @@ final class SubtitleViewModel {
         high = mid - 1
       }
     }
-    
+
     if let index = result {
       assert(index >= 0 && index < cues.count, "Binary search produced invalid index")
       let cue = cues[index]
-      if time >= cue.startTime - epsilon && time < cue.endTime {
+      if time >= cue.startTime - epsilon, time < cue.endTime {
         return cue
       }
     }
-    
+
     return nil
   }
 }
