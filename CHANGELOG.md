@@ -1,3 +1,12 @@
+## [0.2.11.79] - 2026-02-11
+
+### Features
+- add folder refresh flow and library-safe sync paths
+
+### Bug Fixes
+- move file importer modifier after lifecycle hooks
+
+
 ## [0.2.11.78] - 2026-02-11
 
 ### Features
