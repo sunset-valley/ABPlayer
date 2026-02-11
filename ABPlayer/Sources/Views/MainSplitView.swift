@@ -36,6 +36,7 @@ public struct MainSplitView: View {
   @State private var didAttemptRestoreNavigationPath = false
   @State private var isClearingData: Bool = false
 
+
   public init() {}
 
   public var body: some View {
@@ -115,17 +116,15 @@ public struct MainSplitView: View {
   private func threePanelLayout(for selectedFile: ABFile) -> some View {
     ThreePanelLayout(
       isRightVisible: $mainSplitViewModel.showContentPanel,
-      leftColumnWidth: $mainSplitViewModel.playerSectionWidth,
-      draggingLeftColumnWidth: $mainSplitViewModel.draggingWidth,
+      horizontalPersistenceKey: mainSplitViewModel.horizontalPersistenceKey,
+      defaultLeftColumnWidth: mainSplitViewModel.defaultPlayerSectionWidth,
       minLeftColumnWidth: mainSplitViewModel.minWidthOfPlayerSection,
       minRightWidth: mainSplitViewModel.minWidthOfContentPanel,
-      clampLeftColumnWidth: mainSplitViewModel.clampWidth,
       isBottomLeftVisible: $mainSplitViewModel.showBottomPanel,
-      topLeftHeight: $mainSplitViewModel.topPanelHeight,
-      draggingTopLeftHeight: $mainSplitViewModel.draggingHeight,
+      verticalPersistenceKey: mainSplitViewModel.verticalPersistenceKey,
+      defaultTopLeftHeight: mainSplitViewModel.defaultTopPanelHeight,
       minTopLeftHeight: mainSplitViewModel.minHeightOfTopPanel,
       minBottomLeftHeight: mainSplitViewModel.minHeightOfBottomPanel,
-      clampTopLeftHeight: mainSplitViewModel.clampHeight,
       dividerThickness: mainSplitViewModel.dividerWidth
     ) {
       if selectedFile.isVideo {
@@ -205,6 +204,9 @@ public struct MainSplitView: View {
 
     case .transcription:
       TranscriptionView(audioFile: audioFile)
+        .resizePlaceholder {
+          transcriptionDragPlaceholder
+        }
 
     case .pdf:
       #if os(macOS)
@@ -226,10 +228,23 @@ public struct MainSplitView: View {
     }
   }
 
+  private var transcriptionDragPlaceholder: some View {
+    ContentUnavailableView(
+      "Resizing Panel",
+      systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right",
+      description: Text("Release the divider to render subtitles.")
+    )
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
   // MARK: - Components
 
   private var sessionTimeDisplay: some View {
     HStack(spacing: 6) {
+#if DEBUG
+      FPSOverlay()
+#endif
+      
       Image(systemName: "timer")
         .font(.system(size: 14))
         .foregroundStyle(.secondary)

@@ -33,16 +33,16 @@ struct TranscriptionView: View {
             loadingCacheView
           }
 
-        case .downloading(let progress, let modelName):
+        case let .downloading(progress, modelName):
           downloadingView(progress: progress, modelName: modelName)
 
-        case .loading(let modelName):
+        case let .loading(modelName):
           loadingModelView(modelName: modelName)
 
-        case .extractingAudio(let progress, let fileName):
+        case let .extractingAudio(progress, fileName):
           extractingAudioView(progress: progress, fileName: fileName)
 
-        case .transcribing(let progress, let fileName):
+        case let .transcribing(progress, fileName):
           transcribingView(progress: progress, fileName: fileName)
 
         case .completed:
@@ -52,7 +52,7 @@ struct TranscriptionView: View {
             loadingCacheView
           }
 
-        case .failed(let error):
+        case let .failed(error):
           failedView(error: error)
 
         case .cancelled:
@@ -244,7 +244,7 @@ struct TranscriptionView: View {
           footnote: "Waiting for other transcriptions to complete"
         )
 
-      case .downloading(let progress):
+      case let .downloading(progress):
         VStack {
           progressView(
             icon: "arrow.down.circle",
@@ -269,7 +269,7 @@ struct TranscriptionView: View {
           cancelButton(taskId: task.id)
         }
 
-      case .extractingAudio(let progress):
+      case let .extractingAudio(progress):
         VStack {
           progressView(
             icon: "waveform.and.mic",
@@ -282,7 +282,7 @@ struct TranscriptionView: View {
           cancelButton(taskId: task.id)
         }
 
-      case .transcribing(let progress):
+      case let .transcribing(progress):
         VStack {
           progressView(
             icon: "waveform",
@@ -306,7 +306,7 @@ struct TranscriptionView: View {
             }
         }
 
-      case .failed(let error):
+      case let .failed(error):
         VStack(spacing: 20) {
           failedView(error: error)
           Button("Remove") {
