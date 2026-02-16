@@ -19,7 +19,7 @@ let project = Project(
       destinations: .macOS,
       product: .app,
       bundleId: "cc.ihugo.app.ABPlayer",
-      deploymentTargets: .macOS("26.0.0"),
+      deploymentTargets: .macOS("26.0"),
       infoPlist: .extendingDefault(with: [
         "CFBundleVersion": .string(buildVersionString),
         "CFBundleShortVersionString": .string(shortVersionString),
@@ -47,7 +47,7 @@ let project = Project(
       destinations: .macOS,
       product: .app,
       bundleId: "cc.ihugo.app.ABPlayerDev",
-      deploymentTargets: .macOS("26.0.0"),
+      deploymentTargets: .macOS("26.0"),
       infoPlist: .extendingDefault(with: [
         "CFBundleVersion": .string(buildVersionString),
         "CFBundleShortVersionString": .string(shortVersionString),
@@ -75,7 +75,7 @@ let project = Project(
       destinations: .macOS,
       product: .unitTests,
       bundleId: "cc.ihugo.app.ABPlayerTests",
-      deploymentTargets: .macOS("26.0.0"),
+      deploymentTargets: .macOS("26.0"),
       infoPlist: .default,
       buildableFolders: [
         "ABPlayer/Tests",
