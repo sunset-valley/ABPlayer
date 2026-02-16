@@ -108,7 +108,6 @@ private struct SessionTimeDisplayView: View {
     }
     .padding(.horizontal, 10)
     .padding(.vertical, 5)
-//    .background(.ultraThinMaterial, in: Capsule())
     .help("Session practice time")
   }
 

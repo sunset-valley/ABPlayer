@@ -130,13 +130,17 @@ struct SettingsView: View {
     .onAppear {
       if selectedTab == .transcription {
         refreshModels()
-        ffmpegPathStatus = .unchecked
+        refreshFFmpegStatus()
       }
     }
     .onChange(of: selectedTab) { _, newValue in
       if newValue == .transcription {
         refreshModels()
+        refreshFFmpegStatus()
       }
+    }
+    .onChange(of: settings.ffmpegPath) { _, _ in
+      refreshFFmpegStatus()
     }
   }
 
@@ -523,8 +527,6 @@ struct SettingsView: View {
   }
 
   private var ffmpegStatusColor: Color {
-    updateFFmpegStatus()
-
     switch ffmpegPathStatus {
     case .valid:
       return .green
@@ -535,21 +537,15 @@ struct SettingsView: View {
     }
   }
 
-  private func updateFFmpegStatus() {
-    if ffmpegPathStatus == .unchecked {
-      if settings.ffmpegPath.isEmpty {
-        if let _ = TranscriptionSettings.autoDetectFFmpegPath() {
-          ffmpegPathStatus = .valid
-        } else {
-          ffmpegPathStatus = .notFound
-        }
+  private func refreshFFmpegStatus() {
+    if settings.ffmpegPath.isEmpty {
+      if TranscriptionSettings.autoDetectFFmpegPath() != nil {
+        ffmpegPathStatus = .valid
       } else {
-        if TranscriptionSettings.isFFmpegValid(at: settings.ffmpegPath) {
-          ffmpegPathStatus = .valid
-        } else {
-          ffmpegPathStatus = .invalid
-        }
+        ffmpegPathStatus = .notFound
       }
+    } else {
+      ffmpegPathStatus = TranscriptionSettings.isFFmpegValid(at: settings.ffmpegPath) ? .valid : .invalid
     }
   }
 
@@ -571,7 +567,7 @@ struct SettingsView: View {
     case .success(let urls):
       if let url = urls.first {
         settings.ffmpegPath = url.path
-        ffmpegPathStatus = .unchecked
+        refreshFFmpegStatus()
       }
     case .failure:
       break
