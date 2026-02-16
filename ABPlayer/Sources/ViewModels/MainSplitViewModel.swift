@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftData
 import SwiftUI
 
 @Observable
@@ -19,7 +20,16 @@ final class MainSplitViewModel {
 
   // MARK: - Layout State
 
+  var folderNavigationViewModel: FolderNavigationViewModel?
+  var isClearingData: Bool = false
+
   private(set) var currentMediaType: MediaType = .audio
+  private var didAttemptRestoreNavigationPath = false
+
+  private var modelContext: ModelContext?
+  private var playerManager: PlayerManager?
+  private var sessionTracker: SessionTracker?
+  private var librarySettings: LibrarySettings?
 
   var showContentPanel: Bool {
     didSet {
@@ -111,6 +121,147 @@ final class MainSplitViewModel {
     sanitizeAllocations()
     normalizeSelection(for: .bottomLeft)
     normalizeSelection(for: .right)
+  }
+
+  func configureIfNeeded(
+    modelContext: ModelContext,
+    playerManager: PlayerManager,
+    librarySettings: LibrarySettings,
+    sessionTracker: SessionTracker
+  ) {
+    self.modelContext = modelContext
+    self.playerManager = playerManager
+    self.librarySettings = librarySettings
+    self.sessionTracker = sessionTracker
+
+    sessionTracker.setModelContainer(modelContext.container)
+    playerManager.sessionTracker = sessionTracker
+
+    if folderNavigationViewModel == nil {
+      folderNavigationViewModel = FolderNavigationViewModel(
+        modelContext: modelContext,
+        playerManager: playerManager,
+        librarySettings: librarySettings
+      )
+    }
+
+    setupPlaybackEndedHandler()
+  }
+
+  func updatePlaybackQueueForCurrentFolder() {
+    guard let playerManager else { return }
+
+    if let folder = folderNavigationViewModel?.currentFolder {
+      playerManager.playbackQueue.updateQueue(folder.sortedAudioFiles)
+    } else {
+      playerManager.playbackQueue.updateQueue([])
+    }
+  }
+
+  func handleSelectedFileMediaTypeChange(_ isVideo: Bool?) {
+    guard let isVideo else { return }
+    switchMediaType(to: isVideo ? .video : .audio)
+  }
+
+  func syncSelectedFileWithPlayer() {
+    folderNavigationViewModel?.syncSelectedFileWithPlayer()
+  }
+
+  func prepareImport(_ type: MainSplitView.ImportType) {
+    folderNavigationViewModel?.importType = type
+    folderNavigationViewModel?.presetnImportType = type
+  }
+
+  func refreshCurrentFolderAndQueue() async {
+    await folderNavigationViewModel?.refreshCurrentFolder()
+    updatePlaybackQueueForCurrentFolder()
+  }
+
+  func handleImportResult(_ result: Result<[URL], Error>) {
+    folderNavigationViewModel?.handleImportResult(result)
+  }
+
+  var importErrorMessage: String? {
+    get { folderNavigationViewModel?.importErrorMessage }
+    set { folderNavigationViewModel?.importErrorMessage = newValue }
+  }
+
+  var isImporterPresented: Bool {
+    folderNavigationViewModel?.presetnImportType != nil
+  }
+
+  func setImporterPresented(_ presented: Bool) {
+    if !presented {
+      folderNavigationViewModel?.presetnImportType = nil
+    }
+  }
+
+  func restoreLastSelectionIfNeeded() {
+    guard
+      let folderNavigationViewModel,
+      let playerManager
+    else {
+      return
+    }
+
+    if !didAttemptRestoreNavigationPath {
+      defer { didAttemptRestoreNavigationPath = true }
+
+      if folderNavigationViewModel.currentFolder == nil,
+         folderNavigationViewModel.navigationPath.isEmpty,
+         let lastFolderID = folderNavigationViewModel.lastFolderID,
+         let folderUUID = UUID(uuidString: lastFolderID),
+         let folder = fetchFolder(withID: folderUUID)
+      {
+        var path: [Folder] = []
+        var currentFolder: Folder? = folder
+        while let unwrappedFolder = currentFolder {
+          path.insert(unwrappedFolder, at: 0)
+          currentFolder = unwrappedFolder.parent
+        }
+        folderNavigationViewModel.navigationPath = path
+        folderNavigationViewModel.currentFolder = folder
+      }
+    }
+
+    guard folderNavigationViewModel.selectedFile == nil else {
+      if let currentFile = playerManager.currentFile,
+         let matchedFile = fetchAudioFile(withID: currentFile.id)
+      {
+        folderNavigationViewModel.selectedFile = matchedFile
+        playerManager.currentFile = matchedFile
+        return
+      }
+
+      if let selectedFile = folderNavigationViewModel.selectedFile,
+         playerManager.currentFile?.id != selectedFile.id
+      {
+        Task { await selectFile(selectedFile) }
+      }
+      return
+    }
+
+    if let currentFile = playerManager.currentFile,
+       let matchedFile = fetchAudioFile(withID: currentFile.id)
+    {
+      folderNavigationViewModel.selectedFile = matchedFile
+      playerManager.currentFile = matchedFile
+      return
+    }
+
+    if let lastSelectedAudioFileID = folderNavigationViewModel.lastSelectedAudioFileID,
+       let lastID = UUID(uuidString: lastSelectedAudioFileID),
+       let file = fetchAudioFile(withID: lastID)
+    {
+      Task { await selectFile(file) }
+    }
+  }
+
+  func clearAllDataAsync() async {
+    isClearingData = true
+    try? await Task.sleep(nanoseconds: 200_000_000)
+    await clearAllData()
+    isClearingData = false
   }
 
   func availableContents(for panel: Panel) -> [PaneContent] {
@@ -327,5 +478,90 @@ final class MainSplitViewModel {
       }
     }
     return result
+  }
+
+  func selectFile(_ file: ABFile, fromStart: Bool = false, debounce: Bool = true) async {
+    await playerManager?.selectFile(file, fromStart: fromStart, debounce: debounce)
+  }
+
+  private func playFile(_ file: ABFile, fromStart: Bool = false) async {
+    await playerManager?.playFile(file, fromStart: fromStart)
+  }
+
+  private func fetchAudioFile(withID id: UUID) -> ABFile? {
+    guard let modelContext else { return nil }
+
+    let descriptor = FetchDescriptor<ABFile>(
+      predicate: #Predicate<ABFile> { $0.id == id }
+    )
+    return try? modelContext.fetch(descriptor).first
+  }
+
+  private func fetchFolder(withID id: UUID) -> Folder? {
+    guard let modelContext else { return nil }
+
+    let descriptor = FetchDescriptor<Folder>(
+      predicate: #Predicate<Folder> { $0.id == id }
+    )
+    return try? modelContext.fetch(descriptor).first
+  }
+
+  private func setupPlaybackEndedHandler() {
+    guard let playerManager else { return }
+
+    playerManager.onPlaybackEnded = { @MainActor [playerManager] currentFile in
+      guard let currentFile else { return }
+
+      playerManager.playbackQueue.loopMode = playerManager.loopMode
+      playerManager.playbackQueue.setCurrentFile(currentFile)
+
+      guard let nextFile = playerManager.playbackQueue.playNext() else { return }
+
+      Task { @MainActor in
+        await self.playFile(nextFile, fromStart: true)
+      }
+    }
+  }
+
+  private func clearAllData() async {
+    guard
+      let modelContext,
+      let playerManager,
+      let sessionTracker
+    else {
+      return
+    }
+
+    do {
+      if playerManager.isPlaying {
+        await playerManager.togglePlayPause()
+      }
+
+      folderNavigationViewModel?.selectedFile = nil
+      folderNavigationViewModel?.currentFolder = nil
+      folderNavigationViewModel?.navigationPath = []
+      playerManager.currentFile = nil
+
+      let audioFiles = try modelContext.fetch(FetchDescriptor<ABFile>())
+      for audioFile in audioFiles {
+        modelContext.delete(audioFile)
+      }
+
+      let folders = try modelContext.fetch(FetchDescriptor<Folder>())
+      for folder in folders {
+        modelContext.delete(folder)
+      }
+
+      sessionTracker.endSessionIfIdle()
+
+      let sessions = try modelContext.fetch(FetchDescriptor<ListeningSession>())
+      for session in sessions {
+        modelContext.delete(session)
+      }
+
+      try modelContext.save()
+    } catch {
+      folderNavigationViewModel?.importErrorMessage = "Failed to clear data: \(error.localizedDescription)"
+    }
   }
 }
