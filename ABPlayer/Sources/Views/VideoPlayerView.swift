@@ -1,6 +1,6 @@
 import AVKit
-import OSLog
 import Observation
+import OSLog
 import SwiftData
 import SwiftUI
 
@@ -12,15 +12,16 @@ struct VideoPlayerView: View {
   @Environment(\.modelContext) private var modelContext
 
   @Bindable var audioFile: ABFile
-  
+
   @State private var viewModel = VideoPlayerViewModel()
 
   var body: some View {
     videoPlayerSection
+      .focusEffectDisabled()
       .task {
         viewModel.setup(with: playerManager)
         if playerManager.currentFile?.id != audioFile.id,
-          playerManager.currentFile != nil
+           playerManager.currentFile != nil
         {
           await playerManager.load(audioFile: audioFile)
         }
@@ -28,7 +29,7 @@ struct VideoPlayerView: View {
   }
 
   // MARK: - Components
-  
+
   private var videoPlayerSection: some View {
     VStack(alignment: .leading, spacing: 0) {
       // 1. Video Player Area
@@ -48,7 +49,7 @@ struct VideoPlayerView: View {
         .aspectRatio(16 / 9, contentMode: .fit)
         .frame(maxWidth: .infinity)
         .layoutPriority(1)
-        
+
         if let message = viewModel.hudMessage {
           Text(message)
             .font(.title)
@@ -69,7 +70,7 @@ struct VideoPlayerView: View {
           seekValue: $viewModel.seekValue,
           wasPlayingBeforeSeek: $viewModel.wasPlayingBeforeSeek
         )
-        
+
         VideoControlsView(viewModel: viewModel)
           .padding(.horizontal)
 

@@ -24,9 +24,10 @@ struct FPSOverlay: View {
   var body: some View {
     Text("FPS: \(monitor.fps)")
       .font(.system(.caption, design: .monospaced))
-      .padding(6)
-      .background(.ultraThinMaterial)
-      .clipShape(RoundedRectangle(cornerRadius: 6))
+      .padding(.horizontal, 10)
+      .padding(.vertical, 5)
+//      .background(.ultraThinMaterial)
+//      .clipShape(RoundedRectangle(cornerRadius: 6))
       .task {
         while !Task.isCancelled {
           monitor.tick()

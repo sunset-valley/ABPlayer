@@ -1,3 +1,21 @@
+## [0.2.11.80] - 2026-02-16
+
+### Features
+- add option to keep playback paused after word lookup
+
+### Bug Fixes
+- refactor FFmpeg status updates to avoid side effects in view updates
+
+### Improvements
+- disable focus effect and cleanup VideoPlayerView
+- update ViewModel and optimize FPSMonitor
+- extract split view components for modularity
+
+### Chores
+- update macOS deployment target to 26.0.0 and project settings
+- update 0.2.11-78 changes
+
+
 ## [0.2.11.79] - 2026-02-11
 
 ### Features

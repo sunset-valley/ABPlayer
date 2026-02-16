@@ -5,6 +5,7 @@ import SwiftUI
 struct SubtitleView: View {
   @Environment(PlayerManager.self) private var playerManager
   @Environment(VocabularyService.self) private var vocabularyService
+  @Environment(TranscriptionSettings.self) private var transcriptionSettings
 
   let cues: [SubtitleCue]
   @Binding var countdownSeconds: Int?
@@ -124,6 +125,7 @@ struct SubtitleView: View {
   }
 
   private func playPlayback() {
+    guard !transcriptionSettings.pauseOnWordDismiss else { return }
     Task {
       await playerManager.play()
     }
