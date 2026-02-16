@@ -6,7 +6,7 @@ let project = Project(
   name: "ABPlayer",
   settings: .settings(
     base: [
-      "SWIFT_VERSION": "6.2"
+      "SWIFT_VERSION": "6.2",
     ],
     configurations: [
       .debug(name: "Debug"),
@@ -19,7 +19,7 @@ let project = Project(
       destinations: .macOS,
       product: .app,
       bundleId: "cc.ihugo.app.ABPlayer",
-      deploymentTargets: .macOS("15.7.2"),
+      deploymentTargets: .macOS("26.0.0"),
       infoPlist: .extendingDefault(with: [
         "CFBundleVersion": .string(buildVersionString),
         "CFBundleShortVersionString": .string(shortVersionString),
@@ -40,14 +40,14 @@ let project = Project(
         .external(name: "KeyboardShortcuts"),
         .external(name: "Sparkle"),
         .external(name: "TelemetryDeck"),
-      ],
+      ]
     ),
     .target(
       name: "ABPlayerDev",
       destinations: .macOS,
       product: .app,
       bundleId: "cc.ihugo.app.ABPlayerDev",
-      deploymentTargets: .macOS("15.7.2"),
+      deploymentTargets: .macOS("26.0.0"),
       infoPlist: .extendingDefault(with: [
         "CFBundleVersion": .string(buildVersionString),
         "CFBundleShortVersionString": .string(shortVersionString),
@@ -68,17 +68,17 @@ let project = Project(
         .external(name: "KeyboardShortcuts"),
         .external(name: "Sparkle"),
         .external(name: "TelemetryDeck"),
-      ],
+      ]
     ),
     .target(
       name: "ABPlayerTests",
       destinations: .macOS,
       product: .unitTests,
       bundleId: "cc.ihugo.app.ABPlayerTests",
-      deploymentTargets: .macOS("15.7.2"),
+      deploymentTargets: .macOS("26.0.0"),
       infoPlist: .default,
       buildableFolders: [
-        "ABPlayer/Tests"
+        "ABPlayer/Tests",
       ],
       dependencies: [.target(name: "ABPlayer")]
     ),
