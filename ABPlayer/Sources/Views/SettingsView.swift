@@ -383,6 +383,13 @@ struct SettingsView: View {
           set: { settings.autoTranscribe = $0 }
         ))
 
+      Toggle(
+        "Keep paused after looking up a word",
+        isOn: Binding(
+          get: { settings.pauseOnWordDismiss },
+          set: { settings.pauseOnWordDismiss = $0 }
+        ))
+
       // FFmpeg Path
       LabeledContent("FFmpeg Path") {
         HStack {

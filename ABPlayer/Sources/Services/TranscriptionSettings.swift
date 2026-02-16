@@ -21,6 +21,10 @@ final class TranscriptionSettings {
   @ObservationIgnored
   @AppStorage("transcription_auto_transcribe") var autoTranscribe: Bool = false
 
+  /// Whether to keep playback paused after dismissing word lookup
+  @ObservationIgnored
+  @AppStorage("transcription_pause_on_word_dismiss") var pauseOnWordDismiss: Bool = true
+
   /// Custom model download directory (empty = default location)
   @ObservationIgnored
   @AppStorage("transcription_model_directory") var modelDirectory: String = ""
