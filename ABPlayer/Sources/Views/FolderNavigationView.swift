@@ -26,7 +26,7 @@ enum SelectionItem: Hashable {
 struct FolderNavigationView: View {
   init(
     viewModel: FolderNavigationViewModel,
-    onSelectFile: @escaping (ABFile) async -> Void
+    onSelectFile: @escaping @MainActor (ABFile) async -> Void
   ) {
     self.viewModel = viewModel
     self.onSelectFile = onSelectFile
@@ -34,7 +34,7 @@ struct FolderNavigationView: View {
 
   @Bindable var viewModel: FolderNavigationViewModel
 
-  let onSelectFile: (ABFile) async -> Void
+  let onSelectFile: @MainActor (ABFile) async -> Void
 
   var body: some View {
     let _ = Self._printChanges()

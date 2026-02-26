@@ -1,3 +1,14 @@
+## [0.2.11.81] - 2026-02-25
+
+### Bug Fixes
+- ensure subtitle rows refresh correctly after text edits by using raw text for update checks and removing redundant view IDs
+
+### Chores
+- update runner to macos-26 and reformat
+- correct macOS deployment target format
+- update textTertiary to lighter shade
+
+
 ## [0.2.11.80] - 2026-02-16
 
 ### Features
