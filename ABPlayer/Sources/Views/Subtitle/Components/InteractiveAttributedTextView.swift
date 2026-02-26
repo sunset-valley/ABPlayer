@@ -282,7 +282,7 @@ struct InteractiveAttributedTextView: NSViewRepresentable {
     func buildAttributedString() -> NSAttributedString {
       if let cached = cachedAttributedString,
          !wordRanges.isEmpty,
-         cached.string.split(separator: " ").count == words.count,
+         cached.string == words.joined(separator: " "),
          cachedVocabularyVersion == vocabularyVersion,
          cachedDefaultTextColor == defaultTextColor {
         return cached
