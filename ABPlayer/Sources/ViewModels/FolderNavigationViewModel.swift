@@ -163,7 +163,7 @@ final class FolderNavigationViewModel {
   func handlePressEnded(
     for selection: SelectionItem,
     isInsideRow: Bool,
-    onSelectFile: @escaping (ABFile) async -> Void
+    onSelectFile: @escaping @MainActor (ABFile) async -> Void
   ) {
     pressing = nil
     let previousSelection = selectionBeforePress
@@ -277,7 +277,7 @@ final class FolderNavigationViewModel {
   
   func handleSelectionChange(
     _ newSelection: SelectionItem?,
-    onSelectFile: @escaping (ABFile) async -> Void
+    onSelectFile: @escaping @MainActor (ABFile) async -> Void
   ) {
     guard let newSelection else { return }
 
@@ -288,7 +288,7 @@ final class FolderNavigationViewModel {
       navigateInto(folder)
 
     case .audioFile(let file):
-      Task {
+      Task { @MainActor in
         await onSelectFile(file)
       }
 
