@@ -1,130 +1,20 @@
-import Combine
-import Observation
-import OSLog
-import SwiftData
 import SwiftUI
-import UniformTypeIdentifiers
 
-#if os(macOS)
-  import AppKit
-#endif
+struct MainSplitView: View {
+    @State private var selectedMenu: MenuItem = .audio
+    
+    var body: some View {
+        NavigationSplitView {
+            SidebarView(selectedMenu: $selectedMenu)
+                .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 280)
+        } detail: {
+            ContentView(selectedMenu: selectedMenu)
+        }
+        .navigationSplitViewStyle(.balanced)
+        .navigationTitle(selectedMenu.id)
+    }
+}
 
-@MainActor
-public struct MainSplitView: View {
-  public enum ImportType {
-    case file
-    case folder
-
-    var allowedContentTypes: [UTType] {
-      switch self {
-      case .file:
-        return [.audio, .movie]
-      case .folder:
-        return [.folder]
-      }
-    }
-  }
-
-  @Environment(PlayerManager.self) private var playerManager: PlayerManager
-  @Environment(SessionTracker.self) private var sessionTracker: SessionTracker
-  @Environment(LibrarySettings.self) private var librarySettings
-  @Environment(\.modelContext) private var modelContext
-
-  @State private var mainSplitViewModel = MainSplitViewModel()
-
-  public init() {}
-
-  public var body: some View {
-    let _ = Self._printChanges()
-
-    NavigationSplitView {
-      sidebar
-        .navigationSplitViewColumnWidth(min: 280, ideal: 280, max: 400)
-    } detail: {
-      if let selectedFile = mainSplitViewModel.folderNavigationViewModel?.selectedFile {
-        MainSplitDetailView(
-          selectedFile: selectedFile,
-          viewModel: mainSplitViewModel,
-          sessionTracker: sessionTracker
-        )
-      } else {
-        EmptyStateView()
-      }
-    }
-    .frame(minWidth: 1000, minHeight: 600)
-    .onAppear {
-      mainSplitViewModel.configureIfNeeded(
-        modelContext: modelContext,
-        playerManager: playerManager,
-        librarySettings: librarySettings,
-        sessionTracker: sessionTracker
-      )
-    }
-    .task {
-      mainSplitViewModel.restoreLastSelectionIfNeeded()
-    }
-    .onChange(of: mainSplitViewModel.folderNavigationViewModel?.currentFolder?.id, initial: true) { _, _ in
-      mainSplitViewModel.updatePlaybackQueueForCurrentFolder()
-    }
-    .onChange(of: mainSplitViewModel.folderNavigationViewModel?.selectedFile?.isVideo) { _, isVideo in
-      mainSplitViewModel.handleSelectedFileMediaTypeChange(isVideo)
-    }
-    .onChange(of: playerManager.currentFile?.id) { _, _ in
-      mainSplitViewModel.syncSelectedFileWithPlayer()
-    }
-    #if os(macOS)
-    .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
-      sessionTracker.persistProgress()
-      sessionTracker.endSessionIfIdle()
-    }
-    #endif
-    .fileImporter(
-      isPresented: Binding(
-        get: { mainSplitViewModel.isImporterPresented },
-        set: { mainSplitViewModel.setImporterPresented($0) }
-      ),
-      allowedContentTypes: mainSplitViewModel.folderNavigationViewModel?.importType?.allowedContentTypes ?? [],
-      allowsMultipleSelection: false,
-      onCompletion: { result in
-        mainSplitViewModel.handleImportResult(result)
-      }
-    )
-    .alert(
-      "Import Failed",
-      isPresented: .constant(mainSplitViewModel.importErrorMessage != nil),
-      presenting: mainSplitViewModel.importErrorMessage
-    ) { _ in
-      Button("OK", role: .cancel) {
-        mainSplitViewModel.importErrorMessage = nil
-      }
-    } message: { message in
-      Text(message)
-    }
-  }
-
-  // MARK: - Sidebar
-
-  private var sidebar: some View {
-    Group {
-      if let folderNavigationViewModel = mainSplitViewModel.folderNavigationViewModel {
-        MainSplitSidebarView(
-          viewModel: folderNavigationViewModel,
-          isClearingData: mainSplitViewModel.isClearingData,
-          onSelectFile: { file in await mainSplitViewModel.selectFile(file) },
-          onImportFile: {
-            mainSplitViewModel.prepareImport(.file)
-          },
-          onImportFolder: {
-            mainSplitViewModel.prepareImport(.folder)
-          },
-          onRefresh: {
-            await mainSplitViewModel.refreshCurrentFolderAndQueue()
-          },
-          onClearAllData: {
-            await mainSplitViewModel.clearAllDataAsync()
-          }
-        )
-      }
-    }
-  }
+#Preview {
+    MainSplitView()
 }

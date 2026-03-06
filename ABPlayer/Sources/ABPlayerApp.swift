@@ -1,247 +1,32 @@
-import KeyboardShortcuts
-import OSLog
-import Sentry
-import Sparkle
-import SwiftData
+import AppKit
 import SwiftUI
-import TelemetryDeck
-
-extension Logger {
-  private static let subsystem = Bundle.main.bundleIdentifier ?? "cc.ihugo.ABPlayer"
-
-  static let audio = Logger(subsystem: subsystem, category: "audio")
-  static let ui = Logger(subsystem: subsystem, category: "ui")
-  static let data = Logger(subsystem: subsystem, category: "data")
-  static let general = Logger(subsystem: subsystem, category: "general")
-}
-
-@MainActor
-final class SparkleUpdater: ObservableObject {
-  private let controller: SPUStandardUpdaterController
-
-  init() {
-    controller = SPUStandardUpdaterController(
-      startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
-  }
-
-  func checkForUpdates() {
-    controller.checkForUpdates(nil)
-  }
-}
 
 @main
-struct ABPlayerApp: App {
-  @Environment(\.scenePhase) private var scenePhase
+final class ABPlayerApp: NSObject, NSApplicationDelegate {
+    private var window: NSWindow?
 
-  private let modelContainer: ModelContainer
-  private let playerManager = PlayerManager()
-  private let sessionTracker = SessionTracker()
-  private let transcriptionManager = TranscriptionManager()
-  private let transcriptionSettings = TranscriptionSettings()
-  private let librarySettings = LibrarySettings()
-  private let vocabularyService: VocabularyService
-  private let subtitleLoader = SubtitleLoader()
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let contentView = MainSplitView()
+        let hostingController = NSHostingController(rootView: contentView)
 
-  private let queueManager: TranscriptionQueueManager
-  private let updater = SparkleUpdater()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1280, height: 800),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "ABPlayer"
+        window.center()
+        window.contentViewController = hostingController
+        window.makeKeyAndOrderFront(nil)
 
-  init() {
-    let config = TelemetryDeck.Config(appID: "A4A99FD4-3F84-49FA-AF97-0806D61D0539")
-    TelemetryDeck.initialize(config: config)
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
 
-    do {
-      SentrySDK.start { (options: Sentry.Options) in
-        options.dsn =
-          "https://0e00826ef2b3fbc195fb428a468fd995@o4504292283580416.ingest.us.sentry.io/4510502660341760"
-        options.debug = false
-        options.enableAppHangTracking = false
-        options.sendDefaultPii = true
-      }
-
-      let schema = Schema([
-        ABFile.self,
-        LoopSegment.self,
-        ListeningSession.self,
-        PlaybackRecord.self,
-        Folder.self,
-        SubtitleFile.self,
-        Transcription.self,
-        Vocabulary.self,
-      ])
-
-      let appSupportDir = FileManager.default.urls(
-        for: .applicationSupportDirectory, in: .userDomainMask
-      ).first!
-      let folderName = Bundle.main.bundleIdentifier ?? "cc.ihugo.app.ABPlayer"
-
-      let storeURL = appSupportDir.appendingPathComponent(
-        folderName, isDirectory: true
-      )
-      .appendingPathComponent("ABPlayer.sqlite")
-
-      let modelConfiguration = ModelConfiguration(url: storeURL)
-      modelContainer = try ModelContainer(for: schema, configurations: modelConfiguration)
-      modelContainer.mainContext.autosaveEnabled = true
-
-      vocabularyService = VocabularyService(modelContext: modelContainer.mainContext)
-      
-      queueManager = TranscriptionQueueManager(
-        transcriptionManager: transcriptionManager,
-        settings: transcriptionSettings
-      )
-      queueManager.modelContext = modelContainer.mainContext
-
-      KeyboardShortcuts.onKeyUp(for: .playPause) { [playerManager] in
-        Task { @MainActor in
-          await playerManager.togglePlayPause()
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .rewind5s) { [playerManager] in
-        Task { @MainActor in
-          await playerManager.seek(to: -5)
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .forward10s) { [playerManager] in
-        Task { @MainActor in
-          await playerManager.seek(to: 10)
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .setPointA) { [playerManager] in
-        Task { @MainActor in
-          playerManager.setPointA()
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .setPointB) { [playerManager] in
-        Task { @MainActor in
-          playerManager.setPointB()
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .clearLoop) { [playerManager] in
-        Task { @MainActor in
-          playerManager.clearLoop()
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .saveSegment) { [playerManager] in
-        Task { @MainActor in
-          _ = playerManager.saveCurrentSegment()
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .previousSegment) { [playerManager] in
-        Task { @MainActor in
-          playerManager.selectPreviousSegment()
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .nextSegment) { [playerManager] in
-        Task { @MainActor in
-          playerManager.selectNextSegment()
-        }
-      }
-      
-      KeyboardShortcuts.onKeyUp(for: .counterIncrement) {
-        Task { @MainActor in
-          CounterPlugin.shared.increment()
-        }
-      }
-      
-      KeyboardShortcuts.onKeyUp(for: .counterDecrement) {
-        Task { @MainActor in
-          CounterPlugin.shared.decrement()
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .counterReset) {
-        Task { @MainActor in
-          CounterPlugin.shared.reset()
-        }
-      }
-
-    } catch {
-      fatalError("Failed to create model container: \(error)")
-    }
-  }
-
-  var body: some Scene {
-    WindowGroup {
-      MainSplitView()
-        .focusEffectDisabled()
-        .environment(playerManager)
-        .environment(sessionTracker)
-        .environment(transcriptionManager)
-        .environment(transcriptionSettings)
-        .environment(librarySettings)
-        .environment(queueManager)
-        .environment(vocabularyService)
-        .environment(subtitleLoader)
-    }
-    .defaultSize(width: 1600, height: 900)
-    .windowResizability(.contentSize)
-    .modelContainer(modelContainer)
-    .commands {
-      SettingsCommands()
-      PluginCommands()
-      CommandGroup(replacing: .appInfo) {
-        Button("About ABPlayer") {
-          NSApp.orderFrontStandardAboutPanel(options: [
-            NSApplication.AboutPanelOptionKey.credits: NSAttributedString(
-              string: "Developed by Sunset Valley",
-              attributes: [
-                NSAttributedString.Key.font: NSFont.systemFont(
-                  ofSize: 11)
-              ]
-            )
-          ])
-        }
-
-        Button("Check for Updates...") {
-          updater.checkForUpdates()
-        }
-      }
+        self.window = window
     }
 
-    #if os(macOS)
-      WindowGroup(id: "settings-window") {
-        SettingsView()
-          .environment(transcriptionSettings)
-          .environment(librarySettings)
-          .environment(transcriptionManager)
-      }
-      .defaultPosition(.center)
-      .commandsRemoved()
-    #endif
-  }
-}
-
-// MARK: - Plugin Commands
-struct PluginCommands: Commands {
-  var body: some Commands {
-    CommandMenu("Plugins") {
-      ForEach(PluginManager.shared.plugins, id: \.id) { plugin in
-        Button(plugin.name) {
-          plugin.open()
-        }
-      }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
     }
-  }
-}
-
-// MARK: - Settings Commands
-struct SettingsCommands: Commands {
-  @Environment(\.openWindow) private var openWindow
-
-  var body: some Commands {
-    CommandGroup(replacing: .appSettings) {
-      Button("Settings...") {
-        openWindow(id: "settings-window")
-      }
-      .keyboardShortcut(",", modifiers: .command)
-    }
-  }
 }
