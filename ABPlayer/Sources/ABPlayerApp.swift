@@ -6,6 +6,7 @@ struct ABPlayerApp: App {
         WindowGroup {
             MainSplitView()
         }
+        .defaultSize(width: 1200, height: 800)
         .windowToolbarStyle(.unified(showsTitle: true))
 #if DEBUG
         .commands {
