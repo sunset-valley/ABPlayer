@@ -1,275 +1,275 @@
-name: CI
-
-on:
-    push:
-        branches: [main]
-    pull_request:
-        branches: [main]
-
-jobs:
-    # Tests job - runs only on pull requests
-    tests:
-        name: Run Tests
-        runs-on: macos-26
-        if: github.event_name == 'pull_request'
-
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
-
-            - name: Setup Xcode
-              uses: maxim-lobanov/setup-xcode@v1
-              with:
-                  xcode-version: latest
-
-            - name: Setup Swift
-              uses: swift-actions/setup-swift@v2
-              with:
-                  swift-version: "6.2"
-
-            - name: Install mise
-              uses: jdx/mise-action@v3
-              with:
-                  github_token: ${{ secrets.GITHUB_TOKEN }}
-
-            - name: Install Tuist via mise
-              run: |
-                  mise install tuist@4.95.0
-                  mise use -g tuist@4.95.0
-
-            - name: Generate Xcode Project
-              env:
-                  TUIST_CONFIG_TOKEN: ${{ secrets.TUIST_CONFIG_TOKEN }}
-                  CI: 1
-              run: |
-                  tuist clean
-                  tuist install
-                  tuist generate
-                  echo "Generated Xcode project"
-
-            - name: Run Tests
-              run: |
-                  xcodebuild test \
-                    -workspace ABPlayer.xcworkspace \
-                    -scheme ABPlayer \
-                    -destination 'platform=macOS' \
-                    -enableCodeCoverage YES \
-                    -derivedDataPath DerivedData
-
-            - name: Send Telegram Notification (Tests Failed)
-              if: ${{ failure() && github.event.pull_request.head.repo.full_name == github.repository }}
-              env:
-                  TELEGRAM_TO: ${{ secrets.TELEGRAM_TO }}
-                  TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-              run: |
-                  REPO="${{ github.repository }}"
-                  ACTOR="${{ github.actor }}"
-                  REF="${{ github.ref }}"
-                  SHA="${{ github.sha }}"
-                  RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                  PR_NUMBER="${{ github.event.pull_request.number }}"
-                  PR_URL="${{ github.event.pull_request.html_url }}"
-
-                  MESSAGE="$(cat <<EOF
-                  CI tests failed
-                  Repo: $REPO
-                  Actor: $ACTOR
-                  PR: #$PR_NUMBER $PR_URL
-                  Ref: $REF
-                  SHA: $SHA
-                  Run: $RUN_URL
-                  EOF
-                  )"
-
-                  curl -sS -X POST "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" \
-                    -d chat_id="$TELEGRAM_TO" \
-                    --data-urlencode text="$MESSAGE" \
-                    -d disable_web_page_preview=true
-
-    # Build and Release job - runs only on push to main (merge)
-    build-and-release:
-        name: Build and Release
-        runs-on: macos-26
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        permissions:
-            contents: write
-
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
-
-            - name: Get Current Version
-              id: get_version
-              run: |
-                  SHORT_VERSION=$(grep 'let shortVersionString =' Project.swift | sed -E 's/.*"([^"]+)".*/\1/')
-                  BUILD_VERSION=$(grep 'let buildVersionString =' Project.swift | sed -E 's/.*"([^"]+)".*/\1/')
-                  VERSION="${SHORT_VERSION}.${BUILD_VERSION}"
-                  echo "version=$VERSION" >> $GITHUB_OUTPUT
-                  echo "short_version=$SHORT_VERSION" >> $GITHUB_OUTPUT
-                  echo "Current Version: $VERSION"
-
-            - name: Get Latest Release Version
-              id: get_latest_release
-              env:
-                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: |
-                  LATEST_TAG=$(gh release view --json tagName --jq .tagName 2>/dev/null || echo "0.0.0")
-                  echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
-                  echo "Latest Release Tag: $LATEST_TAG"
-
-            - name: Compare Versions
-              id: compare_versions
-              run: |
-                  CURRENT="${{ steps.get_version.outputs.version }}"
-                  LATEST="${{ steps.get_latest_release.outputs.latest_tag }}"
-
-                  # Remove 'v' prefix if exists for comparison
-                  CURRENT_CLEAN=$(echo $CURRENT | sed 's/^v//')
-                  LATEST_CLEAN=$(echo $LATEST | sed 's/^v//')
-
-                  if [ "$CURRENT_CLEAN" = "$LATEST_CLEAN" ]; then
-                    echo "Versions are the same. Skipping release."
-                    echo "should_release=false" >> $GITHUB_OUTPUT
-                  else
-                    HIGHER=$(printf "$CURRENT_CLEAN\n$LATEST_CLEAN" | sort -V | tail -n1)
-                    if [ "$HIGHER" = "$CURRENT_CLEAN" ] && [ "$CURRENT_CLEAN" != "$LATEST_CLEAN" ]; then
-                      echo "Current version $CURRENT is higher than latest $LATEST. Proceeding with release."
-                      echo "should_release=true" >> $GITHUB_OUTPUT
-                    else
-                      echo "Current version $CURRENT is NOT higher than latest $LATEST. Skipping release."
-                      echo "should_release=false" >> $GITHUB_OUTPUT
-                    fi
-                  fi
-
-            - uses: maxim-lobanov/setup-xcode@v1
-              if: steps.compare_versions.outputs.should_release == 'true'
-              with:
-                  xcode-version: latest
-
-            - name: Setup Swift
-              if: steps.compare_versions.outputs.should_release == 'true'
-              uses: swift-actions/setup-swift@v2
-              with:
-                  swift-version: "6.2"
-
-            - name: Install mise
-              if: steps.compare_versions.outputs.should_release == 'true'
-              uses: jdx/mise-action@v3
-              with:
-                  github_token: ${{ secrets.GITHUB_TOKEN }}
-
-            - name: Install Tuist via mise
-              if: steps.compare_versions.outputs.should_release == 'true'
-              run: |
-                  mise install tuist@4.95.0
-                  mise use -g tuist@4.95.0
-
-            - name: Generate Xcode Project
-              if: steps.compare_versions.outputs.should_release == 'true'
-              env:
-                  TUIST_CONFIG_TOKEN: ${{ secrets.TUIST_CONFIG_TOKEN }}
-                  CI: 1
-              run: |
-                  tuist clean
-                  tuist install
-                  tuist generate
-                  echo "Generated Xcode project"
-
-            - name: Build App
-              if: steps.compare_versions.outputs.should_release == 'true'
-              run: |
-                  xcodebuild build \
-                    -workspace ABPlayer.xcworkspace \
-                    -scheme ABPlayer \
-                    -configuration Release \
-                    -destination 'platform=macOS' \
-                    -derivedDataPath DerivedData
-
-            - name: Prepare Release Artifact
-              if: steps.compare_versions.outputs.should_release == 'true'
-              env:
-                  SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-              run: |
-                  cd DerivedData/Build/Products/Release
-
-                  # Create zip for Sparkle
-                  zip -r ABPlayer.zip ABPlayer.app
-
-                  # Download Sparkle tools (Not needed, we rely on the Tuist dependency which should have downloaded it)
-                  # The user indicated the path is Tuist/.build/artifacts/sparkle/Sparkle/bin/
-                  # Since 'tuist install' and 'tuist generate' ran earlier, this path should exist if the artifact is cached/downloaded.
-                  # However, artifacts might be in a different spot depending on Tuist version/cache. 
-                  # But based on user input, we will use that relative path from project root.
-
-                  # We need to go back to project root to find the tools, or reference them relatively
-                  # Current dir: DerivedData/Build/Products/Release
-                  # Project root: ../../../../
-
-                  SPARKLE_BIN="../../../../Tuist/.build/artifacts/sparkle/Sparkle/bin"
-
-                  # Create a temporary file for the key
-                  echo "$SPARKLE_PRIVATE_KEY" > sparkle_key
-
-                  # Generate signature
-                  SIGNATURE=$("$SPARKLE_BIN/sign_update" ABPlayer.zip --ed-key-file sparkle_key)
-                  echo "Signature: $SIGNATURE"
-
-                  # Generate Appcast
-                  # We need to construct the appcast manually or use the tool. 
-                  # Using generate_appcast tool:
-                  "$SPARKLE_BIN/generate_appcast" . --ed-key-file sparkle_key --download-url-prefix "https://github.com/sunset-valley/ABPlayer/releases/latest/download/"
-
-                  # Cleanup key
-                  rm sparkle_key
-
-                  # Move artifacts to root
-                  mv ABPlayer.zip ../../../../
-                  mv appcast.xml ../../../../
-                  cd ../../../../
-
-            - name: Create GitHub Release
-              if: steps.compare_versions.outputs.should_release == 'true'
-              env:
-                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: |
-                  VERSION="${{ steps.get_version.outputs.version }}"
-                  NOTES_FILE="release_notes.txt"
-
-                  if [ -f "CHANGELOG.md" ]; then
-                    # Extract release notes for the current version
-                    awk "/^## \[$VERSION\]/{p=1; print; next} /^## \[/{p=0} p" CHANGELOG.md > "$NOTES_FILE"
-                  fi
-
-                  if [ ! -s "$NOTES_FILE" ]; then
-                    echo "Automated release for version $VERSION" > "$NOTES_FILE"
-                  fi
-
-                  gh release create "$VERSION" ABPlayer.zip appcast.xml --title "$VERSION" --notes-file "$NOTES_FILE"
-
-            - name: Upload dSYM to Sentry
-              if: steps.compare_versions.outputs.should_release == 'true'
-              env:
-                  SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-                  SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-                  SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-              run: |
-                  curl -sL https://sentry.io/get-cli/ | sh
-                  sentry-cli debug-files upload \
-                    --auth-token "$SENTRY_AUTH_TOKEN" \
-                    --org "$SENTRY_ORG" \
-                    --project "$SENTRY_PROJECT" \
-                    DerivedData/Build/Products/Release/ABPlayer.app.dSYM
-
-            - name: Send Telegram Notification
-              if: steps.compare_versions.outputs.should_release == 'true'
-              env:
-                  TELEGRAM_TO: ${{ secrets.TELEGRAM_TO }}
-                  TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-              run: |
-                  VERSION="${{ steps.get_version.outputs.version }}"
-                  MESSAGE="Release Success: $VERSION"
-                  curl -s -X POST https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage -d chat_id=$TELEGRAM_TO -d text="$MESSAGE"
+# name: CI
+#
+# on:
+#     push:
+#         branches: [main]
+#     pull_request:
+#         branches: [main]
+#
+# jobs:
+#     # Tests job - runs only on pull requests
+#     tests:
+#         name: Run Tests
+#         runs-on: macos-26
+#         if: github.event_name == 'pull_request'
+#
+#         steps:
+#             - name: Checkout
+#               uses: actions/checkout@v4
+#               with:
+#                   fetch-depth: 0
+#
+#             - name: Setup Xcode
+#               uses: maxim-lobanov/setup-xcode@v1
+#               with:
+#                   xcode-version: latest
+#
+#             - name: Setup Swift
+#               uses: swift-actions/setup-swift@v2
+#               with:
+#                   swift-version: "6.2"
+#
+#             - name: Install mise
+#               uses: jdx/mise-action@v3
+#               with:
+#                   github_token: ${{ secrets.GITHUB_TOKEN }}
+#
+#             - name: Install Tuist via mise
+#               run: |
+#                   mise install tuist@4.95.0
+#                   mise use -g tuist@4.95.0
+#
+#             - name: Generate Xcode Project
+#               env:
+#                   TUIST_CONFIG_TOKEN: ${{ secrets.TUIST_CONFIG_TOKEN }}
+#                   CI: 1
+#               run: |
+#                   tuist clean
+#                   tuist install
+#                   tuist generate
+#                   echo "Generated Xcode project"
+#
+#             - name: Run Tests
+#               run: |
+#                   xcodebuild test \
+#                     -workspace ABPlayer.xcworkspace \
+#                     -scheme ABPlayer \
+#                     -destination 'platform=macOS' \
+#                     -enableCodeCoverage YES \
+#                     -derivedDataPath DerivedData
+#
+#             - name: Send Telegram Notification (Tests Failed)
+#               if: ${{ failure() && github.event.pull_request.head.repo.full_name == github.repository }}
+#               env:
+#                   TELEGRAM_TO: ${{ secrets.TELEGRAM_TO }}
+#                   TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+#               run: |
+#                   REPO="${{ github.repository }}"
+#                   ACTOR="${{ github.actor }}"
+#                   REF="${{ github.ref }}"
+#                   SHA="${{ github.sha }}"
+#                   RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+#                   PR_NUMBER="${{ github.event.pull_request.number }}"
+#                   PR_URL="${{ github.event.pull_request.html_url }}"
+#
+#                   MESSAGE="$(cat <<EOF
+#                   CI tests failed
+#                   Repo: $REPO
+#                   Actor: $ACTOR
+#                   PR: #$PR_NUMBER $PR_URL
+#                   Ref: $REF
+#                   SHA: $SHA
+#                   Run: $RUN_URL
+#                   EOF
+#                   )"
+#
+#                   curl -sS -X POST "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" \
+#                     -d chat_id="$TELEGRAM_TO" \
+#                     --data-urlencode text="$MESSAGE" \
+#                     -d disable_web_page_preview=true
+#
+#     # Build and Release job - runs only on push to main (merge)
+#     build-and-release:
+#         name: Build and Release
+#         runs-on: macos-26
+#         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+#         permissions:
+#             contents: write
+#
+#         steps:
+#             - name: Checkout
+#               uses: actions/checkout@v4
+#               with:
+#                   fetch-depth: 0
+#
+#             - name: Get Current Version
+#               id: get_version
+#               run: |
+#                   SHORT_VERSION=$(grep 'let shortVersionString =' Project.swift | sed -E 's/.*"([^"]+)".*/\1/')
+#                   BUILD_VERSION=$(grep 'let buildVersionString =' Project.swift | sed -E 's/.*"([^"]+)".*/\1/')
+#                   VERSION="${SHORT_VERSION}.${BUILD_VERSION}"
+#                   echo "version=$VERSION" >> $GITHUB_OUTPUT
+#                   echo "short_version=$SHORT_VERSION" >> $GITHUB_OUTPUT
+#                   echo "Current Version: $VERSION"
+#
+#             - name: Get Latest Release Version
+#               id: get_latest_release
+#               env:
+#                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#               run: |
+#                   LATEST_TAG=$(gh release view --json tagName --jq .tagName 2>/dev/null || echo "0.0.0")
+#                   echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+#                   echo "Latest Release Tag: $LATEST_TAG"
+#
+#             - name: Compare Versions
+#               id: compare_versions
+#               run: |
+#                   CURRENT="${{ steps.get_version.outputs.version }}"
+#                   LATEST="${{ steps.get_latest_release.outputs.latest_tag }}"
+#
+#                   # Remove 'v' prefix if exists for comparison
+#                   CURRENT_CLEAN=$(echo $CURRENT | sed 's/^v//')
+#                   LATEST_CLEAN=$(echo $LATEST | sed 's/^v//')
+#
+#                   if [ "$CURRENT_CLEAN" = "$LATEST_CLEAN" ]; then
+#                     echo "Versions are the same. Skipping release."
+#                     echo "should_release=false" >> $GITHUB_OUTPUT
+#                   else
+#                     HIGHER=$(printf "$CURRENT_CLEAN\n$LATEST_CLEAN" | sort -V | tail -n1)
+#                     if [ "$HIGHER" = "$CURRENT_CLEAN" ] && [ "$CURRENT_CLEAN" != "$LATEST_CLEAN" ]; then
+#                       echo "Current version $CURRENT is higher than latest $LATEST. Proceeding with release."
+#                       echo "should_release=true" >> $GITHUB_OUTPUT
+#                     else
+#                       echo "Current version $CURRENT is NOT higher than latest $LATEST. Skipping release."
+#                       echo "should_release=false" >> $GITHUB_OUTPUT
+#                     fi
+#                   fi
+#
+#             - uses: maxim-lobanov/setup-xcode@v1
+#               if: steps.compare_versions.outputs.should_release == 'true'
+#               with:
+#                   xcode-version: latest
+#
+#             - name: Setup Swift
+#               if: steps.compare_versions.outputs.should_release == 'true'
+#               uses: swift-actions/setup-swift@v2
+#               with:
+#                   swift-version: "6.2"
+#
+#             - name: Install mise
+#               if: steps.compare_versions.outputs.should_release == 'true'
+#               uses: jdx/mise-action@v3
+#               with:
+#                   github_token: ${{ secrets.GITHUB_TOKEN }}
+#
+#             - name: Install Tuist via mise
+#               if: steps.compare_versions.outputs.should_release == 'true'
+#               run: |
+#                   mise install tuist@4.95.0
+#                   mise use -g tuist@4.95.0
+#
+#             - name: Generate Xcode Project
+#               if: steps.compare_versions.outputs.should_release == 'true'
+#               env:
+#                   TUIST_CONFIG_TOKEN: ${{ secrets.TUIST_CONFIG_TOKEN }}
+#                   CI: 1
+#               run: |
+#                   tuist clean
+#                   tuist install
+#                   tuist generate
+#                   echo "Generated Xcode project"
+#
+#             - name: Build App
+#               if: steps.compare_versions.outputs.should_release == 'true'
+#               run: |
+#                   xcodebuild build \
+#                     -workspace ABPlayer.xcworkspace \
+#                     -scheme ABPlayer \
+#                     -configuration Release \
+#                     -destination 'platform=macOS' \
+#                     -derivedDataPath DerivedData
+#
+#             - name: Prepare Release Artifact
+#               if: steps.compare_versions.outputs.should_release == 'true'
+#               env:
+#                   SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+#               run: |
+#                   cd DerivedData/Build/Products/Release
+#
+#                   # Create zip for Sparkle
+#                   zip -r ABPlayer.zip ABPlayer.app
+#
+#                   # Download Sparkle tools (Not needed, we rely on the Tuist dependency which should have downloaded it)
+#                   # The user indicated the path is Tuist/.build/artifacts/sparkle/Sparkle/bin/
+#                   # Since 'tuist install' and 'tuist generate' ran earlier, this path should exist if the artifact is cached/downloaded.
+#                   # However, artifacts might be in a different spot depending on Tuist version/cache.
+#                   # But based on user input, we will use that relative path from project root.
+#
+#                   # We need to go back to project root to find the tools, or reference them relatively
+#                   # Current dir: DerivedData/Build/Products/Release
+#                   # Project root: ../../../../
+#
+#                   SPARKLE_BIN="../../../../Tuist/.build/artifacts/sparkle/Sparkle/bin"
+#
+#                   # Create a temporary file for the key
+#                   echo "$SPARKLE_PRIVATE_KEY" > sparkle_key
+#
+#                   # Generate signature
+#                   SIGNATURE=$("$SPARKLE_BIN/sign_update" ABPlayer.zip --ed-key-file sparkle_key)
+#                   echo "Signature: $SIGNATURE"
+#
+#                   # Generate Appcast
+#                   # We need to construct the appcast manually or use the tool.
+#                   # Using generate_appcast tool:
+#                   "$SPARKLE_BIN/generate_appcast" . --ed-key-file sparkle_key --download-url-prefix "https://github.com/sunset-valley/ABPlayer/releases/latest/download/"
+#
+#                   # Cleanup key
+#                   rm sparkle_key
+#
+#                   # Move artifacts to root
+#                   mv ABPlayer.zip ../../../../
+#                   mv appcast.xml ../../../../
+#                   cd ../../../../
+#
+#             - name: Create GitHub Release
+#               if: steps.compare_versions.outputs.should_release == 'true'
+#               env:
+#                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#               run: |
+#                   VERSION="${{ steps.get_version.outputs.version }}"
+#                   NOTES_FILE="release_notes.txt"
+#
+#                   if [ -f "CHANGELOG.md" ]; then
+#                     # Extract release notes for the current version
+#                     awk "/^## \[$VERSION\]/{p=1; print; next} /^## \[/{p=0} p" CHANGELOG.md > "$NOTES_FILE"
+#                   fi
+#
+#                   if [ ! -s "$NOTES_FILE" ]; then
+#                     echo "Automated release for version $VERSION" > "$NOTES_FILE"
+#                   fi
+#
+#                   gh release create "$VERSION" ABPlayer.zip appcast.xml --title "$VERSION" --notes-file "$NOTES_FILE"
+#
+#             - name: Upload dSYM to Sentry
+#               if: steps.compare_versions.outputs.should_release == 'true'
+#               env:
+#                   SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+#                   SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+#                   SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+#               run: |
+#                   curl -sL https://sentry.io/get-cli/ | sh
+#                   sentry-cli debug-files upload \
+#                     --auth-token "$SENTRY_AUTH_TOKEN" \
+#                     --org "$SENTRY_ORG" \
+#                     --project "$SENTRY_PROJECT" \
+#                     DerivedData/Build/Products/Release/ABPlayer.app.dSYM
+#
+#             - name: Send Telegram Notification
+#               if: steps.compare_versions.outputs.should_release == 'true'
+#               env:
+#                   TELEGRAM_TO: ${{ secrets.TELEGRAM_TO }}
+#                   TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+#               run: |
+#                   VERSION="${{ steps.get_version.outputs.version }}"
+#                   MESSAGE="Release Success: $VERSION"
+#                   curl -s -X POST https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage -d chat_id=$TELEGRAM_TO -d text="$MESSAGE"
