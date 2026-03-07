@@ -29,14 +29,10 @@ enum MenuItem: String, CaseIterable, Identifiable {
 }
 
 struct MenuSection: Identifiable {
-    let title: String?
+    let title: String
     let items: [MenuItem]
 
     var id: String {
-        if let title {
-            return title
-        }
-
-        return items.map(\.id).joined(separator: "-")
+        title
     }
 }

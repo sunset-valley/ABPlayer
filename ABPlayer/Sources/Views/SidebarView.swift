@@ -5,19 +5,34 @@ struct SidebarView: View {
     let menuSections: [MenuSection]
     
     var body: some View {
-        List(selection: $selectedMenu) {
+        List {
             ForEach(menuSections) { section in
-                if let title = section.title {
-                    Section(title) {
-                        ForEach(section.items) { item in
-                            Label(item.rawValue, systemImage: item.icon)
-                                .tag(item)
-                        }
-                    }
-                } else {
+                Section(section.title) {
                     ForEach(section.items) { item in
-                        Label(item.rawValue, systemImage: item.icon)
-                            .tag(item)
+                        HStack {
+                            Label(item.rawValue, systemImage: item.icon)
+                            Spacer()
+                        }
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 8)
+                        .listItemTint(
+                            selectedMenu == item
+                            ? Color.accentColor
+                            : Color(.primary)
+                        )
+                        .background(
+                            selectedMenu == item
+                            ? Color(.listRowBackground)
+                            : Color.clear
+                        )
+                        .foregroundStyle(
+                            selectedMenu == item ? Color.accentColor : Color(.primary)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selectedMenu = item
+                        }
                     }
                 }
             }

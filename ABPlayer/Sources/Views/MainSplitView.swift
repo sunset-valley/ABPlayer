@@ -11,14 +11,19 @@ struct MainSplitView: View {
     ]
     
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: .constant(.doubleColumn)) {
             SidebarView(selectedMenu: $selectedMenu, menuSections: menuSections)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 280)
+                .toolbar(removing: .sidebarToggle)
+                .toolbar {
+                    Text("")
+                }
         } detail: {
             ContentView(selectedMenu: selectedMenu)
         }
         .navigationSplitViewStyle(.balanced)
         .navigationTitle(selectedMenu.id)
+        .toolbarBackground(.hidden, for: .windowToolbar)
     }
 }
 
