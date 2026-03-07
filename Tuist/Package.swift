@@ -14,6 +14,7 @@ import PackageDescription
       "KeyboardShortcuts-Dynamic": .framework,
       "Sparkle-Dynamic": .framework,
       "TelemetryDeck-Dynamic": .framework,
+      "SwiftUIIntrospect-Dynamic": .framework,
     ]
   )
 #endif
@@ -29,5 +30,6 @@ let package = Package(
     .package(url: "https://github.com/iHugo-Tang/KeyboardShortcuts", branch: "main"),
     .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
     .package(url: "https://github.com/TelemetryDeck/SwiftSDK", from: "2.11.0"),
+    .package(url: "https://github.com/siteline/swiftui-introspect", from: "26.0.0"),
   ]
 )

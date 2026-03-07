@@ -3,7 +3,7 @@ import SwiftUI
 struct SidebarView: View {
     @Binding var selectedMenu: MenuItem
     let menuSections: [MenuSection]
-    
+
     var body: some View {
         List {
             ForEach(menuSections) { section in
@@ -17,13 +17,13 @@ struct SidebarView: View {
                         .padding(.horizontal, 8)
                         .listItemTint(
                             selectedMenu == item
-                            ? Color.accentColor
-                            : Color(.primary)
+                                ? Color.accentColor
+                                : Color(.primary)
                         )
                         .background(
                             selectedMenu == item
-                            ? Color(.listRowBackground)
-                            : Color.clear
+                                ? Color(.listRowBackground)
+                                : Color.clear
                         )
                         .foregroundStyle(
                             selectedMenu == item ? Color.accentColor : Color(.primary)
@@ -49,7 +49,7 @@ struct SidebarView: View {
             MenuSection(title: "Discover", items: [.todaysPicks, .podcast]),
             MenuSection(title: "My Listening", items: [.downloads, .history, .myUploads, .myResources, .vocabulary]),
             MenuSection(title: "Favorites", items: [.favorites]),
-            MenuSection(title: "Playlists", items: [.liked])
+            MenuSection(title: "Playlists", items: [.liked]),
         ]
     )
 }

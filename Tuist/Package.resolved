@@ -1,5 +1,5 @@
 {
-  "originHash" : "c4d78fb62952120c0faefabd9d9243d6b10a2e3f7b2e37c6cc31e8851c14ef3d",
+  "originHash" : "f50ce1cddef3a74af92f2c9db44a8c0fbdab0ae071eb5502795e15b6d7dd1b54",
   "pins" : [
     {
       "identity" : "keyboardshortcuts",
@@ -71,6 +71,15 @@
       "state" : {
         "revision" : "8f332c1c256ba26cc46f74c9e5af94f7b1c37a9c",
         "version" : "2.11.0"
+      }
+    },
+    {
+      "identity" : "swiftui-introspect",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/siteline/swiftui-introspect",
+      "state" : {
+        "revision" : "a08b87f96b41055577721a6e397562b21ad52454",
+        "version" : "26.0.0"
       }
     },
     {
