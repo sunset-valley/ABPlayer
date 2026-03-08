@@ -1,43 +1,548 @@
-# ABPlayer Lite PRD
+# EchoEnglish 产品需求文档（PRD）
 
-## Background & Goals
-- Provide an A-B loop practice tool for local MP3 files in language learning, phrase drills, and similar scenarios.
-- Goal: quickly import a single audio file, mark A/B points, loop playback, save/reuse segments, and track practice time plus playback progress.
+## 1. 文档信息
 
-## Core Features
-- **Audio import & list**
-  - Import a single MP3 via file picker (stored with security-scoped bookmark); list shows name and date in ascending import order.
-  - Remember the last selected file, auto-restore on launch or data change; show an alert on import failure.
-- **Playback & progress**
-  - Play/pause, back 5s, forward 10s; scrub with a slider to any time, showing current/total duration.
-  - Persist `lastPlaybackTime` on exit and resume from it on reload.
-- **A-B looping & shortcuts**
-  - Set A (x), set B (c), clear (v); reject if B ≤ A.
-  - When playback reaches B, jump to A and keep looping.
-- **Segment management**
-  - Save current A-B as a segment (auto-increment label), de-duplicate identical start/end; toggle list sort by start time (asc/desc).
-  - Tap a segment to apply/jump; left/right arrow to move to previous/next; delete a segment and reindex.
-- **Practice time tracking**
-  - Accumulate current session duration while playing (seconds), show in header; persist every 5s and on exit.
-- **State & version**
-  - Show app version/build; persist playback progress and session when closing (macOS).
+- **产品名称**：听力学习 App
+- **文档版本**：v1.0
+- **文档类型**：PRD
+- **产品定位**：以听力提升为核心，逐步延伸到精听、标注、笔记、复习与 Shadowing 的学习型 App
 
-## Key Flows
-1) Launch → restore last audio/segment/progress.  
-2) Import MP3 → load and resume from last time.  
-3) Play and set A/B → loop or save as segment.  
-4) Reuse segments: pick from list or use left/right arrows → auto-jump (can auto-play).  
-5) Quit/close window → persist playback progress and session duration.
+---
 
-## Data Models (SwiftData)
-- `AudioFile`: id, displayName, bookmarkData (external storage), createdAt, segments [LoopSegment], lastPlaybackTime (Double).
-- `LoopSegment`: id, label, startTime, endTime, index, createdAt, audioFile.
-- `ListeningSession`: id, startedAt, durationSeconds, endedAt.
+## 2. 产品背景
 
-## Platform / Tech Constraints
-- SwiftUI + SwiftData + AVPlayer; security-scoped bookmarks for local files; single-window experience.
-- MP3 only; single-file import.
-- macOS termination notification triggers progress and session persistence.
+目前市面上的音频/播客类产品更多聚焦于内容消费，而不是围绕“听力提升”构建完整训练闭环。用户在日常听力训练中常见的问题包括：
 
-## Non-goals / Open Items
-- Not implemented: rename/delete files, batch import, playlists, speed/volume/waveform control, segment export/share, custom shortcuts.
+- 不知道今天该听什么
+- 听过之后没有沉淀
+- 碰到没听懂的内容无法高效标记与回看
+- 缺少系统性的复习与训练方式
+- 很难量化自己的进步
+
+本产品希望解决以上问题，将用户的听力学习过程组织成清晰的闭环：
+
+**听内容 → 标记问题 → 记录笔记 → 回看复习 → 跟读练习 → 查看统计反馈**
+
+---
+
+## 3. 产品目标
+
+### 3.1 核心目标
+
+1. 帮助用户持续进行听力训练
+2. 帮助用户在听的过程中沉淀学习内容
+3. 帮助用户看到自己的进步并逐步进入更深度训练
+
+### 3.2 产品阶段目标
+
+#### 第一阶段
+
+- 做好听力播放体验
+- 完成学习统计闭环
+- 帮助用户形成持续使用习惯
+
+#### 第二阶段
+
+- 增强 Transcript 展示、编辑和标注能力
+- 建立笔记与标记体系
+- 支撑精听学习场景
+
+#### 第三阶段
+
+- 增加 Shadowing 训练能力
+- 从输入训练延伸到输出训练
+- 逐步加入更智能的反馈机制
+
+---
+
+## 4. 目标用户
+
+### 4.1 核心用户
+
+- 有英语听力提升需求的学习者
+- 希望通过播客、音频内容进行长期学习的用户
+- 不满足于“泛听”，希望做精听、做笔记、做复盘的用户
+
+### 4.2 典型用户特征
+
+- 有明确学习目标，但缺少结构化工具
+- 愿意持续听，但需要推荐与进度引导
+- 希望把听不懂的内容沉淀下来反复练习
+- 希望通过数据反馈感受到进步
+
+---
+
+## 5. 产品定位
+
+本产品不是一个单纯的音频播放器，也不是普通播客 App，而是一个：
+
+**以听力训练为核心的学习工作台**
+
+用户可以在产品中完成：
+
+- 找内容
+- 听内容
+- 标记卡点
+- 记录笔记
+- 积累闪卡
+- 回看复习
+- Shadowing 跟读
+- 查看学习进展
+
+---
+
+## 6. 信息架构
+
+### 6.1 Sidebar 结构
+
+#### Discover
+
+- Today’s Picks
+- Podcast
+
+#### My Learning
+
+- Continue Listening
+- Downloads
+- Flash Card
+- Notes
+- Marked Clips
+
+#### Library
+
+- My Uploads
+- My Resources
+
+#### Progress
+
+- History
+- Stats
+- Streak
+
+#### Saved
+
+- Favorites
+
+---
+
+## 7. 功能需求
+
+## 7.1 Discover
+
+### 7.1.1 Today’s Picks
+
+**定义**：今天推荐用户去听的新内容或值得练习的内容。
+
+**目标**：
+
+- 降低选择成本
+- 帮助用户快速开始今天的学习
+- 提供探索与训练并重的推荐入口
+
+**推荐内容类型**：
+
+- 基于用户水平的推荐内容
+- 基于用户兴趣的推荐内容
+- 时长较短、容易开始的内容
+- 适合精听的内容
+- 适合 Shadowing 的内容
+- 编辑精选或新上线内容
+
+**展示建议**：
+
+- 标题
+- 来源
+- 时长
+- 难度标签
+- 推荐理由
+
+### 7.1.2 Podcast
+
+**定义**：平台内播客内容入口。
+
+**功能点**：
+
+- 播客列表浏览
+- 分类浏览
+- 按主题筛选
+- 单集详情页
+- 收藏
+- 进入播放与学习流程
+
+---
+
+## 7.2 My Learning
+
+### 7.2.1 Continue Listening
+
+**定义**：继续用户上次没听完的内容。
+
+**目标**：
+
+- 让用户无脑续听
+- 降低中断后的恢复成本
+
+**展示信息**：
+
+- 内容标题
+- 播放进度
+- 上次听到的位置
+- 最近学习时间
+- 一键继续播放
+
+### 7.2.2 Downloads
+
+**定义**：用户下载到本地的音频内容。
+
+**功能点**：
+
+- 离线播放
+- 按最近下载排序
+- 删除本地文件
+- 查看下载状态
+
+### 7.2.3 Flash Card
+
+**定义**：学习过程中沉淀并用于复习训练的闪卡。
+
+**功能点**：
+
+- 闪卡列表
+- 查看来源句子
+- 查看创建时间
+- 标记掌握状态
+- 进入闪卡复习流程
+
+### 7.2.4 Notes
+
+**定义**：用户在听力过程中的学习笔记。
+
+**功能点**：
+
+- 查看全部笔记
+- 按时间或标签筛选
+- 关联到具体句子或时间点
+- 编辑与删除
+
+### 7.2.5 Marked Clips
+
+**定义**：用户在听力过程中标记的重要片段。
+
+**功能点**：
+
+- 保存时间点
+- 保存关联句子
+- 回放该片段
+- 按标签筛选
+- 用于复听、复盘与后续练习
+
+---
+
+## 7.3 Library
+
+### 7.3.1 My Uploads
+
+**定义**：用户自己上传的音频或学习材料。
+
+**功能点**：
+
+- 上传音频
+- 管理上传内容
+- 查看处理状态
+- 进入播放与学习流程
+
+### 7.3.2 My Resources
+
+**定义**：用户沉淀和整理的学习资源库。
+
+**可包括**：
+
+- 收藏材料
+- 自建资料
+- 导入文本资源
+- 后续专题资料整理
+
+---
+
+## 7.4 Progress
+
+### 7.4.1 History
+
+**定义**：记录用户听过什么、听到哪里。
+
+**功能点**：
+
+- 最近收听记录
+- 完整播放 / 中断播放状态
+- 最近访问时间
+- 从历史重新进入学习
+
+### 7.4.2 Stats
+
+**定义**：学习统计面板。
+
+**建议统计指标**：
+
+- 总听力时长
+- 今日学习时长
+- 本周学习时长
+- 完整播放内容数
+- 平均单次学习时长
+- 重听次数
+- 标记数
+- 笔记数
+- 闪卡数
+- 高频卡住片段
+
+**目标**：
+
+- 强化“我在进步”的感知
+- 突出产品的量化学习价值
+
+### 7.4.3 Streak
+
+**定义**：连续学习记录。
+
+**功能点**：
+
+- 连续学习天数
+- 月度打卡视图
+- 学习目标达成提醒
+
+**目标**：
+
+- 提高留存
+- 促进持续学习
+
+---
+
+## 7.5 Saved
+
+### 7.5.1 Favorites
+
+**定义**：用户收藏的内容。
+
+**功能点**：
+
+- 收藏节目/单集/片段
+- 快速进入内容
+- 用于后续重点学习或复习
+
+---
+
+## 8. 播放器核心功能
+
+播放器是产品主战场，建议作为底层核心能力重点设计。
+
+### 8.1 基础播放控制
+
+- 播放 / 暂停
+- 快进 / 后退
+- 调整播放速度
+- 跳到上一句 / 下一句
+- A-B 循环
+- 重复播放某句 / 某段
+
+### 8.2 学习辅助能力
+
+- 句子级回放
+- 标记当前时间点
+- 收藏难句
+- 边听边记笔记
+- 查看 Transcript
+- 当前句跟随高亮
+
+---
+
+## 9. Transcript 功能规划
+
+## 9.1 基础版
+
+- 展示 Transcript
+- 句子与音频时间对齐
+- 点击句子跳转播放
+- 当前句高亮
+
+## 9.2 标记能力
+
+- 标记单词 / 短语 / 句子
+- 标记“没听懂”
+- 标记“值得复听”
+- 标记“适合跟读”
+- 自定义标签
+
+## 9.3 编辑能力（后续）
+
+- 编辑 Transcript 内容
+- 修改断句
+- 添加备注
+- 调整标签
+
+---
+
+## 10. 笔记与标注系统
+
+## 10.1 标注能力
+
+用户可以在学习过程中对内容做加工：
+
+- 高亮词/短语
+- 标记句子
+- 标记重点表达
+- 标记发音现象
+- 标记连读 / 弱读 / 吞音
+
+## 10.2 笔记能力
+
+用户可围绕内容记笔记：
+
+- 记录理解
+- 记录翻译
+- 记录用法
+- 记录听力难点
+- 记录 Shadowing 提醒
+
+## 10.3 关联关系
+
+建议笔记和标注可绑定到：
+
+- 某段音频
+- 某个句子
+- 某个时间点
+- 某张闪卡
+
+---
+
+## 11. Shadowing 功能规划
+
+## 11.1 第一阶段
+
+- 逐句跟读
+- 播放原音后自动留空
+- 用户录音
+- 回听自己的录音
+- 原音与录音切换对比
+
+## 11.2 第二阶段
+
+- 连续跟读模式
+- 只练已标记片段
+- 按难度选择练习
+- 跟读完成度记录
+
+## 11.3 第三阶段
+
+- 节奏对比
+- 停顿对比
+- 发音反馈
+- AI 评分
+
+---
+
+## 12. 推荐逻辑说明
+
+### 12.1 Continue Listening
+
+**定义**：用户已经开始过、最适合直接继续的内容。
+
+**特点**：
+
+- 强任务感
+- 强个人进度
+- 恢复型入口
+
+### 12.2 Today’s Picks
+
+**定义**：今天推荐用户去听的新内容或值得练习的内容。
+
+**特点**：
+
+- 推荐型入口
+- 帮用户开始今天的学习
+- 兼顾探索和训练价值
+
+### 12.3 区别总结
+
+- **Continue Listening**：接着上次听
+- **Today’s Picks**：今天推荐你听什么
+
+---
+
+## 13. MVP 范围建议
+
+## 13.1 MVP 必做
+
+- 音频播放
+- Continue Listening
+- Podcast 内容浏览
+- Downloads
+- 基础 Transcript 展示
+- 句子级标记
+- Notes
+- Marked Clips
+- History
+- Stats
+- Favorites
+
+## 13.2 第二阶段功能
+
+- Flash Card 系统增强
+- Transcript 编辑能力
+- 更细粒度的标注体系
+- 个性化 Today’s Picks
+- Shadowing 基础版
+
+## 13.3 第三阶段功能
+
+- Shadowing 进阶能力
+- AI 反馈
+- 更强的复习系统
+- 更强的数据分析和训练建议
+
+---
+
+## 14. 关键设计原则
+
+1. **以听力训练为中心，而不是内容消费为中心**
+2. **降低开始学习门槛**
+3. **支持从泛听到精听的渐进式学习**
+4. **让用户在听的过程中沉淀学习资产**
+5. **用统计反馈增强成就感和留存**
+
+---
+
+## 15. 成功指标建议
+
+### 15.1 使用类指标
+
+- 日活 / 周活
+- 人均每日听力时长
+- Continue Listening 使用率
+- 下载内容使用率
+
+### 15.2 学习行为指标
+
+- 标记次数
+- 笔记创建次数
+- 闪卡积累数
+- 复听次数
+- Shadowing 使用率（后续）
+
+### 15.3 留存类指标
+
+- 次日留存
+- 7 日留存
+- 连续学习天数
+- 完整学习闭环用户比例
+
+---
+
+## 16. 总结
+
+这款产品的核心，不是“让用户听更多内容”，而是“让用户通过内容持续进行听力训练，并在训练中形成沉淀与反馈”。
+
+最终希望构建的是一个完整闭环：
+
+**发现内容 → 开始听 → 标记问题 → 做笔记 → 回看复习 → 跟读输出 → 看到进步**
+
+这将帮助产品从一个音频工具，成长为一个真正的听力学习平台。
