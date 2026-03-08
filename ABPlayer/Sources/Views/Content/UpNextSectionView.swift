@@ -55,7 +55,7 @@ struct UpNextSectionView: View {
           PagingArrowButton(
             title: "Next Page",
             systemImage: "chevron.right",
-            isEnabled: currentItem < lastItemIndex
+            isEnabled: currentItem + itemsPerPage - 1 < lastItemIndex
           ) {
             scrollTo(itemIndex: nextPageTargetIndex)
           }
@@ -66,7 +66,7 @@ struct UpNextSectionView: View {
         .animation(.easeInOut(duration: 0.16), value: isHovering)
       }
       .onHover { isHovering = $0 }
-      .onChange(of: geometry.size.width) { _, newWidth in
+      .onChange(of: geometry.size.width, initial: true) { _, newWidth in
         updateItemsPerPage(containerWidth: newWidth)
       }
       .onChange(of: targetItem) { _, newTarget in
