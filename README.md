@@ -28,3 +28,5 @@ This project uses Tuist for project generation.
 2. Run `tuist install` to fetch dependencies.
 3. Run `tuist generate` to create the Xcode project.
 4. Open `ABPlayer.xcworkspace` and build.
+
+just test CI/CD
