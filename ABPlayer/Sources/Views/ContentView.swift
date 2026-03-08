@@ -4,11 +4,18 @@ struct ContentView: View {
   let selectedMenu: MenuItem
 
   var body: some View {
-    Text(selectedMenu.rawValue)
-      .font(.largeTitle)
-  }
-}
+    ScrollView {
+      VStack(spacing: 0) {
+        ContentTitleHeaderView(title: selectedMenu.rawValue)
 
-#Preview {
-  ContentView(selectedMenu: .todaysPicks)
+        SectionHeaderView(title: "Up Next")
+          .padding(.top, 14)
+          .padding(.bottom, 8)
+
+        UpNextSectionView()
+
+        Spacer()
+      }
+    }
+  }
 }
