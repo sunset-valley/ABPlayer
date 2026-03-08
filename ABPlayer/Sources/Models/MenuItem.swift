@@ -1,38 +1,48 @@
 import Foundation
 
 enum MenuItem: String, CaseIterable, Identifiable {
-    case todaysPicks = "Today's Picks"
-    case podcast = "Podcast"
-    case downloads = "Downloads"
-    case history = "History"
-    case myUploads = "My Uploads"
-    case myResources = "My Resources"
-    case vocabulary = "Vocabulary"
-    case favorites = "Favorites"
-    case liked = "Liked"
-    
-    var id: String { rawValue }
-    
-    var icon: String {
-        switch self {
-        case .todaysPicks: return "sparkles"
-        case .podcast: return "mic"
-        case .downloads: return "arrow.down.circle"
-        case .history: return "clock.arrow.circlepath"
-        case .myUploads: return "square.and.arrow.up"
-        case .myResources: return "folder"
-        case .vocabulary: return "character.book.closed"
-        case .favorites: return "star"
-        case .liked: return "heart"
-        }
+  case todaysPicks = "Today's Picks"
+  case podcast = "Podcast"
+  case continueListening = "Continue Listening"
+  case downloads = "Downloads"
+  case flashCard = "Flash Card"
+  case notes = "Notes"
+  case markedClips = "Marked Clips"
+  case myUploads = "My Uploads"
+  case myResources = "My Resources"
+  case history = "History"
+  case stats = "Stats"
+  case streak = "Streak"
+  case favorites = "Favorites"
+
+  var id: String {
+    rawValue
+  }
+
+  var icon: String {
+    switch self {
+    case .todaysPicks: return "sparkles"
+    case .podcast: return "mic"
+    case .continueListening: return "play.circle"
+    case .downloads: return "arrow.down.circle"
+    case .flashCard: return "lanyardcard"
+    case .notes: return "note.text"
+    case .markedClips: return "bookmark"
+    case .myUploads: return "square.and.arrow.up"
+    case .myResources: return "folder"
+    case .history: return "clock.arrow.circlepath"
+    case .stats: return "chart.bar"
+    case .streak: return "flame"
+    case .favorites: return "star"
     }
+  }
 }
 
 struct MenuSection: Identifiable {
-    let title: String
-    let items: [MenuItem]
+  let title: String
+  let items: [MenuItem]
 
-    var id: String {
-        title
-    }
+  var id: String {
+    title
+  }
 }
