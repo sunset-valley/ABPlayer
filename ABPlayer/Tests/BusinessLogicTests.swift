@@ -721,6 +721,31 @@ struct VocabularyLogicTests {
   }
 }
 
+struct SortingUtilityTests {
+
+  @Test
+  func testExtractLeadingNumberUsesFirstNumericSegment() {
+    #expect(SortingUtility.extractLeadingNumber("englishpod_B0024pb") == 24)
+    #expect(SortingUtility.extractLeadingNumber("abc_B0024_987XXpb") == 24)
+    #expect(SortingUtility.extractLeadingNumber("no_digits") == Int.max)
+  }
+
+  @Test
+  func testSortAudioFilesByNumberAscUsesFirstNumericSegment() {
+    let fileA = ABFile(displayName: "englishpod_B0100pb", bookmarkData: Data("A".utf8))
+    let fileB = ABFile(displayName: "abc_B0024_987XXpb", bookmarkData: Data("B".utf8))
+    let fileC = ABFile(displayName: "lesson_B0007_part2", bookmarkData: Data("C".utf8))
+
+    let sorted = SortingUtility.sortAudioFiles([fileA, fileB, fileC], by: .numberAsc)
+
+    #expect(sorted.map(\ABFile.displayName) == [
+      "lesson_B0007_part2",
+      "abc_B0024_987XXpb",
+      "englishpod_B0100pb",
+    ])
+  }
+}
+
 // MARK: - Mocks
 
 private func makeBookmarkedAudioFile(displayName: String) -> (ABFile, URL) {
