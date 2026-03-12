@@ -1,3 +1,10 @@
+## [0.2.11.82] - 2026-03-12
+
+### Bug Fixes
+- parse first numeric segment for number sort
+- ensure file selection callback runs on main actor
+
+
 ## [0.2.11.81] - 2026-02-25
 
 ### Bug Fixes
