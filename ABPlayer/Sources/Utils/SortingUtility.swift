@@ -2,10 +2,14 @@ import Foundation
 
 enum SortingUtility {
   static func extractLeadingNumber(_ name: String) -> Int {
-    let digits = name.prefix(while: { $0.isNumber })
+    guard let firstDigitIndex = name.firstIndex(where: { $0.isNumber }) else {
+      return Int.max
+    }
+
+    let digits = name[firstDigitIndex...].prefix(while: { $0.isNumber })
     return Int(digits) ?? Int.max
   }
-  
+
   static func sortFolders(_ folders: [Folder], by sortOrder: SortOrder) -> [Folder] {
     switch sortOrder {
     case .nameAZ:
@@ -22,7 +26,7 @@ enum SortingUtility {
       return folders.sorted { $0.createdAt < $1.createdAt }
     }
   }
-  
+
   static func sortAudioFiles(_ files: [ABFile], by sortOrder: SortOrder) -> [ABFile] {
     switch sortOrder {
     case .nameAZ:
