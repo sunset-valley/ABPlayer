@@ -151,11 +151,12 @@ final class MainSplitViewModel {
   func updatePlaybackQueueForCurrentFolder() {
     guard let playerManager else { return }
 
-    if let folder = folderNavigationViewModel?.currentFolder {
-      playerManager.playbackQueue.updateQueue(folder.sortedAudioFiles)
-    } else {
+    guard let folderNavigationViewModel else {
       playerManager.playbackQueue.updateQueue([])
+      return
     }
+
+    playerManager.playbackQueue.updateQueue(folderNavigationViewModel.currentAudioFiles())
   }
 
   func handleSelectedFileMediaTypeChange(_ isVideo: Bool?) {

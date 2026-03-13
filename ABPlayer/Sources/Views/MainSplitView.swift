@@ -66,6 +66,12 @@ public struct MainSplitView: View {
     .onChange(of: mainSplitViewModel.folderNavigationViewModel?.currentFolder?.id, initial: true) { _, _ in
       mainSplitViewModel.updatePlaybackQueueForCurrentFolder()
     }
+    .onChange(of: mainSplitViewModel.folderNavigationViewModel?.sortOrder) { _, _ in
+      mainSplitViewModel.updatePlaybackQueueForCurrentFolder()
+    }
+    .onChange(of: mainSplitViewModel.folderNavigationViewModel?.refreshToken) { _, _ in
+      mainSplitViewModel.updatePlaybackQueueForCurrentFolder()
+    }
     .onChange(of: mainSplitViewModel.folderNavigationViewModel?.selectedFile?.isVideo) { _, isVideo in
       mainSplitViewModel.handleSelectedFileMediaTypeChange(isVideo)
     }
