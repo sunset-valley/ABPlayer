@@ -1,22 +1,61 @@
 # ABPlayer Agent Entry
 
-Use this file as the root entrypoint. Detailed rules are split under `.agent/rules/`.
+Use this file as the first stop before coding. For detailed constraints, read `.agent/rules/*`.
 
-## Purpose
+## Quick Facts
 
-Agents act as senior Swift collaborators. Keep responses concise, clarify uncertainty before coding, and follow the linked rules.
+```
+Workspace Root: /Volumes/Data/Code/mine/ABPlayer
+Source Root:    /Volumes/Data/Code/mine/ABPlayer/ABPlayer/Sources
+Test Root:      /Volumes/Data/Code/mine/ABPlayer/ABPlayer/Tests
+Build Tool:     Tuist
+Platform:       macOS 15.7+ | Swift 6.2 | SwiftUI
+```
 
-## Workspace
+## Agent Startup Checklist
 
-- Workspace root path: `/Volumes/Data/Code/mine/ABPlayer`
-- Source code path: `ABPlayer/Sources`
-- Use `Tuist` to manage and generate the Xcode project.
+1. Read [`.agent/rules/workspace.md`](.agent/rules/workspace.md) to confirm paths and `Project.swift` source-of-truth.
+2. If editing Swift code, read [`.agent/rules/swift-style.md`](.agent/rules/swift-style.md).
+3. If touching ViewModel/View/Model boundaries, read [`.agent/rules/mvvm.md`](.agent/rules/mvvm.md).
+4. Build and test with the commands in [`.agent/rules/build.md`](.agent/rules/build.md) and [`.agent/rules/test.md`](.agent/rules/test.md).
+5. For commit/collaboration behavior, follow [`.agent/rules/workflow.md`](.agent/rules/workflow.md).
 
-## Rule Files
+## Decision Map
 
-- `.agent/rules/workspace.md` - workspace paths and path resolution rules
-- `.agent/rules/swift-style.md` - Swift style, architecture, errors, memory, assertions
-- `.agent/rules/mvvm.md` - MVVM responsibilities, ViewModel contract, boundaries, and testing guidance
-- `.agent/rules/build.md` - build command
-- `.agent/rules/test.md` - test command
-- `.agent/rules/workflow.md` - collaboration and quick-commit convention
+| Task                            | Read First       | Why                                             |
+| ------------------------------- | ---------------- | ----------------------------------------------- |
+| Resolve path / locate file      | `workspace.md`   | Avoid wrong paths and align with project layout |
+| Add or refactor Swift code      | `swift-style.md` | Match code conventions and Swift 6.2 patterns   |
+| Change MVVM responsibilities    | `mvvm.md`        | Keep layer boundaries and testability           |
+| Build after changes             | `build.md`       | Use project-standard build command              |
+| Run test suite                  | `test.md`        | Use project-standard test command               |
+| Handle ambiguity / quick commit | `workflow.md`    | Follow collaboration and commit conventions     |
+
+## Rules Reference
+
+```
+.agent/
+`-- rules/
+    |-- workspace.md     # Paths, Project.swift, Tuist workflow
+    |-- swift-style.md   # Swift style, concurrency, errors, memory
+    |-- mvvm.md          # MVVM contract and boundaries
+    |-- build.md         # Build command
+    |-- test.md          # Test command
+    `-- workflow.md      # Collaboration + quick-commit convention
+```
+
+## Command Quick Reference
+
+- Build: `xcodebuild -workspace ABPlayer.xcworkspace -scheme ABPlayer -destination 'platform=macOS' build 2>&1 | tail -20`
+- Test: `tuist test`
+
+## Rule Triggers
+
+| File             | Trigger          | Core Topics                                           |
+| ---------------- | ---------------- | ----------------------------------------------------- |
+| `workspace.md`   | `model_decision` | Root/source/test paths, path resolution, Tuist        |
+| `swift-style.md` | `model_decision` | `@Observable`, `async/await`, typed errors, DI        |
+| `mvvm.md`        | `mvvm_decision`  | Input/Output, `transform(input:)`, testing boundaries |
+| `build.md`       | `model_decision` | Build command                                         |
+| `test.md`        | `model_decision` | Test command                                          |
+| `workflow.md`    | `model_decision` | Ambiguity handling, quick-commit format               |
