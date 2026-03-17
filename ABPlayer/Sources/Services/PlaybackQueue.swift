@@ -56,6 +56,7 @@ public final class PlaybackQueue {
     currentFileID = file?.id
   }
   
+  /// Auto-play next file — respects loopMode (called when playback ends).
   @discardableResult
   func playNext() -> ABFile? {
     let nextFile = nextFile()
@@ -64,7 +65,8 @@ public final class PlaybackQueue {
     }
     return nextFile
   }
-  
+
+  /// Auto-play previous file — respects loopMode.
   @discardableResult
   func playPrev() -> ABFile? {
     let previousFile = previousFile()
@@ -73,13 +75,51 @@ public final class PlaybackQueue {
     }
     return previousFile
   }
+
+  /// Manual navigate to next file — always works regardless of loopMode.
+  @discardableResult
+  func navigateNext() -> ABFile? {
+    navigate(direction: .next)
+  }
+
+  /// Manual navigate to previous file — always works regardless of loopMode.
+  @discardableResult
+  func navigatePrev() -> ABFile? {
+    navigate(direction: .previous)
+  }
   
   private func nextFile() -> ABFile? {
     nextFile(direction: .next)
   }
-  
+
   private func previousFile() -> ABFile? {
     nextFile(direction: .previous)
+  }
+
+  private func navigate(direction: PlaybackDirection) -> ABFile? {
+    guard !files.isEmpty else { return nil }
+
+    if loopMode == .shuffle {
+      if files.count == 1 { return files.first }
+      if var currentFileID {
+        var randomFile: ABFile
+        repeat { randomFile = files.randomElement()! } while randomFile.id == currentFileID
+        let file = randomFile
+        currentFileID = file.id
+        return file
+      }
+      let file = files.randomElement()!
+      currentFileID = file.id
+      return file
+    }
+
+    let index = currentIndex() ?? (direction == .next ? -1 : files.count)
+    let nextIndex = direction == .next
+      ? (index + 1) % files.count
+      : (index - 1 + files.count) % files.count
+    let file = files[nextIndex]
+    currentFileID = file.id
+    return file
   }
   
   private func nextFile(direction: PlaybackDirection) -> ABFile? {

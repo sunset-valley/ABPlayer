@@ -1,3 +1,23 @@
+## [0.2.11.84] - 2026-03-17
+
+### Bug Fixes
+- decouple manual navigation from autoplay rules
+
+### Chores
+- restructure AGENTS.md and organize Docs layout
+
+
+## [0.2.11.83] - 2026-03-12
+
+### Bug Fixes
+- update queue on sort order and refresh changes
+- parse first numeric segment for number sort
+
+### Chores
+- revert xcode version
+- tests failed
+
+
 ## [0.2.11.82] - 2026-03-12
 
 ### Bug Fixes
