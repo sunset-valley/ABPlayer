@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import Testing
 
 @testable import ABPlayer
@@ -147,5 +148,250 @@ struct SelectionSyncTests {
 
     // Then: Selection should be restored
     #expect(isInFolder == true)
+  }
+}
+
+// MARK: - PlaybackQueue Navigation Tests
+
+/// Helper that builds an in-memory SwiftData container and returns a lightweight
+/// ABFile factory. ABFile is a @Model class, so it must be created inside a
+/// ModelContext even for unit tests.
+private func makeQueueTestContext() throws -> (ModelContainer, ModelContext) {
+  let config = ModelConfiguration(isStoredInMemoryOnly: true)
+  let container = try ModelContainer(
+    for: ABFile.self, LoopSegment.self, PlaybackRecord.self, Folder.self, SubtitleFile.self,
+    configurations: config
+  )
+  let context = ModelContext(container)
+  return (container, context)
+}
+
+private func makeFile(_ name: String, in context: ModelContext) -> ABFile {
+  let file = ABFile(displayName: name, bookmarkData: Data())
+  context.insert(file)
+  return file
+}
+
+// MARK: Bug 2 — Prev/next navigation buttons are inactive when loopMode == .none
+
+@Suite("PlaybackQueue — manual navigation ignores loopMode")
+@MainActor
+struct PlaybackQueueManualNavigationTests {
+
+  @Test("navigateNext returns next file when loopMode is .none")
+  func navigateNextWorksInNoneMode() throws {
+    let (_, ctx) = try makeQueueTestContext()
+    let f1 = makeFile("ep1.mp3", in: ctx)
+    let f2 = makeFile("ep2.mp3", in: ctx)
+    let f3 = makeFile("ep3.mp3", in: ctx)
+
+    let queue = PlaybackQueue()
+    queue.loopMode = .none
+    queue.updateQueue([f1, f2, f3])
+    queue.setCurrentFile(f1)
+
+    let next = queue.navigateNext()
+    #expect(next?.id == f2.id)
+  }
+
+  @Test("navigatePrev returns previous file when loopMode is .none")
+  func navigatePrevWorksInNoneMode() throws {
+    let (_, ctx) = try makeQueueTestContext()
+    let f1 = makeFile("ep1.mp3", in: ctx)
+    let f2 = makeFile("ep2.mp3", in: ctx)
+    let f3 = makeFile("ep3.mp3", in: ctx)
+
+    let queue = PlaybackQueue()
+    queue.loopMode = .none
+    queue.updateQueue([f1, f2, f3])
+    queue.setCurrentFile(f3)
+
+    let prev = queue.navigatePrev()
+    #expect(prev?.id == f2.id)
+  }
+
+  @Test("navigateNext wraps around to first file when on last file (loopMode .none)")
+  func navigateNextWrapsAround() throws {
+    let (_, ctx) = try makeQueueTestContext()
+    let f1 = makeFile("ep1.mp3", in: ctx)
+    let f2 = makeFile("ep2.mp3", in: ctx)
+
+    let queue = PlaybackQueue()
+    queue.loopMode = .none
+    queue.updateQueue([f1, f2])
+    queue.setCurrentFile(f2)
+
+    let next = queue.navigateNext()
+    #expect(next?.id == f1.id)
+  }
+
+  @Test("navigatePrev wraps around to last file when on first file (loopMode .none)")
+  func navigatePrevWrapsAround() throws {
+    let (_, ctx) = try makeQueueTestContext()
+    let f1 = makeFile("ep1.mp3", in: ctx)
+    let f2 = makeFile("ep2.mp3", in: ctx)
+
+    let queue = PlaybackQueue()
+    queue.loopMode = .none
+    queue.updateQueue([f1, f2])
+    queue.setCurrentFile(f1)
+
+    let prev = queue.navigatePrev()
+    #expect(prev?.id == f2.id)
+  }
+
+  @Test("navigateNext works when loopMode is .repeatOne")
+  func navigateNextWorksInRepeatOneMode() throws {
+    let (_, ctx) = try makeQueueTestContext()
+    let f1 = makeFile("ep1.mp3", in: ctx)
+    let f2 = makeFile("ep2.mp3", in: ctx)
+    let f3 = makeFile("ep3.mp3", in: ctx)
+
+    let queue = PlaybackQueue()
+    queue.loopMode = .repeatOne
+    queue.updateQueue([f1, f2, f3])
+    queue.setCurrentFile(f1)
+
+    let next = queue.navigateNext()
+    #expect(next?.id == f2.id)
+  }
+
+  @Test("auto-play (playNext) still returns nil in .none mode")
+  func autoPlayReturnsNilInNoneMode() throws {
+    let (_, ctx) = try makeQueueTestContext()
+    let f1 = makeFile("ep1.mp3", in: ctx)
+    let f2 = makeFile("ep2.mp3", in: ctx)
+
+    let queue = PlaybackQueue()
+    queue.loopMode = .none
+    queue.updateQueue([f1, f2])
+    queue.setCurrentFile(f1)
+
+    // playNext() is for auto-play — should still respect loopMode
+    #expect(queue.playNext() == nil)
+  }
+}
+
+// MARK: Bug 1 — Video sequential playback uses wrong order because currentFileID is stale
+
+@Suite("PlaybackQueue — currentFileID tracking via setCurrentFile")
+@MainActor
+struct PlaybackQueueCurrentFileTrackingTests {
+
+  @Test("navigateNext returns file after the one set by setCurrentFile")
+  func navigateNextFromSetCurrentFile() throws {
+    let (_, ctx) = try makeQueueTestContext()
+    let f1 = makeFile("ep1.mp4", in: ctx)
+    let f2 = makeFile("ep2.mp4", in: ctx)
+    let f3 = makeFile("ep3.mp4", in: ctx)
+
+    let queue = PlaybackQueue()
+    queue.loopMode = .autoPlayNext
+    queue.updateQueue([f1, f2, f3])
+
+    // Simulates VideoPlayerView calling selectFile (which calls setCurrentFile)
+    queue.setCurrentFile(f2)
+
+    let next = queue.navigateNext()
+    #expect(next?.id == f3.id)
+  }
+
+  @Test("without setCurrentFile, navigateNext starts from the beginning")
+  func navigateNextWithoutSetCurrentFileStartsFromFirst() throws {
+    let (_, ctx) = try makeQueueTestContext()
+    let f1 = makeFile("ep1.mp4", in: ctx)
+    let f2 = makeFile("ep2.mp4", in: ctx)
+    let f3 = makeFile("ep3.mp4", in: ctx)
+
+    let queue = PlaybackQueue()
+    queue.loopMode = .autoPlayNext
+    queue.updateQueue([f1, f2, f3])
+    // No setCurrentFile — currentFileID is nil
+
+    let next = queue.navigateNext()
+    // When currentFileID is nil, navigate uses index -1, so nextIndex = 0
+    #expect(next?.id == f1.id)
+  }
+
+  @Test("sequential navigation produces correct order across multiple steps")
+  func sequentialNavigationOrder() throws {
+    let (_, ctx) = try makeQueueTestContext()
+    let f1 = makeFile("ep1.mp4", in: ctx)
+    let f2 = makeFile("ep2.mp4", in: ctx)
+    let f3 = makeFile("ep3.mp4", in: ctx)
+
+    let queue = PlaybackQueue()
+    queue.loopMode = .none
+    queue.updateQueue([f1, f2, f3])
+    queue.setCurrentFile(f1)
+
+    let step1 = queue.navigateNext()
+    #expect(step1?.id == f2.id)
+
+    let step2 = queue.navigateNext()
+    #expect(step2?.id == f3.id)
+
+    // Wraps around
+    let step3 = queue.navigateNext()
+    #expect(step3?.id == f1.id)
+  }
+
+  @Test("setCurrentFile to middle file — prev returns first, next returns third")
+  func setCurrentFileInMiddle() throws {
+    let (_, ctx) = try makeQueueTestContext()
+    let f1 = makeFile("ep1.mp4", in: ctx)
+    let f2 = makeFile("ep2.mp4", in: ctx)
+    let f3 = makeFile("ep3.mp4", in: ctx)
+
+    let queue = PlaybackQueue()
+    queue.loopMode = .none
+    queue.updateQueue([f1, f2, f3])
+    queue.setCurrentFile(f2)
+
+    #expect(queue.navigatePrev()?.id == f1.id)
+
+    // navigatePrev updated currentFileID to f1, reset to f2 to test next
+    queue.setCurrentFile(f2)
+    #expect(queue.navigateNext()?.id == f3.id)
+  }
+
+  @Test("updateQueue preserves currentFileID when file is still present")
+  func updateQueuePreservesCurrentFile() throws {
+    let (_, ctx) = try makeQueueTestContext()
+    let f1 = makeFile("ep1.mp4", in: ctx)
+    let f2 = makeFile("ep2.mp4", in: ctx)
+    let f3 = makeFile("ep3.mp4", in: ctx)
+
+    let queue = PlaybackQueue()
+    queue.loopMode = .none
+    queue.updateQueue([f1, f2, f3])
+    queue.setCurrentFile(f2)
+
+    // Refresh queue (same files, simulating sort order change)
+    queue.updateQueue([f1, f2, f3])
+
+    // currentFileID should still be f2, so next is f3
+    let next = queue.navigateNext()
+    #expect(next?.id == f3.id)
+  }
+
+  @Test("updateQueue clears currentFileID when file is removed")
+  func updateQueueClearsCurrentFileWhenRemoved() throws {
+    let (_, ctx) = try makeQueueTestContext()
+    let f1 = makeFile("ep1.mp4", in: ctx)
+    let f2 = makeFile("ep2.mp4", in: ctx)
+    let f3 = makeFile("ep3.mp4", in: ctx)
+
+    let queue = PlaybackQueue()
+    queue.loopMode = .none
+    queue.updateQueue([f1, f2, f3])
+    queue.setCurrentFile(f2)
+
+    // Remove f2 from queue
+    queue.updateQueue([f1, f3])
+
+    // currentFileID should be nil now, so navigateNext starts from beginning
+    let next = queue.navigateNext()
+    #expect(next?.id == f1.id)
   }
 }

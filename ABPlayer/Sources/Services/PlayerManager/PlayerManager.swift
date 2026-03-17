@@ -398,7 +398,7 @@ final class PlayerManager {
   }
 
   func playNext() async {
-    guard let file = playbackQueue.playNext() else {
+    guard let file = playbackQueue.navigateNext() else {
       return
     }
     let isPlaying = isPlaying
@@ -414,9 +414,10 @@ final class PlayerManager {
   }
 
   func playPrev() async {
-    guard let file = playbackQueue.playPrev() else {
+    guard let file = playbackQueue.navigatePrev() else {
       return
     }
+    let isPlaying = isPlaying
     await selectFile(
       file,
       fromStart: true,

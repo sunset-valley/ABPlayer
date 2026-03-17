@@ -23,7 +23,14 @@ struct VideoPlayerView: View {
         if playerManager.currentFile?.id != audioFile.id,
            playerManager.currentFile != nil
         {
-          await playerManager.load(audioFile: audioFile)
+          await playerManager.selectFile(audioFile, fromStart: false, debounce: false)
+        }
+      }
+      .onChange(of: audioFile) { _, newFile in
+        Task {
+          if playerManager.currentFile?.id != newFile.id {
+            await playerManager.selectFile(newFile, fromStart: false, debounce: false)
+          }
         }
       }
   }
