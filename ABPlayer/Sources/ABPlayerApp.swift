@@ -39,6 +39,7 @@ struct ABPlayerApp: App {
   private let transcriptionManager = TranscriptionManager()
   private let transcriptionSettings = TranscriptionSettings()
   private let librarySettings = LibrarySettings()
+  private let playerSettings = PlayerSettings()
   private let vocabularyService: VocabularyService
   private let subtitleLoader = SubtitleLoader()
 
@@ -90,6 +91,7 @@ struct ABPlayerApp: App {
         settings: transcriptionSettings
       )
       queueManager.modelContext = modelContainer.mainContext
+      playerManager.playerSettings = playerSettings
 
       KeyboardShortcuts.onKeyUp(for: .playPause) { [playerManager] in
         Task { @MainActor in
@@ -177,6 +179,7 @@ struct ABPlayerApp: App {
         .environment(transcriptionManager)
         .environment(transcriptionSettings)
         .environment(librarySettings)
+        .environment(playerSettings)
         .environment(queueManager)
         .environment(vocabularyService)
         .environment(subtitleLoader)
@@ -211,6 +214,7 @@ struct ABPlayerApp: App {
         SettingsView()
           .environment(transcriptionSettings)
           .environment(librarySettings)
+          .environment(playerSettings)
           .environment(transcriptionManager)
       }
       .defaultPosition(.center)

@@ -48,10 +48,13 @@ final class PlayerManager {
 
   var onPlaybackEnded: ((ABFile?) -> Void)?
 
+  var playerSettings: PlayerSettings?
+
   private var lastPersistedTime: Double = 0
   private var endOfFileTask: Task<Void, Never>?
   private var loadAudioTask: Task<Void, Never>?
   private var playbackTimeObservers: [UUID: @MainActor (Double) -> Void] = [:]
+  private var sleepActivity: NSObjectProtocol?
 
   var hasValidLoopRange: Bool {
     guard let pointA, let pointB else {
@@ -199,6 +202,7 @@ final class PlayerManager {
 
     if isPlaying {
       isPlaying = false
+      updateSleepPrevention()
       let uiUpdateTime = CFAbsoluteTimeGetCurrent()
       Logger.audio.debug(
         "[Performance] isPlaying = false (immediate) after \((uiUpdateTime - startTime) * 1000)ms")
@@ -220,6 +224,7 @@ final class PlayerManager {
       )
     } else {
       isPlaying = true
+      updateSleepPrevention()
       let uiUpdateTime = CFAbsoluteTimeGetCurrent()
       Logger.audio.debug(
         "[Performance] isPlaying = true (immediate) after \((uiUpdateTime - startTime) * 1000)ms")
@@ -318,6 +323,7 @@ final class PlayerManager {
 
   fileprivate func handlePlaybackStateUpdate(_ isPlaying: Bool) {
     self.isPlaying = isPlaying
+    updateSleepPrevention()
 
     if isPlaying {
       sessionTracker?.startSessionIfNeeded()
@@ -329,6 +335,19 @@ final class PlayerManager {
       }
     } else {
       sessionTracker?.persistProgress()
+    }
+  }
+
+  func updateSleepPrevention() {
+    let shouldPrevent = isPlaying && (playerSettings?.preventSleep ?? false)
+    if shouldPrevent && sleepActivity == nil {
+      sleepActivity = ProcessInfo.processInfo.beginActivity(
+        options: .idleSystemSleepDisabled,
+        reason: "Media playback in progress"
+      )
+    } else if !shouldPrevent, let activity = sleepActivity {
+      ProcessInfo.processInfo.endActivity(activity)
+      sleepActivity = nil
     }
   }
 
