@@ -20,6 +20,7 @@ enum FileImportType {
 struct SettingsView: View {
   @Environment(TranscriptionSettings.self) private var settings
   @Environment(LibrarySettings.self) private var librarySettings
+  @Environment(PlayerSettings.self) private var playerSettings
   @Environment(TranscriptionManager.self) private var transcriptionManager
 
   // Navigation selection
@@ -226,8 +227,22 @@ struct SettingsView: View {
   private var mediaSettingsView: some View {
     Form {
       librarySection
+      playerSection
     }
     .formStyle(.grouped)
+  }
+
+  private var playerSection: some View {
+    Section {
+      Toggle(
+        "Prevent sleep during playback",
+        isOn: Binding(
+          get: { playerSettings.preventSleep },
+          set: { playerSettings.preventSleep = $0 }
+        ))
+    } header: {
+      Label("Player", systemImage: "play.circle")
+    }
   }
 
   // MARK: - Transcription Settings View

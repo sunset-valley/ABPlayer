@@ -5,6 +5,9 @@ struct VideoControlsView: View {
   @Bindable var viewModel: VideoPlayerViewModel
   @Environment(PlayerManager.self) private var playerManager
   @State private var showSubtitle = false
+
+  var isFullscreen: Bool = false
+  var onToggleFullscreen: (() -> Void)? = nil
   
   var body: some View {
     ZStack(alignment: .center) {
@@ -24,6 +27,15 @@ struct VideoControlsView: View {
           .buttonStyle(.plain)
           .foregroundStyle(showSubtitle ? Color.accentColor : .primary)
           
+          if let onToggleFullscreen {
+            Button(action: onToggleFullscreen) {
+              Image(systemName: isFullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                .font(.title2)
+            }
+            .buttonStyle(.plain)
+            .help(isFullscreen ? "Exit fullscreen" : "Enter fullscreen")
+          }
+
           VolumeControl(playerVolume: $viewModel.playerVolume)
         }
       }

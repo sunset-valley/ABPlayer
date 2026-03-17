@@ -14,6 +14,8 @@ struct VideoPlayerView: View {
   @Bindable var audioFile: ABFile
 
   @State private var viewModel = VideoPlayerViewModel()
+  @State private var fullscreenPresenter = VideoFullscreenPresenter()
+  @State private var pendingSingleTap: Task<Void, Never>?
 
   var body: some View {
     videoPlayerSection
@@ -69,6 +71,20 @@ struct VideoPlayerView: View {
             .scaleEffect(viewModel.isHudVisible ? 1 : 0.5)
         }
       }
+      .contentShape(Rectangle())
+      .onTapGesture(count: 2) {
+        pendingSingleTap?.cancel()
+        guard let player = playerManager.player else { return }
+        fullscreenPresenter.toggle(player: player, playerManager: playerManager, onSingleTap: viewModel.togglePlayPause)
+      }
+      .onTapGesture(count: 1) {
+        pendingSingleTap?.cancel()
+        pendingSingleTap = Task { @MainActor in
+          try? await Task.sleep(for: .milliseconds(300))
+          guard !Task.isCancelled else { return }
+          viewModel.togglePlayPause()
+        }
+      }
 
       // 2. Controls Area (Fixed height)
       VStack(spacing: 12) {
@@ -78,8 +94,15 @@ struct VideoPlayerView: View {
           wasPlayingBeforeSeek: $viewModel.wasPlayingBeforeSeek
         )
 
-        VideoControlsView(viewModel: viewModel)
-          .padding(.horizontal)
+        VideoControlsView(
+          viewModel: viewModel,
+          isFullscreen: fullscreenPresenter.isPresented,
+          onToggleFullscreen: {
+            guard let player = playerManager.player else { return }
+            fullscreenPresenter.toggle(player: player, playerManager: playerManager, onSingleTap: viewModel.togglePlayPause)
+          }
+        )
+        .padding(.horizontal)
 
         Text(audioFile.displayName)
           .font(.title)

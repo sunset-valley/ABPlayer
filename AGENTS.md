@@ -1,6 +1,9 @@
 # ABPlayer Agent Entry
 
-Use this file as the first stop before coding. For detailed constraints, read `.agent/rules/*`.
+Use this file as the first stop before coding.
+
+- Trigger repository-local skills from `.agent/skills/*` before falling back to global skills.
+- Apply repository-local rules from `.agent/rules/*` for coding, build, test, and workflow behavior.
 
 ## Quick Facts
 
@@ -14,11 +17,12 @@ Platform:       macOS 15.7+ | Swift 6.2 | SwiftUI
 
 ## Agent Startup Checklist
 
-1. Read [`.agent/rules/workspace.md`](.agent/rules/workspace.md) to confirm paths and `Project.swift` source-of-truth.
-2. If editing Swift code, read [`.agent/rules/swift-style.md`](.agent/rules/swift-style.md).
-3. If touching ViewModel/View/Model boundaries, read [`.agent/rules/mvvm.md`](.agent/rules/mvvm.md).
-4. Build and test with the commands in [`.agent/rules/build.md`](.agent/rules/build.md) and [`.agent/rules/test.md`](.agent/rules/test.md).
-5. For commit/collaboration behavior, follow [`.agent/rules/workflow.md`](.agent/rules/workflow.md).
+1. Check `.agent/skills/` and trigger any repository-local skill that matches the task.
+2. Read [`.agent/rules/workspace.md`](.agent/rules/workspace.md) to confirm paths and `Project.swift` source-of-truth.
+3. If editing Swift code, read [`.agent/rules/swift-style.md`](.agent/rules/swift-style.md).
+4. If touching ViewModel/View/Model boundaries, read [`.agent/rules/mvvm.md`](.agent/rules/mvvm.md).
+5. Build and test with the commands in [`.agent/rules/build.md`](.agent/rules/build.md) and [`.agent/rules/test.md`](.agent/rules/test.md).
+6. For commit/collaboration behavior, follow [`.agent/rules/workflow.md`](.agent/rules/workflow.md).
 
 ## Decision Map
 
@@ -35,13 +39,14 @@ Platform:       macOS 15.7+ | Swift 6.2 | SwiftUI
 
 ```
 .agent/
-`-- rules/
+|-- rules/
     |-- workspace.md     # Paths, Project.swift, Tuist workflow
     |-- swift-style.md   # Swift style, concurrency, errors, memory
     |-- mvvm.md          # MVVM contract and boundaries
     |-- build.md         # Build command
     |-- test.md          # Test command
-    `-- workflow.md      # Collaboration + quick-commit convention
+|   `-- workflow.md      # Collaboration + quick-commit convention
+`-- skills/              # Repository-local skill definitions (trigger when relevant)
 ```
 
 ## Command Quick Reference
