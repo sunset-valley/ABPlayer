@@ -1,3 +1,12 @@
+## [0.2.11.84] - 2026-03-17
+
+### Bug Fixes
+- decouple manual navigation from autoplay rules
+
+### Chores
+- restructure AGENTS.md and organize Docs layout
+
+
 ## [0.2.11.83] - 2026-03-12
 
 ### Bug Fixes
