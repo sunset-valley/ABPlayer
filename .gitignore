@@ -80,3 +80,6 @@ buildServer.json
 
 # Opencode
 .sisyphus/
+
+# Full edition bundled binary (dropped by CI)
+ABPlayerFull/Binaries/ffmpeg

@@ -32,6 +32,7 @@ final class TranscriptionManager {
   func downloadModel(
     modelName: String,
     downloadBase: URL,
+    endpoint: String = "https://huggingface.co",
     progressCallback: (@Sendable (Double) -> Void)? = nil
   ) async throws {
     // If already downloading (and correct model), return
@@ -45,6 +46,7 @@ final class TranscriptionManager {
       _ = try await WhisperKit.download(
         variant: modelName,
         downloadBase: downloadBase,
+        endpoint: endpoint,
         progressCallback: { @Sendable [weak self] progress in
           Task { @MainActor [weak self] in
             guard let self else { return }
@@ -93,7 +95,8 @@ final class TranscriptionManager {
   /// Initialize WhisperKit with the specified model and download folder
   func loadModel(
     modelName: String = "distil-large-v3",
-    downloadBase: URL
+    downloadBase: URL,
+    endpoint: String = "https://huggingface.co"
   ) async throws {
     if whisperKit != nil && loadedModelName == modelName {
       return
@@ -103,7 +106,7 @@ final class TranscriptionManager {
       state = .loading(modelName: modelName)
     } else {
       do {
-        try await downloadModel(modelName: modelName, downloadBase: downloadBase)
+        try await downloadModel(modelName: modelName, downloadBase: downloadBase, endpoint: endpoint)
       } catch is CancellationError {
         state = .cancelled
         throw CancellationError()
@@ -141,7 +144,8 @@ final class TranscriptionManager {
       do {
         try await loadModel(
           modelName: settings.modelName,
-          downloadBase: settings.modelDirectoryURL
+          downloadBase: settings.modelDirectoryURL,
+          endpoint: settings.effectiveDownloadEndpoint
         )
       } catch is CancellationError {
         state = .cancelled

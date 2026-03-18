@@ -71,6 +71,38 @@ let project = Project(
       ]
     ),
     .target(
+      name: "ABPlayerFull",
+      destinations: .macOS,
+      product: .app,
+      bundleId: "cc.ihugo.app.ABPlayerFull",
+      deploymentTargets: .macOS("26.0"),
+      infoPlist: .extendingDefault(with: [
+        "CFBundleVersion": .string(buildVersionString),
+        "CFBundleShortVersionString": .string(shortVersionString),
+        "NSMainStoryboardFile": "",
+        "SUFeedURL":
+          "https://github.com/sunset-valley/ABPlayer/releases/latest/download/appcast-full.xml",
+        "SUEnableAutomaticChecks": true,
+        "SUPublicEDKey": "Zw9DuoU9cuGJGt81eRRfWq5OwhCG+udkeOBwScjchU0=",
+      ]),
+      sources: ["ABPlayer/Sources/**"],
+      resources: [
+        .glob(pattern: "ABPlayer/Resources/**"),
+        .copy("ABPlayerFull/Binaries/ffmpeg"),
+      ],
+      settings: .settings(base: [
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "FULL_EDITION",
+      ]),
+      dependencies: [
+        .sdk(name: "AppIntents", type: .framework, status: .optional),
+        .external(name: "Sentry"),
+        .external(name: "WhisperKit"),
+        .external(name: "KeyboardShortcuts"),
+        .external(name: "Sparkle"),
+        .external(name: "TelemetryDeck"),
+      ]
+    ),
+    .target(
       name: "ABPlayerTests",
       destinations: .macOS,
       product: .unitTests,
