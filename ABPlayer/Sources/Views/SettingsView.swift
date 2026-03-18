@@ -39,6 +39,10 @@ struct SettingsView: View {
 
   @State private var ffmpegPathStatus: FFmpegStatus = .unchecked
 
+  // Mirror/endpoint states
+  @State private var mirrorSelection: String = ""
+  @State private var showManualDownload: Bool = false
+
   // Shortcuts states
   @State private var showResetConfirmation = false
 
@@ -250,6 +254,7 @@ struct SettingsView: View {
   private var transcriptionSettingsView: some View {
     Form {
       transcriptionSection
+      networkSection
       downloadedModelsSection
     }
     .formStyle(.grouped)
@@ -365,6 +370,44 @@ struct SettingsView: View {
         }
       }
 
+      // Manual Download Instructions
+      DisclosureGroup("Manual Download Instructions", isExpanded: $showManualDownload) {
+        let repoURL =
+          "\(settings.effectiveDownloadEndpoint)/argmaxinc/whisperkit-coreml/tree/main"
+        let modelDir =
+          settings.modelDirectoryURL
+          .appendingPathComponent("models/argmaxinc/whisperkit-coreml")
+          .path
+        VStack(alignment: .leading, spacing: 10) {
+          Text("1. Open the model repository in your browser:")
+          if let url = URL(string: repoURL) {
+            Link(repoURL, destination: url)
+              .captionStyle()
+          }
+          Text(
+            "2. Find and download the folder whose name contains **\(settings.modelName)**."
+          )
+          Text("3. Place the downloaded folder at:")
+          HStack {
+            Text(modelDir)
+              .font(.caption.monospaced())
+              .textSelection(.enabled)
+            Button("Open in Finder") {
+              NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: modelDir)
+            }
+            .buttonStyle(.borderless)
+          }
+          Text("4. The folder should contain these files:")
+          Text(
+            "<model-folder>/\n  AudioEncoder.mlmodelc\n  TextDecoder.mlmodelc\n  config.json\n  (and other .mlmodelc files)"
+          )
+          .font(.caption.monospaced())
+          .padding(8)
+          .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+        }
+        .padding(.vertical, 4)
+      }
+
       // Language Selection
       Picker(
         "Language",
@@ -410,6 +453,16 @@ struct SettingsView: View {
         ))
 
       // FFmpeg Path
+      #if FULL_EDITION
+      LabeledContent("FFmpeg") {
+        HStack(spacing: 6) {
+          Image(systemName: "checkmark.circle.fill")
+            .foregroundStyle(.green)
+          Text("Bundled")
+            .foregroundStyle(.secondary)
+        }
+      }
+      #else
       LabeledContent("FFmpeg Path") {
         HStack {
           Text(displayFFmpegPath)
@@ -423,6 +476,7 @@ struct SettingsView: View {
           }
         }
       }
+      #endif
 
     } header: {
       Label("Transcription", systemImage: "text.bubble")
@@ -460,6 +514,7 @@ struct SettingsView: View {
         }
         .captionStyle()
 
+        #if !FULL_EDITION
         Text(
           "FFmpeg is required for extracting audio from video files. If not installed, video transcription will fail."
         )
@@ -469,6 +524,59 @@ struct SettingsView: View {
           Text("Install with: brew install ffmpeg")
             .captionStyle()
         }
+        #endif
+      }
+    }
+  }
+
+  // MARK: - Network Section
+
+  private var networkSection: some View {
+    Section {
+      LabeledContent("Download Mirror") {
+        HStack {
+          Picker("", selection: $mirrorSelection) {
+            Text("HuggingFace (Official)").tag("")
+            Text("HF Mirror (hf-mirror.com)").tag("https://hf-mirror.com")
+            Text("Custom").tag("__custom__")
+          }
+          .labelsHidden()
+          .fixedSize()
+          if mirrorSelection == "__custom__" {
+            TextField(
+              "https://...",
+              text: Binding(
+                get: { settings.downloadEndpoint },
+                set: { settings.downloadEndpoint = $0 }
+              )
+            )
+            .textFieldStyle(.roundedBorder)
+            .frame(minWidth: 180)
+          }
+        }
+      }
+      .onChange(of: mirrorSelection) { _, newValue in
+        if newValue == "__custom__" {
+          // Keep existing custom value
+        } else {
+          settings.downloadEndpoint = newValue
+        }
+      }
+    } header: {
+      Label("Network", systemImage: "network")
+    } footer: {
+      Text(
+        "中国用户：将下载镜像设为 hf-mirror.com 即可无需翻墙下载模型。"
+      )
+      .captionStyle()
+    }
+    .onAppear {
+      // Sync state with stored value
+      let stored = settings.downloadEndpoint
+      if stored.isEmpty || stored == "https://hf-mirror.com" {
+        mirrorSelection = stored
+      } else {
+        mirrorSelection = "__custom__"
       }
     }
   }
@@ -614,7 +722,8 @@ struct SettingsView: View {
     do {
       try await transcriptionManager.loadModel(
         modelName: settings.modelName,
-        downloadBase: settings.modelDirectoryURL
+        downloadBase: settings.modelDirectoryURL,
+        endpoint: settings.effectiveDownloadEndpoint
       )
       refreshModels()
     } catch is CancellationError {
