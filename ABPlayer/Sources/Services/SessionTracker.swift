@@ -109,8 +109,13 @@ final class SessionTracker {
   private(set) var displaySeconds: Int = 0
   private var isSessionActive = false
 
+  init() {}
+
+  init(modelContainer: ModelContainer) {
+    self.recorder = SessionRecorder(modelContainer: modelContainer)
+  }
+
   /// Initialize the recorder with a ModelContainer.
-  /// This must be called before using the tracker.
   func setModelContainer(_ container: ModelContainer) {
     self.recorder = SessionRecorder(modelContainer: container)
   }

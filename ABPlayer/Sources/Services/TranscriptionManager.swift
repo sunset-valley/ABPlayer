@@ -164,8 +164,9 @@ final class TranscriptionManager {
       }
 
       if isVideoFile(audioURL) {
-        extractedWavURL = try await extractAudio(from: audioURL, settings: settings)
-        workingURL = extractedWavURL!
+        let extractedURL = try await extractAudio(from: audioURL, settings: settings)
+        extractedWavURL = extractedURL
+        workingURL = extractedURL
       }
 
       let language = settings.language == "auto" ? nil : settings.language

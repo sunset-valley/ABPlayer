@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import SwiftData
 import SwiftUI
 import Observation
@@ -122,14 +123,22 @@ final class TranscriptionViewModel {
 
     if let existing = try? modelContext.fetch(descriptor).first {
       modelContext.delete(existing)
-      try? modelContext.save()
+      do {
+        try modelContext.save()
+      } catch {
+        Logger.data.error("⚠️ Failed to delete transcription cache: \(error.localizedDescription)")
+      }
     }
 
     if let srtURL = audioFile.srtFileURL {
       if let audioURL = try? resolveURL(from: audioFile.bookmarkData),
         audioURL.startAccessingSecurityScopedResource()
       {
-        try? FileManager.default.removeItem(at: srtURL)
+        do {
+          try FileManager.default.removeItem(at: srtURL)
+        } catch {
+          Logger.data.error("⚠️ Failed to remove SRT file at \(srtURL.path): \(error.localizedDescription)")
+        }
         audioURL.stopAccessingSecurityScopedResource()
       }
     }

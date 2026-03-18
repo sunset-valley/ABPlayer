@@ -271,7 +271,11 @@ final class TranscriptionQueueManager {
       context.insert(cache)
     }
 
-    try? context.save()
+    do {
+      try context.save()
+    } catch {
+      Logger.data.error("⚠️ Failed to save transcription cache: \(error.localizedDescription)")
+    }
 
     // Update hasTranscription flag
     let audioDescriptor = FetchDescriptor<ABFile>(
@@ -279,7 +283,11 @@ final class TranscriptionQueueManager {
     )
     if let audioFile = try? context.fetch(audioDescriptor).first {
       audioFile.hasTranscriptionRecord = true
-      try? context.save()
+      do {
+        try context.save()
+      } catch {
+        Logger.data.error("⚠️ Failed to save hasTranscriptionRecord flag: \(error.localizedDescription)")
+      }
     }
   }
 }

@@ -45,9 +45,17 @@ final class DeletionService {
       playerManager.currentFile = nil
     }
     
-    if deleteFromDisk,
-       let url = (try? folder.resolveURL()) ?? folderLibraryURL(for: folder) {
-      try? FileManager.default.removeItem(at: url)
+    if deleteFromDisk {
+      let url = (try? folder.resolveURL()) ?? folderLibraryURL(for: folder)
+      if let url {
+        do {
+          try FileManager.default.removeItem(at: url)
+        } catch {
+          Logger.data.error("⚠️ Failed to delete folder \(folder.name) from disk: \(error.localizedDescription)")
+        }
+      } else {
+        Logger.data.warning("⚠️ Could not resolve URL for folder \(folder.name) — folder may remain on disk")
+      }
     }
     
     modelContext.delete(folder)
@@ -62,11 +70,21 @@ final class DeletionService {
   ) {
     if deleteFromDisk {
       if let url = file.resolvedURL() {
-        try? FileManager.default.removeItem(at: url)
+        do {
+          try FileManager.default.removeItem(at: url)
+        } catch {
+          Logger.data.error("⚠️ Failed to delete audio file \(file.displayName) from disk: \(error.localizedDescription)")
+        }
+      } else {
+        Logger.data.warning("⚠️ Could not resolve bookmark for \(file.displayName) — audio file may remain on disk")
       }
-      
+
       if let pdfURL = file.resolvedPDFURL() {
-        try? FileManager.default.removeItem(at: pdfURL)
+        do {
+          try FileManager.default.removeItem(at: pdfURL)
+        } catch {
+          Logger.data.error("⚠️ Failed to delete PDF for \(file.displayName) from disk: \(error.localizedDescription)")
+        }
       }
     }
     
@@ -90,16 +108,22 @@ final class DeletionService {
       playerManager.currentFile = nil
     }
     
-    var subtitleIsStale = false
-    if deleteFromDisk,
-       let subtitleFile = file.subtitleFile,
-       let subtitleURL = (try? URL(
-         resolvingBookmarkData: subtitleFile.bookmarkData,
-         options: [.withSecurityScope],
-         relativeTo: nil,
-         bookmarkDataIsStale: &subtitleIsStale
-       )) {
-      try? FileManager.default.removeItem(at: subtitleURL)
+    if deleteFromDisk, let subtitleFile = file.subtitleFile {
+      var subtitleIsStale = false
+      if let subtitleURL = try? URL(
+        resolvingBookmarkData: subtitleFile.bookmarkData,
+        options: [.withSecurityScope],
+        relativeTo: nil,
+        bookmarkDataIsStale: &subtitleIsStale
+      ) {
+        do {
+          try FileManager.default.removeItem(at: subtitleURL)
+        } catch {
+          Logger.data.error("⚠️ Failed to delete subtitle \(subtitleFile.displayName) from disk: \(error.localizedDescription)")
+        }
+      } else {
+        Logger.data.warning("⚠️ Could not resolve subtitle bookmark for \(file.displayName) — subtitle file may remain on disk")
+      }
     }
     
     for segment in file.segments {
