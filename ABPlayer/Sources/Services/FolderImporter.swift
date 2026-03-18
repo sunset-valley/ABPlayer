@@ -29,7 +29,7 @@ final class FolderImporter {
   /// - Parameter url: 根文件夹 URL
   /// - Returns: 同步后的根 Folder ID
   func syncFolder(at url: URL, parentFolder: Folder?) async throws -> PersistentIdentifier? {
-    let alreadyInLibrary = isInLibrary(url)
+    let alreadyInLibrary = librarySettings.isInLibrary(url)
 
     // Library-internal URLs don't carry a security-scoped bookmark;
     // the app already has natural access to Application Support.
@@ -281,17 +281,6 @@ final class FolderImporter {
     audioFile.subtitleFile = subtitleFile
   }
 
-  /// 关联 PDF 文件
-  private func pairPDF(at url: URL, with audioFile: ABFile) throws {
-    let bookmarkData = try url.bookmarkData(
-      options: [.withSecurityScope],
-      includingResourceValuesForKeys: nil,
-      relativeTo: nil
-    )
-
-    audioFile.pdfBookmarkData = bookmarkData
-  }
-
   // MARK: - Helpers
 
   /// Load duration metadata from audio/video file
@@ -335,17 +324,11 @@ final class FolderImporter {
 
     var destinationURL = destinationDirectory.appendingPathComponent(url.lastPathComponent)
     if fileManager.fileExists(atPath: destinationURL.path) {
-      destinationURL = uniqueURL(for: destinationURL)
+      destinationURL = .uniqueURL(for: destinationURL)
     }
 
     try fileManager.copyItem(at: url, to: destinationURL)
     return destinationURL
-  }
-
-  private func isInLibrary(_ url: URL) -> Bool {
-    let libraryURL = librarySettings.libraryDirectoryURL.standardizedFileURL
-    let candidateURL = url.standardizedFileURL
-    return candidateURL.path.hasPrefix(libraryURL.path)
   }
 
   private func folderLibraryURL(for folder: Folder?) -> URL? {
@@ -355,27 +338,6 @@ final class FolderImporter {
     return librarySettings.libraryDirectoryURL.appendingPathComponent(relativePath)
   }
 
-  private func uniqueURL(for url: URL) -> URL {
-    let fileManager = FileManager.default
-    let directory = url.deletingLastPathComponent()
-    let baseName = url.deletingPathExtension().lastPathComponent
-    let fileExtension = url.pathExtension
-
-    var counter = 1
-    var candidate = url
-
-    while fileManager.fileExists(atPath: candidate.path) {
-      let newName = "\(baseName) \(counter)"
-      if fileExtension.isEmpty {
-        candidate = directory.appendingPathComponent(newName)
-      } else {
-        candidate = directory.appendingPathComponent(newName).appendingPathExtension(fileExtension)
-      }
-      counter += 1
-    }
-
-    return candidate
-  }
 }
 
 // MARK: - Errors

@@ -180,10 +180,7 @@ final class PlayerManager {
     if success {
       self.isPlaying = true
       if let file = self.currentFile {
-        if file.playbackRecord == nil {
-          file.playbackRecord = PlaybackRecord(audioFile: file)
-        }
-        file.playbackRecord?.lastPlayedAt = Date()
+        touchPlaybackRecord(for: file)
       }
     }
   }
@@ -240,10 +237,7 @@ final class PlayerManager {
 
       await _engine.syncPlayState()
       if let file = self.currentFile {
-        if file.playbackRecord == nil {
-          file.playbackRecord = PlaybackRecord(audioFile: file)
-        }
-        file.playbackRecord?.lastPlayedAt = Date()
+        touchPlaybackRecord(for: file)
       }
       Logger.audio.debug(
         "[Performance] Background sync completed after \((CFAbsoluteTimeGetCurrent() - startTime) * 1000)ms"
@@ -292,6 +286,15 @@ final class PlayerManager {
     }
   }
 
+  // MARK: - Private Helpers
+
+  private func touchPlaybackRecord(for file: ABFile) {
+    if file.playbackRecord == nil {
+      file.playbackRecord = PlaybackRecord(audioFile: file)
+    }
+    file.playbackRecord?.lastPlayedAt = Date()
+  }
+
   // MARK: - Internal Handlers
 
   fileprivate func handleTimeUpdate(_ seconds: Double) {
@@ -328,10 +331,7 @@ final class PlayerManager {
     if isPlaying {
       sessionTracker?.startSessionIfNeeded()
       if let file = currentFile {
-        if file.playbackRecord == nil {
-          file.playbackRecord = PlaybackRecord(audioFile: file)
-        }
-        file.playbackRecord?.lastPlayedAt = Date()
+        touchPlaybackRecord(for: file)
       }
     } else {
       sessionTracker?.persistProgress()
@@ -353,10 +353,7 @@ final class PlayerManager {
 
   fileprivate func handlePlaybackEnded() async {
     if let file = currentFile {
-      if file.playbackRecord == nil {
-        file.playbackRecord = PlaybackRecord(audioFile: file)
-      }
-      file.playbackRecord?.lastPlayedAt = Date()
+      touchPlaybackRecord(for: file)
       file.playbackRecord?.completionCount += 1
     }
 
