@@ -81,5 +81,4 @@ buildServer.json
 # Opencode
 .sisyphus/
 
-# Full edition bundled binary (dropped by CI)
-ABPlayerFull/Binaries/ffmpeg
+# Full edition bundled binary — tracked via Git LFS (see .gitattributes)
