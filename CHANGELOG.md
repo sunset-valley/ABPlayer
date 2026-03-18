@@ -1,3 +1,9 @@
+## [0.2.11.87] - 2026-03-17
+
+### Bug Fixes
+- react to sleep setting and safe fullscreen rendering
+
+
 ## [0.2.11.86] - 2026-03-17
 
 ### Features
