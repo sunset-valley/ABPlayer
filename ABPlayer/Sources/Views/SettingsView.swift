@@ -39,9 +39,13 @@ struct SettingsView: View {
   @State private var libraryPathError: String?
 
   @State private var ffmpegPathStatus: FFmpegStatus = .unchecked
+  @State private var isDownloadingFFmpeg = false
+  @State private var ffmpegDownloadProgress: Double = 0
+  @State private var showFFmpegDeleteConfirmation = false
 
   // Mirror/endpoint states
   @State private var mirrorSelection: String = ""
+  @State private var ffmpegMirrorSelection: String = ""
   @State private var showManualDownload: Bool = false
 
   // Proxy test states
@@ -466,30 +470,61 @@ struct SettingsView: View {
         ))
 
       // FFmpeg Path
-      #if FULL_EDITION
       LabeledContent("FFmpeg") {
-        HStack(spacing: 6) {
-          Image(systemName: "checkmark.circle.fill")
-            .foregroundStyle(.green)
-          Text("Bundled")
-            .foregroundStyle(.secondary)
-        }
-      }
-      #else
-      LabeledContent("FFmpeg Path") {
-        HStack {
-          Text(displayFFmpegPath)
-            .foregroundStyle(ffmpegStatusColor)
-            .lineLimit(1)
-            .truncationMode(.middle)
+        HStack(spacing: 8) {
+          if isDownloadingFFmpeg {
+            ProgressView(value: ffmpegDownloadProgress)
+              .progressViewStyle(.linear)
+              .frame(width: 60)
+            Text("\(Int(ffmpegDownloadProgress * 100))%")
+              .monospacedDigit()
+              .foregroundStyle(.secondary)
+              .font(.caption)
+          } else {
+            Text(displayFFmpegPath)
+              .foregroundStyle(ffmpegStatusColor)
+              .lineLimit(1)
+              .truncationMode(.middle)
+          }
 
-          Button("Choose...") {
-            fileImportType = .ffmpegPath
-            isFileImporterPresented = true
+          if !isDownloadingFFmpeg {
+            if ffmpegPathStatus != .valid {
+              Button("Download") {
+                Task { await downloadFFmpeg() }
+              }
+              .buttonStyle(.borderedProminent)
+              .controlSize(.small)
+            }
+
+            if settings.isFFmpegDownloaded {
+              Button {
+                showFFmpegDeleteConfirmation = true
+              } label: {
+                Image(systemName: "trash")
+              }
+              .buttonStyle(.plain)
+              .foregroundStyle(.red)
+            }
+
+            Button("Choose...") {
+              fileImportType = .ffmpegPath
+              isFileImporterPresented = true
+            }
           }
         }
       }
-      #endif
+      .confirmationDialog(
+        "Delete FFmpeg",
+        isPresented: $showFFmpegDeleteConfirmation
+      ) {
+        Button("Delete", role: .destructive) {
+          try? settings.deleteDownloadedFFmpeg()
+          refreshFFmpegStatus()
+        }
+        Button("Cancel", role: .cancel) {}
+      } message: {
+        Text("Delete the downloaded FFmpeg binary?")
+      }
 
     } header: {
       Label("Transcription", systemImage: "text.bubble")
@@ -527,17 +562,15 @@ struct SettingsView: View {
         }
         .captionStyle()
 
-        #if !FULL_EDITION
         Text(
           "FFmpeg is required for extracting audio from video files. If not installed, video transcription will fail."
         )
         .captionStyle()
 
         if ffmpegPathStatus != .valid {
-          Text("Install with: brew install ffmpeg")
+          Text("Use the Download button to install FFmpeg, or install manually with: brew install ffmpeg")
             .captionStyle()
         }
-        #endif
       }
     }
   }
@@ -575,6 +608,33 @@ struct SettingsView: View {
           settings.downloadEndpoint = newValue
         }
       }
+
+      LabeledContent("FFmpeg Mirror") {
+        HStack {
+          Picker("", selection: $ffmpegMirrorSelection) {
+            Text("evermeet.cx (Official)").tag("")
+            Text("Custom").tag("__custom__")
+          }
+          .labelsHidden()
+          .fixedSize()
+          if ffmpegMirrorSelection == "__custom__" {
+            TextField(
+              "https://...",
+              text: Binding(
+                get: { settings.ffmpegMirror },
+                set: { settings.ffmpegMirror = $0 }
+              )
+            )
+            .textFieldStyle(.roundedBorder)
+            .frame(minWidth: 180)
+          }
+        }
+      }
+      .onChange(of: ffmpegMirrorSelection) { _, newValue in
+        if newValue != "__custom__" {
+          settings.ffmpegMirror = newValue
+        }
+      }
     } header: {
       Label("Download Mirror", systemImage: "network")
     } footer: {
@@ -582,13 +642,15 @@ struct SettingsView: View {
         .captionStyle()
     }
     .onAppear {
-      // Sync state with stored value
+      // Sync HuggingFace mirror state
       let stored = settings.downloadEndpoint
       if stored.isEmpty || stored == "https://hf-mirror.com" {
         mirrorSelection = stored
       } else {
         mirrorSelection = "__custom__"
       }
+      // Sync ffmpeg mirror state
+      ffmpegMirrorSelection = settings.ffmpegMirror.isEmpty ? "" : "__custom__"
     }
   }
 
@@ -754,13 +816,16 @@ struct SettingsView: View {
   // MARK: - Helpers
 
   private var displayFFmpegPath: String {
-    if settings.ffmpegPath.isEmpty {
-      if let detected = TranscriptionSettings.autoDetectFFmpegPath() {
-        return "Auto-detected: \(detected)"
-      }
-      return "Not found"
+    if !settings.ffmpegPath.isEmpty {
+      return settings.ffmpegPath
     }
-    return settings.ffmpegPath
+    if settings.isFFmpegDownloaded {
+      return "Downloaded"
+    }
+    if let detected = TranscriptionSettings.autoDetectFFmpegPath() {
+      return "Auto-detected: \(detected)"
+    }
+    return "Not found"
   }
 
   private var displayLibraryDirectory: String {
@@ -782,15 +847,30 @@ struct SettingsView: View {
   }
 
   private func refreshFFmpegStatus() {
-    if settings.ffmpegPath.isEmpty {
-      if TranscriptionSettings.autoDetectFFmpegPath() != nil {
-        ffmpegPathStatus = .valid
-      } else {
-        ffmpegPathStatus = .notFound
-      }
-    } else {
+    if !settings.ffmpegPath.isEmpty {
       ffmpegPathStatus = TranscriptionSettings.isFFmpegValid(at: settings.ffmpegPath) ? .valid : .invalid
+    } else if settings.isFFmpegDownloaded || TranscriptionSettings.autoDetectFFmpegPath() != nil {
+      ffmpegPathStatus = .valid
+    } else {
+      ffmpegPathStatus = .notFound
     }
+  }
+
+  @MainActor
+  private func downloadFFmpeg() async {
+    isDownloadingFFmpeg = true
+    ffmpegDownloadProgress = 0
+    do {
+      try await settings.downloadFFmpeg { progress in
+        Task { @MainActor in
+          self.ffmpegDownloadProgress = progress
+        }
+      }
+      refreshFFmpegStatus()
+    } catch {
+      // Leave status as-is; user can retry
+    }
+    isDownloadingFFmpeg = false
   }
 
   private func handleFileImportResult(_ result: Result<[URL], Error>) {
