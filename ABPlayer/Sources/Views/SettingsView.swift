@@ -78,6 +78,8 @@ struct SettingsView: View {
           switch selectedTab {
           case .media:
             mediaSettingsView
+          case .network:
+            networkSettingsView
           case .shortcuts:
             shortcutsView
           case .transcription:
@@ -573,112 +575,11 @@ struct SettingsView: View {
           settings.downloadEndpoint = newValue
         }
       }
-
-      // Proxy
-      Toggle(
-        "Use HTTP/SOCKS Proxy",
-        isOn: Binding(
-          get: { proxySettings.isEnabled },
-          set: {
-            proxySettings.isEnabled = $0
-            proxyTestStatus = .idle
-          }
-        )
-      )
-
-      if proxySettings.isEnabled {
-        Picker(
-          "Proxy Type",
-          selection: Binding(
-            get: { proxySettings.type },
-            set: { proxySettings.type = $0 }
-          )
-        ) {
-          Text("HTTP").tag("http")
-          Text("SOCKS5").tag("socks5")
-        }
-        .pickerStyle(.segmented)
-
-        LabeledContent("Host") {
-          TextField(
-            "proxy.example.com",
-            text: Binding(
-              get: { proxySettings.host },
-              set: { proxySettings.host = $0 }
-            )
-          )
-          .textFieldStyle(.roundedBorder)
-          .frame(minWidth: 180)
-        }
-
-        LabeledContent("Port") {
-          TextField(
-            "8080",
-            value: Binding(
-              get: { proxySettings.port },
-              set: { proxySettings.port = $0 }
-            ),
-            format: .number
-          )
-          .textFieldStyle(.roundedBorder)
-          .frame(width: 80)
-        }
-
-        HStack {
-          Button {
-            Task { await testProxy() }
-          } label: {
-            if case .testing = proxyTestStatus {
-              HStack(spacing: 6) {
-                ProgressView()
-                  .controlSize(.small)
-                Text("Testing...")
-              }
-            } else {
-              Text("Test Connection")
-            }
-          }
-          .disabled(!proxySettings.isConfigured || {
-            if case .testing = proxyTestStatus { return true }
-            return false
-          }())
-          .buttonStyle(.bordered)
-          .controlSize(.small)
-
-          switch proxyTestStatus {
-          case .idle:
-            EmptyView()
-          case .testing:
-            EmptyView()
-          case .success(let ms):
-            Label("Connected (\(ms) ms)", systemImage: "checkmark.circle.fill")
-              .foregroundStyle(.green)
-              .font(.caption)
-          case .failure(let msg):
-            Label(msg, systemImage: "xmark.circle.fill")
-              .foregroundStyle(.red)
-              .font(.caption)
-          }
-        }
-      }
     } header: {
-      Label("Network", systemImage: "network")
+      Label("Download Mirror", systemImage: "network")
     } footer: {
-      VStack(alignment: .leading, spacing: 4) {
-        Text("中国用户：将下载镜像设为 hf-mirror.com 即可无需翻墙下载模型。")
-        if proxySettings.isEnabled {
-          if proxySettings.isConfigured {
-            Text(
-              "Proxy: \(proxySettings.type.uppercased()) → \(proxySettings.host):\(proxySettings.port)"
-            )
-            .foregroundStyle(.green)
-          } else {
-            Text("Proxy enabled but host/port not configured.")
-              .foregroundStyle(.red)
-          }
-        }
-      }
-      .captionStyle()
+      Text("中国用户：将下载镜像设为 hf-mirror.com 即可无需翻墙下载模型。")
+        .captionStyle()
     }
     .onAppear {
       // Sync state with stored value
@@ -738,6 +639,116 @@ struct SettingsView: View {
         Text("Total: \(TranscriptionSettings.formatSize(totalSize))")
       }
     }
+  }
+
+  // MARK: - Network Settings View
+
+  private var networkSettingsView: some View {
+    Form {
+      Section {
+        Toggle(
+          "Enable Proxy",
+          isOn: Binding(
+            get: { proxySettings.isEnabled },
+            set: {
+              proxySettings.isEnabled = $0
+              proxyTestStatus = .idle
+            }
+          )
+        )
+
+        Picker(
+          "Protocol",
+          selection: Binding(
+            get: { proxySettings.type },
+            set: {
+              proxySettings.type = $0
+              proxyTestStatus = .idle
+            }
+          )
+        ) {
+          Text("HTTP").tag("http")
+          Text("SOCKS5").tag("socks5")
+        }
+        .disabled(!proxySettings.isEnabled)
+
+        TextField(
+          "Host",
+          text: Binding(
+            get: { proxySettings.host },
+            set: {
+              proxySettings.host = $0
+              proxyTestStatus = .idle
+            }
+          )
+        )
+        .disabled(!proxySettings.isEnabled)
+
+        TextField(
+          "Port",
+          value: Binding(
+            get: { proxySettings.port },
+            set: {
+              proxySettings.port = $0
+              proxyTestStatus = .idle
+            }
+          ),
+          format: .number.grouping(.never)
+        )
+        .disabled(!proxySettings.isEnabled)
+
+        HStack(spacing: 12) {
+          Button {
+            Task { await testProxy() }
+          } label: {
+            if case .testing = proxyTestStatus {
+              HStack(spacing: 6) {
+                ProgressView()
+                  .controlSize(.small)
+                Text("Testing...")
+              }
+            } else {
+              Text("Test Connection")
+            }
+          }
+          .disabled(!proxySettings.isConfigured || {
+            if case .testing = proxyTestStatus { return true }
+            return false
+          }())
+          .buttonStyle(.bordered)
+
+          switch proxyTestStatus {
+          case .idle:
+            EmptyView()
+          case .testing:
+            EmptyView()
+          case .success(let ms):
+            Label("Connected (\(ms) ms)", systemImage: "checkmark.circle.fill")
+              .foregroundStyle(.green)
+              .font(.callout)
+          case .failure(let msg):
+            Label(msg, systemImage: "xmark.circle.fill")
+              .foregroundStyle(.red)
+              .font(.callout)
+              .lineLimit(2)
+          }
+        }
+      } header: {
+        Label("Proxy", systemImage: "lock.shield")
+      } footer: {
+        VStack(alignment: .leading, spacing: 4) {
+          Text(
+            "When enabled, model downloads and API requests are routed through the specified proxy server."
+          )
+          if proxySettings.isEnabled && !proxySettings.isConfigured {
+            Text("Enter a host and port to activate the proxy.")
+              .foregroundStyle(.orange)
+          }
+        }
+        .captionStyle()
+      }
+    }
+    .formStyle(.grouped)
   }
 
   // MARK: - Helpers
@@ -978,6 +989,7 @@ struct SettingsView: View {
 
 enum SettingsTab: String, CaseIterable, Identifiable {
   case media = "Media"
+  case network = "Network"
   case shortcuts = "Shortcuts"
   case transcription = "Transcription"
   case plugins = "Plugins"
@@ -987,6 +999,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
   var icon: String {
     switch self {
     case .media: return "books.vertical"
+    case .network: return "network"
     case .shortcuts: return "keyboard"
     case .transcription: return "text.bubble"
     case .plugins: return "puzzlepiece.extension"

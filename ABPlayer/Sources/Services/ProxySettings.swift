@@ -5,21 +5,33 @@ import SwiftUI
 @MainActor
 @Observable
 final class ProxySettings {
-  /// Whether to route requests through the proxy
   @ObservationIgnored
-  @AppStorage("proxy_enabled") var isEnabled: Bool = false
+  @AppStorage("proxy_enabled") private var _isEnabled: Bool = false
+  var isEnabled: Bool {
+    get { access(keyPath: \.isEnabled); return _isEnabled }
+    set { withMutation(keyPath: \.isEnabled) { _isEnabled = newValue } }
+  }
 
-  /// Proxy server hostname or IP address
   @ObservationIgnored
-  @AppStorage("proxy_host") var host: String = ""
+  @AppStorage("proxy_host") private var _host: String = ""
+  var host: String {
+    get { access(keyPath: \.host); return _host }
+    set { withMutation(keyPath: \.host) { _host = newValue } }
+  }
 
-  /// Proxy server port
   @ObservationIgnored
-  @AppStorage("proxy_port") var port: Int = 8080
+  @AppStorage("proxy_port") private var _port: Int = 8080
+  var port: Int {
+    get { access(keyPath: \.port); return _port }
+    set { withMutation(keyPath: \.port) { _port = newValue } }
+  }
 
-  /// Proxy protocol type: "http" or "socks5"
   @ObservationIgnored
-  @AppStorage("proxy_type") var type: String = "http"
+  @AppStorage("proxy_type") private var _type: String = "http"
+  var type: String {
+    get { access(keyPath: \.type); return _type }
+    set { withMutation(keyPath: \.type) { _type = newValue } }
+  }
 
   // MARK: - Thread-Safe Access
 
