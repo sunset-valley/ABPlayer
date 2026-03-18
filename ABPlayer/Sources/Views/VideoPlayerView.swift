@@ -74,8 +74,7 @@ struct VideoPlayerView: View {
       .contentShape(Rectangle())
       .onTapGesture(count: 2) {
         pendingSingleTap?.cancel()
-        guard let player = playerManager.player else { return }
-        fullscreenPresenter.toggle(player: player, playerManager: playerManager, onSingleTap: viewModel.togglePlayPause)
+        fullscreenPresenter.toggle(playerManager: playerManager, onSingleTap: viewModel.togglePlayPause)
       }
       .onTapGesture(count: 1) {
         pendingSingleTap?.cancel()
@@ -98,8 +97,7 @@ struct VideoPlayerView: View {
           viewModel: viewModel,
           isFullscreen: fullscreenPresenter.isPresented,
           onToggleFullscreen: {
-            guard let player = playerManager.player else { return }
-            fullscreenPresenter.toggle(player: player, playerManager: playerManager, onSingleTap: viewModel.togglePlayPause)
+            fullscreenPresenter.toggle(playerManager: playerManager, onSingleTap: viewModel.togglePlayPause)
           }
         )
         .padding(.horizontal)
