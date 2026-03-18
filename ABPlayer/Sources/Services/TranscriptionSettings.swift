@@ -33,7 +33,17 @@ final class TranscriptionSettings {
   @ObservationIgnored
   @AppStorage("transcription_ffmpeg_path") var ffmpegPath: String = ""
 
+  /// Custom HuggingFace endpoint or mirror (empty = official HuggingFace)
+  @ObservationIgnored
+  @AppStorage("transcription_download_endpoint") var downloadEndpoint: String = ""
+
   // MARK: - Computed Properties
+
+  /// Effective HuggingFace endpoint passed to WhisperKit downloads
+  var effectiveDownloadEndpoint: String {
+    let trimmed = downloadEndpoint.trimmingCharacters(in: .whitespaces)
+    return trimmed.isEmpty ? "https://huggingface.co" : trimmed
+  }
 
   /// Returns the model directory URL (user-specified or default)
   var modelDirectoryURL: URL {
@@ -247,13 +257,18 @@ final class TranscriptionSettings {
 
   // MARK: - FFmpeg Path Management
 
-  /// Get the effective ffmpeg path (custom or auto-detected)
+  /// Get the effective ffmpeg path (custom → bundled → auto-detected)
   func effectiveFFmpegPath() -> String? {
-    if !ffmpegPath.isEmpty {
-      if Self.isFFmpegValid(at: ffmpegPath) {
-        return ffmpegPath
-      }
+    if !ffmpegPath.isEmpty, Self.isFFmpegValid(at: ffmpegPath) {
+      return ffmpegPath
     }
+    #if FULL_EDITION
+    if let bundledPath = Bundle.main.path(forResource: "ffmpeg", ofType: nil),
+      Self.isFFmpegValid(at: bundledPath)
+    {
+      return bundledPath
+    }
+    #endif
     return Self.autoDetectFFmpegPath()
   }
 
