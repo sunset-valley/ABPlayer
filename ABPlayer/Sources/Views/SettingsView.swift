@@ -21,6 +21,7 @@ struct SettingsView: View {
   @Environment(TranscriptionSettings.self) private var settings
   @Environment(LibrarySettings.self) private var librarySettings
   @Environment(PlayerSettings.self) private var playerSettings
+  @Environment(ProxySettings.self) private var proxySettings
   @Environment(TranscriptionManager.self) private var transcriptionManager
 
   // Navigation selection
@@ -38,10 +39,24 @@ struct SettingsView: View {
   @State private var libraryPathError: String?
 
   @State private var ffmpegPathStatus: FFmpegStatus = .unchecked
+  @State private var isDownloadingFFmpeg = false
+  @State private var ffmpegDownloadProgress: Double = 0
+  @State private var showFFmpegDeleteConfirmation = false
 
   // Mirror/endpoint states
   @State private var mirrorSelection: String = ""
+  @State private var ffmpegMirrorSelection: String = ""
   @State private var showManualDownload: Bool = false
+
+  // Proxy test states
+  @State private var proxyTestStatus: ProxyTestStatus = .idle
+
+  enum ProxyTestStatus {
+    case idle
+    case testing
+    case success(latency: Int)
+    case failure(String)
+  }
 
   // Shortcuts states
   @State private var showResetConfirmation = false
@@ -67,6 +82,8 @@ struct SettingsView: View {
           switch selectedTab {
           case .media:
             mediaSettingsView
+          case .network:
+            networkSettingsView
           case .shortcuts:
             shortcutsView
           case .transcription:
@@ -453,30 +470,61 @@ struct SettingsView: View {
         ))
 
       // FFmpeg Path
-      #if FULL_EDITION
       LabeledContent("FFmpeg") {
-        HStack(spacing: 6) {
-          Image(systemName: "checkmark.circle.fill")
-            .foregroundStyle(.green)
-          Text("Bundled")
-            .foregroundStyle(.secondary)
-        }
-      }
-      #else
-      LabeledContent("FFmpeg Path") {
-        HStack {
-          Text(displayFFmpegPath)
-            .foregroundStyle(ffmpegStatusColor)
-            .lineLimit(1)
-            .truncationMode(.middle)
+        HStack(spacing: 8) {
+          if isDownloadingFFmpeg {
+            ProgressView(value: ffmpegDownloadProgress)
+              .progressViewStyle(.linear)
+              .frame(width: 60)
+            Text("\(Int(ffmpegDownloadProgress * 100))%")
+              .monospacedDigit()
+              .foregroundStyle(.secondary)
+              .font(.caption)
+          } else {
+            Text(displayFFmpegPath)
+              .foregroundStyle(ffmpegStatusColor)
+              .lineLimit(1)
+              .truncationMode(.middle)
+          }
 
-          Button("Choose...") {
-            fileImportType = .ffmpegPath
-            isFileImporterPresented = true
+          if !isDownloadingFFmpeg {
+            if ffmpegPathStatus != .valid {
+              Button("Download") {
+                Task { await downloadFFmpeg() }
+              }
+              .buttonStyle(.borderedProminent)
+              .controlSize(.small)
+            }
+
+            if settings.isFFmpegDownloaded {
+              Button {
+                showFFmpegDeleteConfirmation = true
+              } label: {
+                Image(systemName: "trash")
+              }
+              .buttonStyle(.plain)
+              .foregroundStyle(.red)
+            }
+
+            Button("Choose...") {
+              fileImportType = .ffmpegPath
+              isFileImporterPresented = true
+            }
           }
         }
       }
-      #endif
+      .confirmationDialog(
+        "Delete FFmpeg",
+        isPresented: $showFFmpegDeleteConfirmation
+      ) {
+        Button("Delete", role: .destructive) {
+          try? settings.deleteDownloadedFFmpeg()
+          refreshFFmpegStatus()
+        }
+        Button("Cancel", role: .cancel) {}
+      } message: {
+        Text("Delete the downloaded FFmpeg binary?")
+      }
 
     } header: {
       Label("Transcription", systemImage: "text.bubble")
@@ -514,17 +562,15 @@ struct SettingsView: View {
         }
         .captionStyle()
 
-        #if !FULL_EDITION
         Text(
           "FFmpeg is required for extracting audio from video files. If not installed, video transcription will fail."
         )
         .captionStyle()
 
         if ffmpegPathStatus != .valid {
-          Text("Install with: brew install ffmpeg")
+          Text("Use the Download button to install FFmpeg, or install manually with: brew install ffmpeg")
             .captionStyle()
         }
-        #endif
       }
     }
   }
@@ -562,22 +608,49 @@ struct SettingsView: View {
           settings.downloadEndpoint = newValue
         }
       }
+
+      LabeledContent("FFmpeg Mirror") {
+        HStack {
+          Picker("", selection: $ffmpegMirrorSelection) {
+            Text("evermeet.cx (Official)").tag("")
+            Text("Custom").tag("__custom__")
+          }
+          .labelsHidden()
+          .fixedSize()
+          if ffmpegMirrorSelection == "__custom__" {
+            TextField(
+              "https://...",
+              text: Binding(
+                get: { settings.ffmpegMirror },
+                set: { settings.ffmpegMirror = $0 }
+              )
+            )
+            .textFieldStyle(.roundedBorder)
+            .frame(minWidth: 180)
+          }
+        }
+      }
+      .onChange(of: ffmpegMirrorSelection) { _, newValue in
+        if newValue != "__custom__" {
+          settings.ffmpegMirror = newValue
+        }
+      }
     } header: {
-      Label("Network", systemImage: "network")
+      Label("Download Mirror", systemImage: "network")
     } footer: {
-      Text(
-        "中国用户：将下载镜像设为 hf-mirror.com 即可无需翻墙下载模型。"
-      )
-      .captionStyle()
+      Text("中国用户：将下载镜像设为 hf-mirror.com 即可无需翻墙下载模型。")
+        .captionStyle()
     }
     .onAppear {
-      // Sync state with stored value
+      // Sync HuggingFace mirror state
       let stored = settings.downloadEndpoint
       if stored.isEmpty || stored == "https://hf-mirror.com" {
         mirrorSelection = stored
       } else {
         mirrorSelection = "__custom__"
       }
+      // Sync ffmpeg mirror state
+      ffmpegMirrorSelection = settings.ffmpegMirror.isEmpty ? "" : "__custom__"
     }
   }
 
@@ -630,16 +703,129 @@ struct SettingsView: View {
     }
   }
 
+  // MARK: - Network Settings View
+
+  private var networkSettingsView: some View {
+    Form {
+      Section {
+        Toggle(
+          "Enable Proxy",
+          isOn: Binding(
+            get: { proxySettings.isEnabled },
+            set: {
+              proxySettings.isEnabled = $0
+              proxyTestStatus = .idle
+            }
+          )
+        )
+
+        Picker(
+          "Protocol",
+          selection: Binding(
+            get: { proxySettings.type },
+            set: {
+              proxySettings.type = $0
+              proxyTestStatus = .idle
+            }
+          )
+        ) {
+          Text("HTTP").tag("http")
+          Text("SOCKS5").tag("socks5")
+        }
+        .disabled(!proxySettings.isEnabled)
+
+        TextField(
+          "Host",
+          text: Binding(
+            get: { proxySettings.host },
+            set: {
+              proxySettings.host = $0
+              proxyTestStatus = .idle
+            }
+          )
+        )
+        .disabled(!proxySettings.isEnabled)
+
+        TextField(
+          "Port",
+          value: Binding(
+            get: { proxySettings.port },
+            set: {
+              proxySettings.port = $0
+              proxyTestStatus = .idle
+            }
+          ),
+          format: .number.grouping(.never)
+        )
+        .disabled(!proxySettings.isEnabled)
+
+        HStack(spacing: 12) {
+          Button {
+            Task { await testProxy() }
+          } label: {
+            if case .testing = proxyTestStatus {
+              HStack(spacing: 6) {
+                ProgressView()
+                  .controlSize(.small)
+                Text("Testing...")
+              }
+            } else {
+              Text("Test Connection")
+            }
+          }
+          .disabled(!proxySettings.isConfigured || {
+            if case .testing = proxyTestStatus { return true }
+            return false
+          }())
+          .buttonStyle(.bordered)
+
+          switch proxyTestStatus {
+          case .idle:
+            EmptyView()
+          case .testing:
+            EmptyView()
+          case .success(let ms):
+            Label("Connected (\(ms) ms)", systemImage: "checkmark.circle.fill")
+              .foregroundStyle(.green)
+              .font(.callout)
+          case .failure(let msg):
+            Label(msg, systemImage: "xmark.circle.fill")
+              .foregroundStyle(.red)
+              .font(.callout)
+              .lineLimit(2)
+          }
+        }
+      } header: {
+        Label("Proxy", systemImage: "lock.shield")
+      } footer: {
+        VStack(alignment: .leading, spacing: 4) {
+          Text(
+            "When enabled, model downloads and API requests are routed through the specified proxy server."
+          )
+          if proxySettings.isEnabled && !proxySettings.isConfigured {
+            Text("Enter a host and port to activate the proxy.")
+              .foregroundStyle(.orange)
+          }
+        }
+        .captionStyle()
+      }
+    }
+    .formStyle(.grouped)
+  }
+
   // MARK: - Helpers
 
   private var displayFFmpegPath: String {
-    if settings.ffmpegPath.isEmpty {
-      if let detected = TranscriptionSettings.autoDetectFFmpegPath() {
-        return "Auto-detected: \(detected)"
-      }
-      return "Not found"
+    if !settings.ffmpegPath.isEmpty {
+      return settings.ffmpegPath
     }
-    return settings.ffmpegPath
+    if settings.isFFmpegDownloaded {
+      return "Downloaded"
+    }
+    if let detected = TranscriptionSettings.autoDetectFFmpegPath() {
+      return "Auto-detected: \(detected)"
+    }
+    return "Not found"
   }
 
   private var displayLibraryDirectory: String {
@@ -661,15 +847,30 @@ struct SettingsView: View {
   }
 
   private func refreshFFmpegStatus() {
-    if settings.ffmpegPath.isEmpty {
-      if TranscriptionSettings.autoDetectFFmpegPath() != nil {
-        ffmpegPathStatus = .valid
-      } else {
-        ffmpegPathStatus = .notFound
-      }
-    } else {
+    if !settings.ffmpegPath.isEmpty {
       ffmpegPathStatus = TranscriptionSettings.isFFmpegValid(at: settings.ffmpegPath) ? .valid : .invalid
+    } else if settings.isFFmpegDownloaded || TranscriptionSettings.autoDetectFFmpegPath() != nil {
+      ffmpegPathStatus = .valid
+    } else {
+      ffmpegPathStatus = .notFound
     }
+  }
+
+  @MainActor
+  private func downloadFFmpeg() async {
+    isDownloadingFFmpeg = true
+    ffmpegDownloadProgress = 0
+    do {
+      try await settings.downloadFFmpeg { progress in
+        Task { @MainActor in
+          self.ffmpegDownloadProgress = progress
+        }
+      }
+      refreshFFmpegStatus()
+    } catch {
+      // Leave status as-is; user can retry
+    }
+    isDownloadingFFmpeg = false
   }
 
   private func handleFileImportResult(_ result: Result<[URL], Error>) {
@@ -794,6 +995,54 @@ struct SettingsView: View {
     }
   }
 
+  private func testProxy() async {
+    proxyTestStatus = .testing
+
+    let host = proxySettings.host.trimmingCharacters(in: .whitespaces)
+    let port = proxySettings.port
+    let type = proxySettings.type
+
+    let proxyDict: [AnyHashable: Any]
+    if type == "socks5" {
+      proxyDict = [
+        kCFStreamPropertySOCKSProxyHost as AnyHashable: host,
+        kCFStreamPropertySOCKSProxyPort as AnyHashable: port,
+      ]
+    } else {
+      proxyDict = [
+        kCFNetworkProxiesHTTPEnable as AnyHashable: true,
+        kCFNetworkProxiesHTTPProxy as AnyHashable: host,
+        kCFNetworkProxiesHTTPPort as AnyHashable: port,
+        "HTTPSEnable" as AnyHashable: true,
+        "HTTPSProxy" as AnyHashable: host,
+        "HTTPSPort" as AnyHashable: port,
+      ]
+    }
+
+    let config = URLSessionConfiguration.ephemeral
+    config.connectionProxyDictionary = proxyDict
+    config.timeoutIntervalForRequest = 10
+    let session = URLSession(configuration: config)
+
+    let testURL = URL(string: "https://huggingface.co")!
+    let start = Date()
+
+    do {
+      var request = URLRequest(url: testURL)
+      request.httpMethod = "HEAD"
+      let (_, response) = try await session.data(for: request)
+      let ms = Int(Date().timeIntervalSince(start) * 1000)
+      let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+      if statusCode < 500 {
+        proxyTestStatus = .success(latency: ms)
+      } else {
+        proxyTestStatus = .failure("Server returned \(statusCode)")
+      }
+    } catch {
+      proxyTestStatus = .failure(error.localizedDescription)
+    }
+  }
+
   private func migrateModels(from oldPath: String, to newPath: String) {
     isMigrating = true
 
@@ -820,6 +1069,7 @@ struct SettingsView: View {
 
 enum SettingsTab: String, CaseIterable, Identifiable {
   case media = "Media"
+  case network = "Network"
   case shortcuts = "Shortcuts"
   case transcription = "Transcription"
   case plugins = "Plugins"
@@ -829,6 +1079,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
   var icon: String {
     switch self {
     case .media: return "books.vertical"
+    case .network: return "network"
     case .shortcuts: return "keyboard"
     case .transcription: return "text.bubble"
     case .plugins: return "puzzlepiece.extension"
@@ -842,5 +1093,6 @@ enum SettingsTab: String, CaseIterable, Identifiable {
   SettingsView()
     .environment(TranscriptionSettings())
     .environment(TranscriptionManager())
+    .environment(ProxySettings())
     .frame(width: 800, height: 600)
 }
