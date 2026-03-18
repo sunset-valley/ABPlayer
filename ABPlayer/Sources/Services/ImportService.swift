@@ -39,7 +39,7 @@ final class ImportService {
       
       let fileURL: URL
       let targetFolder: Folder?
-      if isInLibrary(url) {
+      if librarySettings.isInLibrary(url) {
         fileURL = url
         let folderRelativePath = folderRelativePath(for: fileURL)
         targetFolder = findOrCreateFolder(relativePath: folderRelativePath)
@@ -79,7 +79,7 @@ final class ImportService {
       
       do {
         let targetParent: Folder?
-        if isInLibrary(url) {
+        if librarySettings.isInLibrary(url) {
           let folderRelativePath = calculateRelativePath(for: url)
           let parentRelativePath = parentRelativePath(for: folderRelativePath)
           targetParent = findOrCreateFolder(relativePath: parentRelativePath)
@@ -133,17 +133,11 @@ final class ImportService {
     
     var destinationURL = destinationDirectory.appendingPathComponent(url.lastPathComponent)
     if fileManager.fileExists(atPath: destinationURL.path) {
-      destinationURL = uniqueURL(for: destinationURL)
+      destinationURL = .uniqueURL(for: destinationURL)
     }
     
     try fileManager.copyItem(at: url, to: destinationURL)
     return destinationURL
-  }
-  
-  private func isInLibrary(_ url: URL) -> Bool {
-    let libraryURL = librarySettings.libraryDirectoryURL.standardizedFileURL
-    let candidateURL = url.standardizedFileURL
-    return candidateURL.path.hasPrefix(libraryURL.path)
   }
   
   private func currentFolderLibraryURL(_ currentFolder: Folder?) -> URL? {
@@ -211,25 +205,4 @@ final class ImportService {
     return parent
   }
   
-  private func uniqueURL(for url: URL) -> URL {
-    let fileManager = FileManager.default
-    let directory = url.deletingLastPathComponent()
-    let baseName = url.deletingPathExtension().lastPathComponent
-    let fileExtension = url.pathExtension
-    
-    var counter = 1
-    var candidate = url
-    
-    while fileManager.fileExists(atPath: candidate.path) {
-      let newName = "\(baseName) \(counter)"
-      if fileExtension.isEmpty {
-        candidate = directory.appendingPathComponent(newName)
-      } else {
-        candidate = directory.appendingPathComponent(newName).appendingPathExtension(fileExtension)
-      }
-      counter += 1
-    }
-    
-    return candidate
-  }
 }

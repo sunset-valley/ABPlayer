@@ -36,4 +36,10 @@ public final class LibrarySettings {
       try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
     }
   }
+
+  public func isInLibrary(_ url: URL) -> Bool {
+    let libraryURL = libraryDirectoryURL.standardizedFileURL
+    let candidateURL = url.standardizedFileURL
+    return candidateURL.path.hasPrefix(libraryURL.path)
+  }
 }
