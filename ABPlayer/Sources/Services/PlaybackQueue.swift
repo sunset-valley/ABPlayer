@@ -101,14 +101,16 @@ public final class PlaybackQueue {
 
     if loopMode == .shuffle {
       if files.count == 1 { return files.first }
-      if var currentFileID {
+      if let currentFileID {
         var randomFile: ABFile
-        repeat { randomFile = files.randomElement()! } while randomFile.id == currentFileID
-        let file = randomFile
-        currentFileID = file.id
-        return file
+        repeat {
+          guard let random = files.randomElement() else { return nil }
+          randomFile = random
+        } while randomFile.id == currentFileID
+        self.currentFileID = randomFile.id
+        return randomFile
       }
-      let file = files.randomElement()!
+      guard let file = files.randomElement() else { return nil }
       currentFileID = file.id
       return file
     }
@@ -142,15 +144,16 @@ public final class PlaybackQueue {
         if files.count == 1 {
           return files.first
         }
-        
+
         if let currentFileID {
           var randomFile: ABFile
           repeat {
-            randomFile = files.randomElement()!
+            guard let random = files.randomElement() else { return nil }
+            randomFile = random
           } while randomFile.id == currentFileID
           return randomFile
         }
-        
+
         return files.randomElement()
         
       case .autoPlayNext:

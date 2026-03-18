@@ -35,7 +35,7 @@ struct ABPlayerApp: App {
 
   private let modelContainer: ModelContainer
   private let playerManager = PlayerManager()
-  private let sessionTracker = SessionTracker()
+  private let sessionTracker: SessionTracker
   private let transcriptionManager = TranscriptionManager()
   private let transcriptionSettings = TranscriptionSettings()
   private let librarySettings = LibrarySettings()
@@ -70,9 +70,13 @@ struct ABPlayerApp: App {
         Vocabulary.self,
       ])
 
-      let appSupportDir = FileManager.default.urls(
+      guard let appSupportDir = FileManager.default.urls(
         for: .applicationSupportDirectory, in: .userDomainMask
-      ).first!
+      ).first else {
+        throw CocoaError(.fileNoSuchFile, userInfo: [
+          NSLocalizedDescriptionKey: "Application Support directory not found"
+        ])
+      }
       let folderName = Bundle.main.bundleIdentifier ?? "cc.ihugo.app.ABPlayer"
 
       let storeURL = appSupportDir.appendingPathComponent(
@@ -84,6 +88,7 @@ struct ABPlayerApp: App {
       modelContainer = try ModelContainer(for: schema, configurations: modelConfiguration)
       modelContainer.mainContext.autosaveEnabled = true
 
+      sessionTracker = SessionTracker(modelContainer: modelContainer)
       vocabularyService = VocabularyService(modelContext: modelContainer.mainContext)
       
       queueManager = TranscriptionQueueManager(
