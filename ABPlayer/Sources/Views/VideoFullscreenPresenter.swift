@@ -27,15 +27,15 @@ final class VideoFullscreenPresenter {
 
   private(set) var isPresented: Bool = false
 
-  func toggle(player: AVPlayer, playerManager: PlayerManager, onSingleTap: @escaping () -> Void) {
+  func toggle(playerManager: PlayerManager, onSingleTap: @escaping () -> Void) {
     if isPresented {
       dismiss()
     } else {
-      present(player: player, playerManager: playerManager, onSingleTap: onSingleTap)
+      present(playerManager: playerManager, onSingleTap: onSingleTap)
     }
   }
 
-  private func present(player: AVPlayer, playerManager: PlayerManager, onSingleTap: @escaping () -> Void) {
+  private func present(playerManager: PlayerManager, onSingleTap: @escaping () -> Void) {
     guard let screen = NSScreen.main else { return }
 
     let w = FullscreenWindow(
@@ -50,7 +50,6 @@ final class VideoFullscreenPresenter {
     w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
     let content = FullscreenVideoContent(
-      player: player,
       playerManager: playerManager,
       onSingleTap: onSingleTap,
       onDismiss: { [weak self] in self?.dismiss() }
@@ -73,7 +72,6 @@ final class VideoFullscreenPresenter {
 // MARK: - Fullscreen Content View
 
 private struct FullscreenVideoContent: View {
-  let player: AVPlayer
   let playerManager: PlayerManager
   let onSingleTap: () -> Void
   let onDismiss: () -> Void
@@ -86,7 +84,9 @@ private struct FullscreenVideoContent: View {
   var body: some View {
     ZStack {
       Color.black
-      NativeVideoPlayer(player: player)
+      if let player = playerManager.player {
+        NativeVideoPlayer(player: player)
+      }
       hudOverlay
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)

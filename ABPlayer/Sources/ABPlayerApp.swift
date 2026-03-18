@@ -174,6 +174,9 @@ struct ABPlayerApp: App {
     WindowGroup {
       MainSplitView()
         .focusEffectDisabled()
+        .onChange(of: playerSettings.preventSleep) {
+          playerManager.updateSleepPrevention()
+        }
         .environment(playerManager)
         .environment(sessionTracker)
         .environment(transcriptionManager)
