@@ -85,14 +85,13 @@ let project = Project(
         "SUEnableAutomaticChecks": true,
         "SUPublicEDKey": "Zw9DuoU9cuGJGt81eRRfWq5OwhCG+udkeOBwScjchU0=",
       ]),
-      sources: ["ABPlayer/Sources/**"],
       resources: [
-        .glob(pattern: "ABPlayer/Resources/**"),
-        .copy("ABPlayerFull/Binaries/ffmpeg"),
+        .glob(pattern: "ABPlayerFull/Binaries/ffmpeg"),
       ],
-      settings: .settings(base: [
-        "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "FULL_EDITION",
-      ]),
+      buildableFolders: [
+        "ABPlayer/Sources",
+        "ABPlayer/Resources",
+      ],
       dependencies: [
         .sdk(name: "AppIntents", type: .framework, status: .optional),
         .external(name: "Sentry"),
@@ -100,7 +99,10 @@ let project = Project(
         .external(name: "KeyboardShortcuts"),
         .external(name: "Sparkle"),
         .external(name: "TelemetryDeck"),
-      ]
+      ],
+      settings: .settings(base: [
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "FULL_EDITION",
+      ])
     ),
     .target(
       name: "ABPlayerTests",
