@@ -40,6 +40,7 @@ struct ABPlayerApp: App {
   private let transcriptionSettings = TranscriptionSettings()
   private let librarySettings = LibrarySettings()
   private let playerSettings = PlayerSettings()
+  private let proxySettings = ProxySettings()
   private let vocabularyService: VocabularyService
   private let subtitleLoader = SubtitleLoader()
 
@@ -47,6 +48,8 @@ struct ABPlayerApp: App {
   private let updater = SparkleUpdater()
 
   init() {
+    URLSessionProxyInjector.install(settings: proxySettings)
+
     let config = TelemetryDeck.Config(appID: "A4A99FD4-3F84-49FA-AF97-0806D61D0539")
     TelemetryDeck.initialize(config: config)
 
@@ -188,6 +191,7 @@ struct ABPlayerApp: App {
         .environment(transcriptionSettings)
         .environment(librarySettings)
         .environment(playerSettings)
+        .environment(proxySettings)
         .environment(queueManager)
         .environment(vocabularyService)
         .environment(subtitleLoader)
@@ -223,6 +227,7 @@ struct ABPlayerApp: App {
           .environment(transcriptionSettings)
           .environment(librarySettings)
           .environment(playerSettings)
+          .environment(proxySettings)
           .environment(transcriptionManager)
       }
       .defaultPosition(.center)

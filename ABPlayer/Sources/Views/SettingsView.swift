@@ -21,6 +21,7 @@ struct SettingsView: View {
   @Environment(TranscriptionSettings.self) private var settings
   @Environment(LibrarySettings.self) private var librarySettings
   @Environment(PlayerSettings.self) private var playerSettings
+  @Environment(ProxySettings.self) private var proxySettings
   @Environment(TranscriptionManager.self) private var transcriptionManager
 
   // Navigation selection
@@ -42,6 +43,16 @@ struct SettingsView: View {
   // Mirror/endpoint states
   @State private var mirrorSelection: String = ""
   @State private var showManualDownload: Bool = false
+
+  // Proxy test states
+  @State private var proxyTestStatus: ProxyTestStatus = .idle
+
+  enum ProxyTestStatus {
+    case idle
+    case testing
+    case success(latency: Int)
+    case failure(String)
+  }
 
   // Shortcuts states
   @State private var showResetConfirmation = false
@@ -562,12 +573,111 @@ struct SettingsView: View {
           settings.downloadEndpoint = newValue
         }
       }
+
+      // Proxy
+      Toggle(
+        "Use HTTP/SOCKS Proxy",
+        isOn: Binding(
+          get: { proxySettings.isEnabled },
+          set: {
+            proxySettings.isEnabled = $0
+            proxyTestStatus = .idle
+          }
+        )
+      )
+
+      if proxySettings.isEnabled {
+        Picker(
+          "Proxy Type",
+          selection: Binding(
+            get: { proxySettings.type },
+            set: { proxySettings.type = $0 }
+          )
+        ) {
+          Text("HTTP").tag("http")
+          Text("SOCKS5").tag("socks5")
+        }
+        .pickerStyle(.segmented)
+
+        LabeledContent("Host") {
+          TextField(
+            "proxy.example.com",
+            text: Binding(
+              get: { proxySettings.host },
+              set: { proxySettings.host = $0 }
+            )
+          )
+          .textFieldStyle(.roundedBorder)
+          .frame(minWidth: 180)
+        }
+
+        LabeledContent("Port") {
+          TextField(
+            "8080",
+            value: Binding(
+              get: { proxySettings.port },
+              set: { proxySettings.port = $0 }
+            ),
+            format: .number
+          )
+          .textFieldStyle(.roundedBorder)
+          .frame(width: 80)
+        }
+
+        HStack {
+          Button {
+            Task { await testProxy() }
+          } label: {
+            if case .testing = proxyTestStatus {
+              HStack(spacing: 6) {
+                ProgressView()
+                  .controlSize(.small)
+                Text("Testing...")
+              }
+            } else {
+              Text("Test Connection")
+            }
+          }
+          .disabled(!proxySettings.isConfigured || {
+            if case .testing = proxyTestStatus { return true }
+            return false
+          }())
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+
+          switch proxyTestStatus {
+          case .idle:
+            EmptyView()
+          case .testing:
+            EmptyView()
+          case .success(let ms):
+            Label("Connected (\(ms) ms)", systemImage: "checkmark.circle.fill")
+              .foregroundStyle(.green)
+              .font(.caption)
+          case .failure(let msg):
+            Label(msg, systemImage: "xmark.circle.fill")
+              .foregroundStyle(.red)
+              .font(.caption)
+          }
+        }
+      }
     } header: {
       Label("Network", systemImage: "network")
     } footer: {
-      Text(
-        "中国用户：将下载镜像设为 hf-mirror.com 即可无需翻墙下载模型。"
-      )
+      VStack(alignment: .leading, spacing: 4) {
+        Text("中国用户：将下载镜像设为 hf-mirror.com 即可无需翻墙下载模型。")
+        if proxySettings.isEnabled {
+          if proxySettings.isConfigured {
+            Text(
+              "Proxy: \(proxySettings.type.uppercased()) → \(proxySettings.host):\(proxySettings.port)"
+            )
+            .foregroundStyle(.green)
+          } else {
+            Text("Proxy enabled but host/port not configured.")
+              .foregroundStyle(.red)
+          }
+        }
+      }
       .captionStyle()
     }
     .onAppear {
@@ -794,6 +904,54 @@ struct SettingsView: View {
     }
   }
 
+  private func testProxy() async {
+    proxyTestStatus = .testing
+
+    let host = proxySettings.host.trimmingCharacters(in: .whitespaces)
+    let port = proxySettings.port
+    let type = proxySettings.type
+
+    let proxyDict: [AnyHashable: Any]
+    if type == "socks5" {
+      proxyDict = [
+        kCFStreamPropertySOCKSProxyHost as AnyHashable: host,
+        kCFStreamPropertySOCKSProxyPort as AnyHashable: port,
+      ]
+    } else {
+      proxyDict = [
+        kCFNetworkProxiesHTTPEnable as AnyHashable: true,
+        kCFNetworkProxiesHTTPProxy as AnyHashable: host,
+        kCFNetworkProxiesHTTPPort as AnyHashable: port,
+        "HTTPSEnable" as AnyHashable: true,
+        "HTTPSProxy" as AnyHashable: host,
+        "HTTPSPort" as AnyHashable: port,
+      ]
+    }
+
+    let config = URLSessionConfiguration.ephemeral
+    config.connectionProxyDictionary = proxyDict
+    config.timeoutIntervalForRequest = 10
+    let session = URLSession(configuration: config)
+
+    let testURL = URL(string: "https://huggingface.co")!
+    let start = Date()
+
+    do {
+      var request = URLRequest(url: testURL)
+      request.httpMethod = "HEAD"
+      let (_, response) = try await session.data(for: request)
+      let ms = Int(Date().timeIntervalSince(start) * 1000)
+      let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+      if statusCode < 500 {
+        proxyTestStatus = .success(latency: ms)
+      } else {
+        proxyTestStatus = .failure("Server returned \(statusCode)")
+      }
+    } catch {
+      proxyTestStatus = .failure(error.localizedDescription)
+    }
+  }
+
   private func migrateModels(from oldPath: String, to newPath: String) {
     isMigrating = true
 
@@ -842,5 +1000,6 @@ enum SettingsTab: String, CaseIterable, Identifiable {
   SettingsView()
     .environment(TranscriptionSettings())
     .environment(TranscriptionManager())
+    .environment(ProxySettings())
     .frame(width: 800, height: 600)
 }
