@@ -4,6 +4,7 @@ import Observation
 
 /// Transcription progress and state
 enum TranscriptionState: Equatable {
+  case unavailable
   case idle
   case downloading(progress: Double, modelName: String)
   case loading(modelName: String)
@@ -22,6 +23,8 @@ final class TranscriptionManager {
   private var loadedModelName: String?
   private var downloadTask: Task<Void, Error>?
   var state: TranscriptionState = .idle
+  /// Name of the most recently failed-to-load model (corrupt/incomplete files), nil if none
+  var invalidModelName: String?
 
   /// Whether the model is loaded and ready
   var isModelLoaded: Bool {
@@ -70,6 +73,7 @@ final class TranscriptionManager {
       if case .cancelled = state {
         throw CancellationError()
       }
+      state = .idle
     } catch is CancellationError {
       downloadTask = nil
       state = .cancelled
@@ -95,26 +99,10 @@ final class TranscriptionManager {
   /// Initialize WhisperKit with the specified model and download folder
   func loadModel(
     modelName: String = "distil-large-v3",
-    downloadBase: URL,
-    endpoint: String = "https://huggingface.co"
+    downloadBase: URL
   ) async throws {
     if whisperKit != nil && loadedModelName == modelName {
       return
-    }
-
-    if isModelDownloaded(modelName: modelName, downloadBase: downloadBase) {
-      state = .loading(modelName: modelName)
-    } else {
-      do {
-        try await downloadModel(modelName: modelName, downloadBase: downloadBase, endpoint: endpoint)
-      } catch is CancellationError {
-        state = .cancelled
-        throw CancellationError()
-      }
-    }
-
-    if case .cancelled = state {
-      throw CancellationError()
     }
 
     state = .loading(modelName: modelName)
@@ -126,13 +114,35 @@ final class TranscriptionManager {
 
       whisperKit = try await WhisperKit(config)
       loadedModelName = modelName
+      invalidModelName = nil
       state = .idle
     } catch {
+      if let e = error as? WhisperError, case .modelsUnavailable = e {
+        // Model not downloaded yet — not a corruption issue
+      } else {
+        invalidModelName = modelName
+      }
       state = .failed("Failed to load model: \(error.localizedDescription)")
       throw error
     }
   }
-
+  
+  func checkIfModelExist(
+    modelName: String = "distil-large-v3",
+    downloadBase: URL) async throws -> Bool {
+      if whisperKit != nil {
+        return true
+      }
+      do {
+        try await self.loadModel(modelName: modelName, downloadBase: downloadBase)
+      } catch WhisperError.modelsUnavailable {
+        return false
+      } catch {
+        throw error
+      }
+      return true
+  }
+  
   /// Transcribe audio file using settings
   func transcribe(
     audioURL: URL,
@@ -144,12 +154,27 @@ final class TranscriptionManager {
       do {
         try await loadModel(
           modelName: settings.modelName,
-          downloadBase: settings.modelDirectoryURL,
-          endpoint: settings.effectiveDownloadEndpoint
+          downloadBase: settings.modelDirectoryURL
         )
       } catch is CancellationError {
         state = .cancelled
         throw CancellationError()
+      } catch {
+        // Load failed — model not downloaded yet, download then retry
+        do {
+          try await downloadModel(
+            modelName: settings.modelName,
+            downloadBase: settings.modelDirectoryURL,
+            endpoint: settings.effectiveDownloadEndpoint
+          )
+        } catch is CancellationError {
+          state = .cancelled
+          throw CancellationError()
+        }
+        try await loadModel(
+          modelName: settings.modelName,
+          downloadBase: settings.modelDirectoryURL
+        )
       }
     }
 
@@ -231,36 +256,6 @@ final class TranscriptionManager {
   /// Reset state to idle
   func reset() {
     state = .idle
-  }
-
-  // MARK: - Model Checking
-
-  private func isModelDownloaded(modelName: String, downloadBase: URL) -> Bool {
-    let whisperKitModelPath = downloadBase
-      .appendingPathComponent("models")
-      .appendingPathComponent("argmaxinc")
-      .appendingPathComponent("whisperkit-coreml")
-      .appendingPathComponent("distil-whisper_" + modelName)
-    
-    guard FileManager.default.fileExists(atPath: whisperKitModelPath.path) else {
-      return false
-    }
-    
-    let requiredModelFiles = ["MelSpectrogram", "AudioEncoder", "TextDecoder"]
-    
-    for requiredModel in requiredModelFiles {
-      let compiledModelPath = whisperKitModelPath.appendingPathComponent("\(requiredModel).mlmodelc")
-      let packageModelPath = whisperKitModelPath.appendingPathComponent("\(requiredModel).mlpackage")
-      
-      let hasCompiledModel = FileManager.default.fileExists(atPath: compiledModelPath.path)
-      let hasPackageModel = FileManager.default.fileExists(atPath: packageModelPath.path)
-      
-      if !hasCompiledModel && !hasPackageModel {
-        return false
-      }
-    }
-    
-    return true
   }
 
   // MARK: - Audio Extraction

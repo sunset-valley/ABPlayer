@@ -1,3 +1,23 @@
+## [0.2.12.89] - 2026-03-18
+
+### Features
+- Full edition, download mirror & manual download guide for Chinese users (#131)
+
+### Bug Fixes
+- eliminate force-unwraps and silent error swallowing across services (#130)
+
+### Improvements
+- reduce redundancy and clarify architecture (#132)
+
+### Chores
+- update package dependencies and versions
+
+### Other
+- use custom swift-transformers
+- Refactor SettingsView and TranscriptionView
+- Feat proxy (#133)
+
+
 ## [0.2.11.88] - 2026-03-17
 
 ### Bug Fixes

@@ -7,39 +7,75 @@ import SwiftUI
 final class TranscriptionSettings {
   /// Whether transcription feature is enabled
   @ObservationIgnored
-  @AppStorage("transcription_enabled") var isEnabled: Bool = true
+  @AppStorage("transcription_enabled") private var _isEnabled: Bool = true
+  var isEnabled: Bool {
+    get { access(keyPath: \.isEnabled); return _isEnabled }
+    set { withMutation(keyPath: \.isEnabled) { _isEnabled = newValue } }
+  }
 
   /// WhisperKit model to use
   @ObservationIgnored
-  @AppStorage("transcription_model") var modelName: String = "distil-large-v3"
+  @AppStorage("transcription_model") private var _modelName: String = "distil-large-v3"
+  var modelName: String {
+    get { access(keyPath: \.modelName); return _modelName }
+    set { withMutation(keyPath: \.modelName) { _modelName = newValue } }
+  }
 
   /// Language for transcription (auto = auto-detect)
   @ObservationIgnored
-  @AppStorage("transcription_language") var language: String = "auto"
+  @AppStorage("transcription_language") private var _language: String = "auto"
+  var language: String {
+    get { access(keyPath: \.language); return _language }
+    set { withMutation(keyPath: \.language) { _language = newValue } }
+  }
 
   /// Whether to automatically transcribe new audio files
   @ObservationIgnored
-  @AppStorage("transcription_auto_transcribe") var autoTranscribe: Bool = false
+  @AppStorage("transcription_auto_transcribe") private var _autoTranscribe: Bool = false
+  var autoTranscribe: Bool {
+    get { access(keyPath: \.autoTranscribe); return _autoTranscribe }
+    set { withMutation(keyPath: \.autoTranscribe) { _autoTranscribe = newValue } }
+  }
 
   /// Whether to keep playback paused after dismissing word lookup
   @ObservationIgnored
-  @AppStorage("transcription_pause_on_word_dismiss") var pauseOnWordDismiss: Bool = true
+  @AppStorage("transcription_pause_on_word_dismiss") private var _pauseOnWordDismiss: Bool = true
+  var pauseOnWordDismiss: Bool {
+    get { access(keyPath: \.pauseOnWordDismiss); return _pauseOnWordDismiss }
+    set { withMutation(keyPath: \.pauseOnWordDismiss) { _pauseOnWordDismiss = newValue } }
+  }
 
   /// Custom model download directory (empty = default location)
   @ObservationIgnored
-  @AppStorage("transcription_model_directory") var modelDirectory: String = ""
+  @AppStorage("transcription_model_directory") private var _modelDirectory: String = ""
+  var modelDirectory: String {
+    get { access(keyPath: \.modelDirectory); return _modelDirectory }
+    set { withMutation(keyPath: \.modelDirectory) { _modelDirectory = newValue } }
+  }
 
   /// Custom ffmpeg path (empty = auto-detect)
   @ObservationIgnored
-  @AppStorage("transcription_ffmpeg_path") var ffmpegPath: String = ""
+  @AppStorage("transcription_ffmpeg_path") private var _ffmpegPath: String = ""
+  var ffmpegPath: String {
+    get { access(keyPath: \.ffmpegPath); return _ffmpegPath }
+    set { withMutation(keyPath: \.ffmpegPath) { _ffmpegPath = newValue } }
+  }
 
   /// Custom HuggingFace endpoint or mirror (empty = official HuggingFace)
   @ObservationIgnored
-  @AppStorage("transcription_download_endpoint") var downloadEndpoint: String = ""
+  @AppStorage("transcription_download_endpoint") private var _downloadEndpoint: String = ""
+  var downloadEndpoint: String {
+    get { access(keyPath: \.downloadEndpoint); return _downloadEndpoint }
+    set { withMutation(keyPath: \.downloadEndpoint) { _downloadEndpoint = newValue } }
+  }
 
   /// Custom ffmpeg download mirror URL (empty = evermeet.cx official)
   @ObservationIgnored
-  @AppStorage("transcription_ffmpeg_mirror") var ffmpegMirror: String = ""
+  @AppStorage("transcription_ffmpeg_mirror") private var _ffmpegMirror: String = ""
+  var ffmpegMirror: String {
+    get { access(keyPath: \.ffmpegMirror); return _ffmpegMirror }
+    set { withMutation(keyPath: \.ffmpegMirror) { _ffmpegMirror = newValue } }
+  }
 
   // MARK: - Computed Properties
 
@@ -185,6 +221,22 @@ final class TranscriptionSettings {
   ]
 
   // MARK: - Model Management
+
+  /// Check if a specific model is downloaded by verifying indicator files exist
+  func isModelDownloaded(modelName: String) -> Bool {
+    let whisperKitDir = modelDirectoryURL
+      .appendingPathComponent("models/argmaxinc/whisperkit-coreml")
+    let fm = FileManager.default
+    guard fm.fileExists(atPath: whisperKitDir.path),
+      let contents = try? fm.contentsOfDirectory(
+        at: whisperKitDir, includingPropertiesForKeys: [.isDirectoryKey],
+        options: [.skipsHiddenFiles])
+    else { return false }
+    guard let modelDir = contents.first(where: { $0.lastPathComponent.contains(modelName) })
+    else { return false }
+    let indicators = ["AudioEncoder.mlmodelc", "TextDecoder.mlmodelc", "config.json"]
+    return indicators.allSatisfy { fm.fileExists(atPath: modelDir.appendingPathComponent($0).path) }
+  }
 
   /// Returns list of downloaded models in the current model directory
   /// WhisperKit stores models at: models/argmaxinc/whisperkit-coreml/<model-name>/

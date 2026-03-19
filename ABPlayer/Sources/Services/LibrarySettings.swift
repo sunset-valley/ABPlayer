@@ -9,7 +9,11 @@ public final class LibrarySettings {
   public init() {}
   /// Path to the media library
   @ObservationIgnored
-  @AppStorage("library_path") public var libraryPath: String = ""
+  @AppStorage("library_path") private var _libraryPath: String = ""
+  public var libraryPath: String {
+    get { access(keyPath: \.libraryPath); return _libraryPath }
+    set { withMutation(keyPath: \.libraryPath) { _libraryPath = newValue } }
+  }
 
   /// Returns the library directory URL (user-specified or default)
   public var libraryDirectoryURL: URL {
