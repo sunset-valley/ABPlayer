@@ -22,6 +22,8 @@ struct TranscriptionView: View {
       } else {
         // Original logic for non-queued state
         switch transcriptionManager.state {
+        case .unavailable:
+          loadingCacheView
         case .idle:
           if viewModel.isLoadingCache {
             loadingCacheView
