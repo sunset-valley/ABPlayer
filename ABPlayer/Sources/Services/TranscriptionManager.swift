@@ -107,9 +107,14 @@ final class TranscriptionManager {
 
     state = .loading(modelName: modelName)
     do {
+      // Resolve the on-disk folder so WhisperKit skips the network file-listing call.
+      // Without this, WhisperKit always contacts huggingface.co to list files even when
+      // the model is already downloaded — which fails under restricted networks (e.g. China).
+      let localFolder = Self.localModelFolder(modelName: modelName, downloadBase: downloadBase)
       let config = WhisperKitConfig(
         model: modelName,
-        downloadBase: downloadBase
+        downloadBase: downloadBase,
+        modelFolder: localFolder  // nil when not yet downloaded → falls back to original behaviour
       )
 
       whisperKit = try await WhisperKit(config)
@@ -125,6 +130,19 @@ final class TranscriptionManager {
       state = .failed("Failed to load model: \(error.localizedDescription)")
       throw error
     }
+  }
+
+  /// Returns the path to an already-downloaded model folder, or nil if not present.
+  /// WhisperKit stores models at: <downloadBase>/models/argmaxinc/whisperkit-coreml/<variant>/
+  private static func localModelFolder(modelName: String, downloadBase: URL) -> String? {
+    let whisperKitDir = downloadBase
+      .appendingPathComponent("models/argmaxinc/whisperkit-coreml")
+    guard let contents = try? FileManager.default.contentsOfDirectory(
+      at: whisperKitDir,
+      includingPropertiesForKeys: [.isDirectoryKey],
+      options: [.skipsHiddenFiles]
+    ) else { return nil }
+    return contents.first { $0.lastPathComponent.contains(modelName) }?.path
   }
   
   func checkIfModelExist(
