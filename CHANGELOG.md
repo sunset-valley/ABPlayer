@@ -1,3 +1,9 @@
+## [0.2.13.90] - 2026-03-19
+
+### Bug Fixes
+- pass local model folder to avoid HuggingFace network call on load (#135)
+
+
 ## [0.2.12.89] - 2026-03-18
 
 ### Features
