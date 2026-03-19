@@ -25,9 +25,17 @@ let project = Project(
         "CFBundleShortVersionString": .string(shortVersionString),
         "NSMainStoryboardFile": "",
         "SUFeedURL":
-          "https://github.com/sunset-valley/ABPlayer/releases/latest/download/appcast.xml",
+          "http://s3.kcoding.cn/d/ABPlayerRelease/appcast.xml",
         "SUEnableAutomaticChecks": true,
         "SUPublicEDKey": "Zw9DuoU9cuGJGt81eRRfWq5OwhCG+udkeOBwScjchU0=",
+        "NSAppTransportSecurity": .dictionary([
+          "NSExceptionDomains": .dictionary([
+            "s3.kcoding.cn": .dictionary([
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": true,
+            ])
+          ])
+        ]),
       ]),
       buildableFolders: [
         "ABPlayer/Sources",
@@ -53,9 +61,17 @@ let project = Project(
         "CFBundleShortVersionString": .string(shortVersionString),
         "NSMainStoryboardFile": "",
         "SUFeedURL":
-          "https://github.com/sunset-valley/ABPlayer/releases/latest/download/appcast.xml",
+          "http://s3.kcoding.cn/d/ABPlayerRelease/appcast.xml",
         "SUEnableAutomaticChecks": true,
         "SUPublicEDKey": "Zw9DuoU9cuGJGt81eRRfWq5OwhCG+udkeOBwScjchU0=",
+        "NSAppTransportSecurity": .dictionary([
+          "NSExceptionDomains": .dictionary([
+            "s3.kcoding.cn": .dictionary([
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": true,
+            ])
+          ])
+        ]),
       ]),
       buildableFolders: [
         "ABPlayer/Sources",
