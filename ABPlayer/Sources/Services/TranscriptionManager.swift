@@ -107,9 +107,14 @@ final class TranscriptionManager {
 
     state = .loading(modelName: modelName)
     do {
+      // Resolve the on-disk folder so WhisperKit skips the network file-listing call.
+      // Without this, WhisperKit always contacts huggingface.co to list files even when
+      // the model is already downloaded — which fails under restricted networks (e.g. China).
+      let localFolder = Self.localModelFolder(modelName: modelName, downloadBase: downloadBase)
       let config = WhisperKitConfig(
         model: modelName,
-        downloadBase: downloadBase
+        downloadBase: downloadBase,
+        modelFolder: localFolder  // nil when not yet downloaded → falls back to original behaviour
       )
 
       whisperKit = try await WhisperKit(config)
@@ -125,6 +130,37 @@ final class TranscriptionManager {
       state = .failed("Failed to load model: \(error.localizedDescription)")
       throw error
     }
+  }
+
+  /// Returns the path to an already-downloaded model folder, or nil if not present.
+  /// WhisperKit stores models at: <downloadBase>/models/argmaxinc/whisperkit-coreml/<variant>/
+  ///
+  /// Matching uses longest-known-ID-first to prevent overlap: a folder whose name
+  /// contains both "large-v3" and "distil-large-v3" (e.g. distil-whisper_distil-large-v3)
+  /// is attributed only to "distil-large-v3", never to "large-v3".
+  private static func localModelFolder(modelName: String, downloadBase: URL) -> String? {
+    let whisperKitDir = downloadBase
+      .appendingPathComponent("models/argmaxinc/whisperkit-coreml")
+    guard let contents = try? FileManager.default.contentsOfDirectory(
+      at: whisperKitDir,
+      includingPropertiesForKeys: [.isDirectoryKey],
+      options: [.skipsHiddenFiles]
+    ) else { return nil }
+
+    // Sort known model IDs longest-first so the most specific name wins when
+    // folder names overlap (e.g. "distil-large-v3" beats "large-v3").
+    let knownModels = TranscriptionSettings.availableModels.map(\.id)
+      .sorted { $0.count > $1.count }
+
+    return contents.first { url in
+      let folderName = url.lastPathComponent
+      // Find the longest known model ID present in this folder name.
+      guard let bestMatch = knownModels.first(where: { folderName.contains($0) }) else {
+        return false
+      }
+      // Accept this folder only if its most-specific match is the requested model.
+      return bestMatch == modelName
+    }?.path
   }
   
   func checkIfModelExist(
