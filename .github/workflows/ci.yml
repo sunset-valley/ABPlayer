@@ -221,7 +221,12 @@ jobs:
                   # Generate Appcast
                   # We need to construct the appcast manually or use the tool. 
                   # Using generate_appcast tool:
-                  "$SPARKLE_BIN/generate_appcast" . --ed-key-file sparkle_key --download-url-prefix "https://github.com/sunset-valley/ABPlayer/releases/latest/download/"
+                  "$SPARKLE_BIN/generate_appcast" . --ed-key-file sparkle_key --download-url-prefix "http://s3.kcoding.cn/d/ABPlayerRelease/"
+
+                  if ! grep -q 'url="http://s3.kcoding.cn/d/ABPlayerRelease/ABPlayer.zip"' appcast.xml; then
+                    echo "Generated appcast.xml does not point to expected S3 URL"
+                    exit 1
+                  fi
 
                   # Cleanup key
                   rm sparkle_key

@@ -1,3 +1,9 @@
+## [0.2.13.91] - 2026-03-19
+
+### Chores
+- point Sparkle feed and appcast URLs to S3
+
+
 ## [0.2.13.90] - 2026-03-19
 
 ### Bug Fixes
