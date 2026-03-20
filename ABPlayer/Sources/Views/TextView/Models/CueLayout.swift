@@ -47,10 +47,4 @@ struct CueLayout: Equatable, Sendable {
       && charIndex < textRange.location + textRange.length
   }
 
-  /// Returns `true` when `charIndex` falls anywhere in the full paragraph
-  /// (prefix, text, or newline).
-  func containsParagraphIndex(_ charIndex: Int) -> Bool {
-    charIndex >= paragraphRange.location
-      && charIndex < paragraphRange.location + paragraphRange.length
-  }
 }

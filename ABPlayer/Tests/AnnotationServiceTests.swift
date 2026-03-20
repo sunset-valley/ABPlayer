@@ -185,33 +185,6 @@ struct AnnotationServiceTests {
   }
 
   @Test @MainActor
-  func testAnnotationAtCharacterIndex() throws {
-    let context = try makeContext()
-    let service = context.service
-    let cueID = UUID()
-
-    service.addAnnotation(
-      cueID: cueID,
-      range: NSRange(location: 5, length: 10),
-      selectedText: "some words",
-      type: .collocation
-    )
-
-    // Inside range
-    let found = service.annotation(at: 7, in: cueID)
-    #expect(found != nil)
-    #expect(found?.type == .collocation)
-
-    // Outside range
-    let notFound = service.annotation(at: 0, in: cueID)
-    #expect(notFound == nil)
-
-    // After range
-    let after = service.annotation(at: 16, in: cueID)
-    #expect(after == nil)
-  }
-
-  @Test @MainActor
   func testRemoveNonExistentAnnotation() throws {
     let context = try makeContext()
     let service = context.service

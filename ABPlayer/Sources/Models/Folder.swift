@@ -67,13 +67,4 @@ extension Folder {
 
     return url
   }
-
-  /// 获取根文件夹
-  var rootFolder: Folder {
-    var root = self
-    while let parent = root.parent {
-      root = parent
-    }
-    return root
-  }
 }

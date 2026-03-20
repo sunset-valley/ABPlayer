@@ -163,11 +163,6 @@ extension ABFile {
     )
   }
 
-  /// 是否曾经播放完成过（completionCount >= 1）
-  var isPlaybackComplete: Bool {
-    playbackRecord?.completionCount ?? 0 >= 1
-  }
-
   /// 检查 Bookmark 是否有效（文件是否存在）
   var isBookmarkValid: Bool {
     guard let url = resolvedURL() else { return false }

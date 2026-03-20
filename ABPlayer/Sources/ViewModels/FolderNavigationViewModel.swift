@@ -350,14 +350,6 @@ final class FolderNavigationViewModel {
     )
   }
   
-  func addAudioFile(from url: URL) {
-    importService.addAudioFile(from: url, currentFolder: currentFolder)
-  }
-  
-  func importFolder(from url: URL) {
-    importService.importFolder(from: url, currentFolder: currentFolder)
-  }
-  
   func refreshCurrentFolder() async {
     guard let currentFolder else { return }
     await importService.refreshFolder(currentFolder)
