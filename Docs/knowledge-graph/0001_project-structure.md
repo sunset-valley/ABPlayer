@@ -31,14 +31,15 @@ Dependencies flow **downward only**: Views → ViewModels → Services → Model
 | Module | Role | Key Types |
 |--------|------|-----------|
 | **Models/** | SwiftData `@Model` entities and value types | `ABFile`, `Folder`, `Vocabulary`, `TextAnnotation`, `Transcription`, `SubtitleFile`, `PlaybackRecord`, `LoopSegment`, `ListeningSession` |
-| **Services/** | Business logic, external I/O, state management | `PlayerManager`, `TranscriptionManager`, `TranscriptionQueueManager`, `AnnotationService`, `VocabularyService`, `SubtitleLoader`, `SessionTracker` |
+| **Services/** | Business logic, external I/O, state management | `PlayerManager`, `TranscriptionManager`, `TranscriptionQueueManager`, `AnnotationService`, `SubtitleLoader`, `SessionTracker` |
 | **Services/PlayerManager/** | Playback engine with AB-loop and segment support | `PlayerManager` (coordinator), `PlayerEngine` (AVPlayer wrapper), `PlayerEngineProtocol` (testable boundary) |
+| **Services/FolderNavigation** | Sub-services delegated from `FolderNavigationViewModel` | `NavigationService` (folder stack), `SelectionStateService` (selection + UserDefaults persistence), `DeletionService` (file/folder delete), `ImportService` (import + refresh) |
 | **Services/*Settings** | UserDefaults-backed preferences | `TranscriptionSettings`, `PlayerSettings`, `LibrarySettings`, `ProxySettings` |
-| **ViewModels/** | Presentation logic binding Services to Views | `BasePlayerViewModel` (shared), `Audio/VideoPlayerViewModel`, `TranscriptionViewModel`, `MainSplitViewModel`, `FolderNavigationViewModel` |
+| **ViewModels/** | Presentation logic binding Services to Views | `BasePlayerViewModel` (shared), `Audio/VideoPlayerViewModel`, `TranscriptionViewModel`, `MainSplitViewModel` (split layout + pane allocation), `FolderNavigationViewModel` (delegates sub-concerns to folder-navigation services) |
 | **Views/** | SwiftUI screens and AppKit-bridged components | Split layout, player views, subtitle overlay, settings panels |
 | **Views/TextView/** | Custom transcript renderer (NSTextView-backed) | `TranscriptTextView` (unified multi-cue), `AnnotatedTextView` (per-cue), `ECTextNativeView` |
 | **Plugins/** | Extensible plugin system | `Plugin` protocol, `PluginManager` (registry), `CounterPlugin` (sample) |
-| **Design/** | Typography tokens | `Typography.swift` |
+| **Design/** | Font token (`Font.sm`) and semantic view modifiers (`bodyStyle()`, `captionStyle()`) | `Typography.swift` |
 | **Utils/** | Small helpers | `SortingUtility`, `URL+Unique` |
 
 ### Dependency Injection
@@ -50,7 +51,7 @@ ABPlayerApp (creates & owns all services)
   ├─ ModelContainer → .modelContainer() modifier
   ├─ PlayerManager, SessionTracker, SubtitleLoader
   ├─ TranscriptionManager, TranscriptionQueueManager, TranscriptionSettings
-  ├─ VocabularyService(modelContext), AnnotationService(modelContext)
+  ├─ AnnotationService(modelContext)
   ├─ LibrarySettings, PlayerSettings, ProxySettings
   └─ SparkleUpdater
        ↓  .environment(...)
@@ -171,11 +172,28 @@ VocabularyService:
 
 #### 5. Navigation & Selection
 
+`FolderNavigationViewModel` delegates each concern to a dedicated sub-service:
+
 ```
-NavigationService: folder navigation stack (navigateInto / navigateBack)
-SelectionStateService: current file/folder selection
-  → persists IDs to UserDefaults for restore on relaunch
-  → selection change triggers PlayerManager file load + subtitle load
+NavigationService        → folder stack (navigateInto / navigateBack), currentFolder, navigationPath
+SelectionStateService    → current file/folder selection, persists IDs to UserDefaults for restore on relaunch
+DeletionService          → delete file or folder (optionally from disk), player/selection cleanup
+ImportService            → import from file picker, folder refresh; fires onImportCompleted callback
+  → callback bumps FolderNavigationViewModel.refreshToken → invalidates currentFolders()/currentAudioFiles()
+
+Selection change → PlayerManager file load + subtitle load
+MainSplitViewModel.restoreLastSelectionIfNeeded() → restores navigation path + file selection on launch
+```
+
+`MainSplitViewModel` manages per-media-type pane allocation:
+
+```
+PaneContent (allocatable tabs: transcription, segments, …)
+  → leftTabs / rightTabs: ordered tab lists for bottomLeft / right pane
+  → leftSelection / rightSelection: active tab per pane
+  → all state persisted to UserDefaults keyed by mediaType (audio/video)
+  → switchMediaType() swaps full layout state on audio↔video switch
+  → sanitizeAllocations() prevents duplicates and overlap between panes
 ```
 
 ### Test Coverage
