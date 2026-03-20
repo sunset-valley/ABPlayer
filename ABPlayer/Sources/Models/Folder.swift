@@ -8,10 +8,10 @@ final class Folder {
   var name: String
   var createdAt: Date
 
-  /// 相对于根导入目录的路径，用于生成确定性 ID
+  /// Path relative to the imported root folder, used for deterministic IDs
   var relativePath: String
 
-  /// 根文件夹的 security-scoped bookmark（仅根文件夹需要存储）
+  /// Security-scoped bookmark for root folders (stored only for roots)
   @Attribute(.externalStorage)
   var bookmarkData: Data?
 
@@ -23,7 +23,7 @@ final class Folder {
   @Relationship(inverse: \ABFile.folder)
   var audioFiles: [ABFile]
 
-  /// 按文件名排序的音频文件（用于播放顺序）
+  /// Audio files sorted by file name (used for playback order)
   var sortedAudioFiles: [ABFile] {
     audioFiles.sorted { $0.displayName < $1.displayName }
   }
