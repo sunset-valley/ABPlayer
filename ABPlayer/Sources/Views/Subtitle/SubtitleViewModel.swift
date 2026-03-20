@@ -13,14 +13,13 @@ final class SubtitleViewModel {
       case setPlayerManager(PlayerManager)
       case handleUserScroll
       case cancelScrollResume
-      case handleWordSelection(
-        wordIndex: Int?,
-        cueID: UUID,
+      case handleTextSelection(
+        selection: CrossCueTextSelection?,
         isPlaying: Bool,
         onPause: () -> Void,
         onPlay: () -> Void
       )
-      case dismissWord(onPlay: () -> Void)
+      case dismissSelection(onPlay: () -> Void)
       case handleCueTap(cueID: UUID, cueStartTime: Double)
       case updateCurrentCue(time: Double, cues: [SubtitleCue])
       case reset
@@ -34,44 +33,60 @@ final class SubtitleViewModel {
   struct Output: Equatable {
     let currentCueID: UUID?
     let scrollState: ScrollState
-    let wordSelection: WordSelectionState
-
-    var countdown: Int? {
-      scrollState.countdown
-    }
-
-    var selectedWord: (cueID: UUID, wordIndex: Int)? {
-      wordSelection.selectedWord
-    }
+    let textSelection: TextSelectionState
   }
 
   // MARK: - Types
 
   enum ScrollState: Equatable {
     case autoScrolling
-    case userScrolling(countdown: Int)
+    case userScrolling
 
     var isUserScrolling: Bool {
-      if case .userScrolling = self { return true }
-      return false
-    }
-
-    var countdown: Int? {
-      if case let .userScrolling(value) = self { return value }
-      return nil
+      self == .userScrolling
     }
   }
 
-  enum WordSelectionState: Equatable {
+  enum TextSelectionState: Equatable {
     case none
-    case selected(cueID: UUID, wordIndex: Int)
+    /// User has selected (possibly cross-cue) text.
+    case selecting(selection: CrossCueTextSelection)
+    /// User has tapped an existing annotation.
+    case annotationSelected(cueID: UUID, annotationID: UUID)
 
-    var selectedWord: (cueID: UUID, wordIndex: Int)? {
-      if case let .selected(cueID, wordIndex) = self {
-        return (cueID, wordIndex)
+    // MARK: Convenience accessors
+
+    /// Returns the cross-cue selection when in the `.selecting` state.
+    var crossCueSelection: CrossCueTextSelection? {
+      if case let .selecting(selection) = self { return selection }
+      return nil
+    }
+
+    /// Backward-compatible accessor for single-cue selections.
+    ///
+    /// Returns `(cueID, localRange, text)` when the selection is confined to
+    /// one cue; for cross-cue selections the first segment is returned.
+    var selectedRange: (cueID: UUID, range: NSRange, text: String)? {
+      if case let .selecting(selection) = self {
+        if let cueID = selection.singleCueID,
+          let localRange = selection.singleLocalRange
+        {
+          return (cueID, localRange, selection.fullText)
+        }
+        // Cross-cue: return the first segment so callers still get something.
+        if let first = selection.segments.first {
+          return (first.cueID, first.localRange, selection.fullText)
+        }
       }
       return nil
     }
+
+    var annotationCueID: UUID? {
+      if case let .annotationSelected(cueID, _) = self { return cueID }
+      return nil
+    }
+
+    var isActive: Bool { self != .none }
   }
 
   // MARK: - Dependencies
@@ -83,17 +98,13 @@ final class SubtitleViewModel {
 
   private(set) var currentCueID: UUID?
   private(set) var scrollState: ScrollState = .autoScrolling
-  private(set) var wordSelection: WordSelectionState = .none
+  private(set) var textSelection: TextSelectionState = .none
 
-  var output: Output {
-    makeOutput()
-  }
+  var output: Output { makeOutput() }
 
   // MARK: - Internal State
 
-  private static let pauseDuration = 3
   private var wasPlayingBeforeSelection = false
-  private var scrollResumeTask: Task<Void, Never>?
 
   // MARK: - Observation
 
@@ -127,16 +138,15 @@ final class SubtitleViewModel {
       handleUserScroll()
     case .cancelScrollResume:
       cancelScrollResume()
-    case let .handleWordSelection(wordIndex, cueID, isPlaying, onPause, onPlay):
-      handleWordSelection(
-        wordIndex: wordIndex,
-        cueID: cueID,
+    case let .handleTextSelection(selection, isPlaying, onPause, onPlay):
+      handleTextSelection(
+        selection: selection,
         isPlaying: isPlaying,
         onPause: onPause,
         onPlay: onPlay
       )
-    case let .dismissWord(onPlay):
-      dismissWord(onPlay: onPlay)
+    case let .dismissSelection(onPlay):
+      dismissSelection(onPlay: onPlay)
     case let .handleCueTap(cueID, cueStartTime):
       await handleCueTap(cueID: cueID, cueStartTime: cueStartTime)
     case let .updateCurrentCue(time, cues):
@@ -158,39 +168,43 @@ final class SubtitleViewModel {
 
   @MainActor
   func handleUserScroll() {
-    startScrollResumeCountdown()
+    scrollState = .userScrolling
   }
 
   func cancelScrollResume() {
-    stopScrollResumeCountdown()
+    scrollState = .autoScrolling
   }
 
-  func handleWordSelection(
-    wordIndex: Int?,
-    cueID: UUID,
+  func handleTextSelection(
+    selection: CrossCueTextSelection?,
     isPlaying: Bool,
     onPause: () -> Void,
     onPlay: () -> Void
   ) {
-    if let wordIndex {
-      assert(wordIndex >= 0, "Word index must be non-negative")
-
-      if wordSelection == .none {
+    if let selection {
+      if textSelection == .none {
         wasPlayingBeforeSelection = isPlaying
-        if isPlaying {
-          onPause()
-        }
+        if isPlaying { onPause() }
       }
-      wordSelection = .selected(cueID: cueID, wordIndex: wordIndex)
-      Self.logger.debug("Selected word at index \(wordIndex) in cue \(cueID)")
+      textSelection = .selecting(selection: selection)
+      Self.logger.debug(
+        "Selected '\(selection.fullText.prefix(40))' across \(selection.segments.count) cue(s)")
     } else {
-      dismissWord(onPlay: onPlay)
+      dismissSelection(onPlay: onPlay)
     }
   }
 
-  func dismissWord(onPlay: () -> Void) {
-    guard wordSelection != .none else { return }
-    wordSelection = .none
+  func selectAnnotation(cueID: UUID, annotationID: UUID, isPlaying: Bool, onPause: () -> Void) {
+    if textSelection == .none {
+      wasPlayingBeforeSelection = isPlaying
+      if isPlaying { onPause() }
+    }
+    textSelection = .annotationSelected(cueID: cueID, annotationID: annotationID)
+  }
+
+  func dismissSelection(onPlay: () -> Void) {
+    guard textSelection != .none else { return }
+    textSelection = .none
     if wasPlayingBeforeSelection {
       onPlay()
       wasPlayingBeforeSelection = false
@@ -204,8 +218,7 @@ final class SubtitleViewModel {
 
     await playerManager?.seek(to: cueStartTime + 0.001)
     currentCueID = cueID
-
-    stopScrollResumeCountdown()
+    scrollState = .autoScrolling
     Self.logger.debug("Tapped cue at time \(cueStartTime)")
   }
 
@@ -220,10 +233,9 @@ final class SubtitleViewModel {
   @MainActor
   func reset() {
     stopTrackingPlayback()
-    stopScrollResumeCountdown()
     currentCueID = nil
     scrollState = .autoScrolling
-    wordSelection = .none
+    textSelection = .none
     wasPlayingBeforeSelection = false
   }
 
@@ -276,49 +288,8 @@ final class SubtitleViewModel {
     Output(
       currentCueID: currentCueID,
       scrollState: scrollState,
-      wordSelection: wordSelection
+      textSelection: textSelection
     )
-  }
-
-  private func startScrollResumeCountdown() {
-    scrollResumeTask?.cancel()
-    scrollState = .userScrolling(countdown: Self.pauseDuration)
-
-    scrollResumeTask = Task { @MainActor in
-      for await remaining in countdown(from: Self.pauseDuration) {
-        guard !Task.isCancelled else {
-          Self.logger.debug("Countdown task cancelled")
-          return
-        }
-        scrollState = remaining > 0 ? .userScrolling(countdown: remaining) : .autoScrolling
-      }
-      scrollState = .autoScrolling
-      Self.logger.debug("Countdown completed, resumed auto-scrolling")
-    }
-  }
-
-  private func stopScrollResumeCountdown() {
-    scrollResumeTask?.cancel()
-    scrollResumeTask = nil
-    scrollState = .autoScrolling
-  }
-
-  private func countdown(from seconds: Int) -> AsyncStream<Int> {
-    AsyncStream { continuation in
-      Task {
-        for i in (0 ..< seconds).reversed() {
-          continuation.yield(i)
-          do {
-            try await Task.sleep(for: .seconds(1))
-          } catch {
-            Self.logger.debug("Countdown sleep interrupted: \(error.localizedDescription)")
-            continuation.finish()
-            return
-          }
-        }
-        continuation.finish()
-      }
-    }
   }
 
   private func trackCurrentCue(at currentTime: Double, in cues: [SubtitleCue], epsilon: Double) {
@@ -333,7 +304,9 @@ final class SubtitleViewModel {
     }
   }
 
-  private func findActiveCue(at time: Double, in cues: [SubtitleCue], epsilon: Double = 0.001) -> SubtitleCue? {
+  private func findActiveCue(
+    at time: Double, in cues: [SubtitleCue], epsilon: Double = 0.001
+  ) -> SubtitleCue? {
     assert(epsilon > 0, "Epsilon must be positive")
     assert(time.isFinite, "Time must be finite")
 
