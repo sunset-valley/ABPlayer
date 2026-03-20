@@ -47,14 +47,6 @@ extension Font {
 // MARK: - Text Styles (Semantic)
 
 extension View {
-  func titleStyle() -> some View {
-    self.font(.largeTitle)
-  }
-
-  func headlineStyle() -> some View {
-    self.font(.headline)
-  }
-
   func bodyStyle() -> some View {
     self.font(.sm)
       .foregroundStyle(Color.asset.textPrimary)

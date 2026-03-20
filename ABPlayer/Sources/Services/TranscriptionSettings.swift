@@ -238,12 +238,6 @@ final class TranscriptionSettings {
     return indicators.allSatisfy { fm.fileExists(atPath: modelDir.appendingPathComponent($0).path) }
   }
 
-  /// Returns list of downloaded models in the current model directory
-  /// WhisperKit stores models at: models/argmaxinc/whisperkit-coreml/<model-name>/
-  func listDownloadedModels() -> [(name: String, size: Int64)] {
-    Self.listModelsSync(in: modelDirectoryURL)
-  }
-
   /// Returns list of downloaded models asynchronously (non-blocking)
   func listDownloadedModelsAsync() async -> [(name: String, size: Int64)] {
     let url = modelDirectoryURL

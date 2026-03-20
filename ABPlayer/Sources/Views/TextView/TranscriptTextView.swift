@@ -149,9 +149,6 @@ struct TranscriptTextView: NSViewRepresentable {
 
   @MainActor
   final class Coordinator: NSObject {
-    private static let logger = Logger(
-      subsystem: "com.abplayer", category: "TranscriptTextView")
-
     // Inputs (mirrored from the struct so we can diff)
     var cues: [SubtitleCue]
     var cueIDs: [UUID]
@@ -452,8 +449,6 @@ struct TranscriptTextView: NSViewRepresentable {
 // MARK: - TranscriptNSTextView
 
 final class TranscriptNSTextView: NSTextView {
-  private static let logger = Logger(
-    subsystem: "com.abplayer", category: "TranscriptNSTextView")
 
   weak var coordinator: TranscriptTextView.Coordinator?
   private var trackingArea: NSTrackingArea?

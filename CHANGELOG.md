@@ -1,3 +1,17 @@
+## [0.2.13.92] - 2026-03-20
+
+### Improvements
+- remove unused declaration-only APIs
+
+### Chores
+- point Sparkle feed to S3 and validate appcast URL (#137)
+
+### Other
+- add TextView
+- create a doc rule
+- fix tests (#138)
+
+
 ## [0.2.13.91] - 2026-03-19
 
 ### Chores
