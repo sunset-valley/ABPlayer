@@ -344,14 +344,11 @@ final class FolderImporter {
 
 enum ImportError: LocalizedError {
   case accessDenied
-  case invalidDirectory
 
   var errorDescription: String? {
     switch self {
     case .accessDenied:
       return "Unable to access the selected folder"
-    case .invalidDirectory:
-      return "The selected path is not a valid directory"
     }
   }
 }

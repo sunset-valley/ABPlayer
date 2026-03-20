@@ -21,54 +21,11 @@ final class SubtitleLoader {
         return await loadSubtitles(from: srtURL)
     }
     
-    /// Load subtitles from a SubtitleFile entity using its bookmark
-    /// - Parameter subtitleFile: The subtitle file entity
-    /// - Returns: Array of subtitle cues, empty if loading fails
-    func loadSubtitles(from subtitleFile: SubtitleFile) async -> [SubtitleCue] {
-        return await loadSubtitles(from: subtitleFile.bookmarkData)
-    }
-    
-    /// Load subtitles from bookmark data
-    /// - Parameter bookmarkData: The security-scoped bookmark data
-    /// - Returns: Array of subtitle cues, empty if loading fails
-    func loadSubtitles(from bookmarkData: Data) async -> [SubtitleCue] {
-        var isStale = false
-        guard let url = try? URL(
-            resolvingBookmarkData: bookmarkData,
-            options: [.withSecurityScope],
-            relativeTo: nil,
-            bookmarkDataIsStale: &isStale
-        ) else { return [] }
-        
-        let gotAccess = url.startAccessingSecurityScopedResource()
-        defer { if gotAccess { url.stopAccessingSecurityScopedResource() } }
-        
-        return await loadSubtitles(from: url)
-    }
-    
     /// Load subtitles from a specific URL
     /// - Parameters:
     ///   - url: The URL of the subtitle file
-    ///   - bookmarkData: Optional bookmark data for security-scoped access
     /// - Returns: Array of subtitle cues, empty if loading fails
-    func loadSubtitles(from url: URL, withSecurityScope bookmarkData: Data? = nil) async -> [SubtitleCue] {
-        // If bookmark data is provided, use it for security scope
-        if let bookmarkData = bookmarkData {
-            var isStale = false
-            guard let resolvedURL = try? URL(
-                resolvingBookmarkData: bookmarkData,
-                options: [.withSecurityScope],
-                relativeTo: nil,
-                bookmarkDataIsStale: &isStale
-            ) else { return [] }
-            
-            let gotAccess = resolvedURL.startAccessingSecurityScopedResource()
-            defer { if gotAccess { resolvedURL.stopAccessingSecurityScopedResource() } }
-            
-            return await parseSubtitles(at: url)
-        }
-        
-        // Otherwise, try to load directly
+    func loadSubtitles(from url: URL) async -> [SubtitleCue] {
         return await parseSubtitles(at: url)
     }
     

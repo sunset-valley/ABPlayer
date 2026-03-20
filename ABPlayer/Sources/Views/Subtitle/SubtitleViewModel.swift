@@ -6,37 +6,31 @@ import OSLog
 final class SubtitleViewModel {
   private static let logger = Logger(subsystem: "com.abplayer", category: "SubtitleViewModel")
 
-  // MARK: - Input / Output
+  // MARK: - Types
 
-  struct Input {
-    enum Action {
-      case setPlayerManager(PlayerManager)
-      case handleUserScroll
-      case cancelScrollResume
-      case handleTextSelection(
-        selection: CrossCueTextSelection?,
-        isPlaying: Bool,
-        onPause: () -> Void,
-        onPlay: () -> Void
-      )
-      case dismissSelection(onPlay: () -> Void)
-      case handleCueTap(cueID: UUID, cueStartTime: Double)
-      case updateCurrentCue(time: Double, cues: [SubtitleCue])
-      case reset
-      case trackPlayback(cues: [SubtitleCue])
-      case stopTrackingPlayback
-    }
-
-    let action: Action
+  enum Action {
+    case setPlayerManager(PlayerManager)
+    case handleUserScroll
+    case cancelScrollResume
+    case handleTextSelection(
+      selection: CrossCueTextSelection?,
+      isPlaying: Bool,
+      onPause: () -> Void,
+      onPlay: () -> Void
+    )
+    case handleCueTap(cueID: UUID, cueStartTime: Double)
+    case reset
+    case trackPlayback(cues: [SubtitleCue])
+    case stopTrackingPlayback
   }
+
+  // MARK: - Output
 
   struct Output: Equatable {
     let currentCueID: UUID?
     let scrollState: ScrollState
     let textSelection: TextSelectionState
   }
-
-  // MARK: - Types
 
   enum ScrollState: Equatable {
     case autoScrolling
@@ -55,12 +49,6 @@ final class SubtitleViewModel {
     case annotationSelected(cueID: UUID, annotationID: UUID)
 
     // MARK: Convenience accessors
-
-    /// Returns the cross-cue selection when in the `.selecting` state.
-    var crossCueSelection: CrossCueTextSelection? {
-      if case let .selecting(selection) = self { return selection }
-      return nil
-    }
 
     /// Backward-compatible accessor for single-cue selections.
     ///
@@ -117,20 +105,9 @@ final class SubtitleViewModel {
     self.playerManager = playerManager
   }
 
-  // MARK: - Transform
+  // MARK: - Actions
 
-  @discardableResult
-  func transform(input: Input) async -> Output {
-    await perform(action: input.action)
-    return makeOutput()
-  }
-
-  @discardableResult
-  func transform(_ action: Input.Action) async -> Output {
-    await transform(input: .init(action: action))
-  }
-
-  func perform(action: Input.Action) async {
+  func perform(action: Action) async {
     switch action {
     case let .setPlayerManager(playerManager):
       setPlayerManager(playerManager)
@@ -145,12 +122,8 @@ final class SubtitleViewModel {
         onPause: onPause,
         onPlay: onPlay
       )
-    case let .dismissSelection(onPlay):
-      dismissSelection(onPlay: onPlay)
     case let .handleCueTap(cueID, cueStartTime):
       await handleCueTap(cueID: cueID, cueStartTime: cueStartTime)
-    case let .updateCurrentCue(time, cues):
-      updateCurrentCue(time: time, cues: cues)
     case .reset:
       reset()
     case let .trackPlayback(cues):

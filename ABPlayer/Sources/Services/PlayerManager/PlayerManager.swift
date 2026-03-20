@@ -21,10 +21,6 @@ final class PlayerManager {
   var currentFile: ABFile?
   var sessionTracker: SessionTracker?
 
-  var avPlayer: AVPlayer? {
-    get async { await _engine.currentPlayer }
-  }
-
   var isPlaying: Bool = false
   var currentTime: Double = 0
   var duration: Double = 0
@@ -77,11 +73,6 @@ final class PlayerManager {
     Task { [weak self] in
       await self?.clearPlayer()
     }
-  }
-
-  func cleanup() {
-    endOfFileTask?.cancel()
-    endOfFileTask = nil
   }
 
   // MARK: - Public API

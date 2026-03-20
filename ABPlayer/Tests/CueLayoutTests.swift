@@ -112,19 +112,6 @@ struct CueLayoutTests {
     #expect(!layout.containsTextIndex(25))
   }
 
-  // MARK: - containsParagraphIndex
-
-  @Test
-  func testContainsParagraphIndexFullRange() {
-    let layout = makeLayout(offset: 10, prefixLen: 5, textLen: 20)
-    // paragraphRange = 10..<36
-    #expect(layout.containsParagraphIndex(10))
-    #expect(layout.containsParagraphIndex(25))
-    #expect(layout.containsParagraphIndex(35))
-    #expect(!layout.containsParagraphIndex(36))
-    #expect(!layout.containsParagraphIndex(9))
-  }
-
   // MARK: - Round-trip
 
   @Test

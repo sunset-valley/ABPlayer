@@ -14,7 +14,4 @@ final class PluginManager {
     ]
   }
   
-  func plugin(withID id: String) -> (any Plugin)? {
-    plugins.first { $0.id == id }
-  }
 }
