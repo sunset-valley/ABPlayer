@@ -21,8 +21,7 @@ final class TranscriptionViewModel {
   var cachedCues: [SubtitleCue] = []
   var hasCheckedCache: Bool = false
   var isLoadingCache: Bool = false
-  var pauseCountdown: Int?
-  
+
   private var loadCachedTask: Task<Void, Never>?
   
   // MARK: - Persistence
@@ -72,7 +71,6 @@ final class TranscriptionViewModel {
     cachedCues = []
     hasCheckedCache = false
     isLoadingCache = false
-    pauseCountdown = nil
     transcriptionManager?.reset()
   }
   

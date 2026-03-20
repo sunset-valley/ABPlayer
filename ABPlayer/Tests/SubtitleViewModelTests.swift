@@ -4,383 +4,389 @@ import Testing
 
 @testable import ABPlayer
 
-struct AttributedStringBuilderTests {
-  
-  @Test
-  func testBuildBasicAttributedString() {
-    let builder = AttributedStringBuilder(
-      fontSize: 16.0,
-      defaultTextColor: .labelColor,
-      difficultyLevelProvider: { _ in nil }
-    )
-    
-    let words = ["Hello", "world", "test"]
-    let result = builder.build(words: words)
-    
-    #expect(result.wordRanges.count == 3)
-    #expect(result.attributedString.string == "Hello world test")
-  }
-  
-  @Test
-  func testWordRangesCalculation() {
-    let builder = AttributedStringBuilder(
-      fontSize: 16.0,
-      defaultTextColor: .labelColor,
-      difficultyLevelProvider: { _ in nil }
-    )
-    
-    let words = ["Hello", "world"]
-    let result = builder.build(words: words)
-    
-    #expect(result.wordRanges[0].location == 0)
-    #expect(result.wordRanges[0].length == 5)
-    #expect(result.wordRanges[1].location == 6)
-    #expect(result.wordRanges[1].length == 5)
-  }
-  
-  @Test
-  func testColorForWordWithoutDifficulty() {
-    let builder = AttributedStringBuilder(
-      fontSize: 16.0,
-      defaultTextColor: .labelColor,
-      difficultyLevelProvider: { _ in nil }
-    )
-    
-    let color = builder.colorForWord("test")
-    #expect(color == .labelColor)
-  }
-  
-  @Test
-  func testColorForWordWithDifficultyLevel1() {
-    let builder = AttributedStringBuilder(
-      fontSize: 16.0,
-      defaultTextColor: .labelColor,
-      difficultyLevelProvider: { word in
-        word == "easy" ? 1 : nil
-      }
-    )
-    
-    let color = builder.colorForWord("easy")
-    #expect(color == .systemGreen)
-  }
-  
-  @Test
-  func testColorForWordWithDifficultyLevel2() {
-    let builder = AttributedStringBuilder(
-      fontSize: 16.0,
-      defaultTextColor: .labelColor,
-      difficultyLevelProvider: { word in
-        word == "medium" ? 2 : nil
-      }
-    )
-    
-    let color = builder.colorForWord("medium")
-    #expect(color == .systemYellow)
-  }
-  
-  @Test
-  func testColorForWordWithDifficultyLevel3() {
-    let builder = AttributedStringBuilder(
-      fontSize: 16.0,
-      defaultTextColor: .labelColor,
-      difficultyLevelProvider: { word in
-        word == "hard" ? 3 : nil
-      }
-    )
-    
-    let color = builder.colorForWord("hard")
-    #expect(color == .systemRed)
-  }
-  
-  @Test
-  func testEmptyWordsArray() {
-    let builder = AttributedStringBuilder(
-      fontSize: 16.0,
-      defaultTextColor: .labelColor,
-      difficultyLevelProvider: { _ in nil }
-    )
-    
-    let result = builder.build(words: [])
-    #expect(result.wordRanges.isEmpty)
-    #expect(result.attributedString.string.isEmpty)
-  }
-  
-  @Test
-  func testSingleWord() {
-    let builder = AttributedStringBuilder(
-      fontSize: 16.0,
-      defaultTextColor: .labelColor,
-      difficultyLevelProvider: { _ in nil }
-    )
-    
-    let result = builder.build(words: ["Hello"])
-    #expect(result.wordRanges.count == 1)
-    #expect(result.attributedString.string == "Hello")
-  }
-  
-  @Test
-  func testFontAttributeApplied() {
-    let fontSize: Double = 20.0
-    let builder = AttributedStringBuilder(
-      fontSize: fontSize,
-      defaultTextColor: .labelColor,
-      difficultyLevelProvider: { _ in nil }
-    )
-    
-    let result = builder.build(words: ["Test"])
-    let attributes = result.attributedString.attributes(at: 0, effectiveRange: nil)
-    
-    if let font = attributes[.font] as? NSFont {
-      #expect(abs(font.pointSize - fontSize) < 0.01)
-    } else {
-      Issue.record("Font attribute not found")
-    }
-  }
-  
-  @Test
-  func testWordIndexAttribute() {
-    let builder = AttributedStringBuilder(
-      fontSize: 16.0,
-      defaultTextColor: .labelColor,
-      difficultyLevelProvider: { _ in nil }
-    )
-    
-    let result = builder.build(words: ["First", "Second"])
-    
-    let firstAttributes = result.attributedString.attributes(at: 0, effectiveRange: nil)
-    let secondAttributes = result.attributedString.attributes(at: 6, effectiveRange: nil)
-    
-    #expect(firstAttributes[NSAttributedString.Key("wordIndex")] as? Int == 0)
-    #expect(secondAttributes[NSAttributedString.Key("wordIndex")] as? Int == 1)
-  }
+// MARK: - Helpers
+
+/// Build a single-cue `CrossCueTextSelection` for test convenience.
+private func makeSelection(
+  cueID: UUID = UUID(),
+  location: Int = 0,
+  length: Int = 5,
+  text: String = "hello"
+) -> CrossCueTextSelection {
+  CrossCueTextSelection(
+    segments: [
+      .init(
+        cueID: cueID,
+        localRange: NSRange(location: location, length: length),
+        text: text
+      )
+    ],
+    fullText: text,
+    globalRange: NSRange(location: location, length: length)
+  )
 }
 
+/// Build a cross-cue `CrossCueTextSelection` spanning two cues.
+private func makeCrossSelection(
+  cue1ID: UUID = UUID(),
+  cue2ID: UUID = UUID()
+) -> CrossCueTextSelection {
+  CrossCueTextSelection(
+    segments: [
+      .init(cueID: cue1ID, localRange: NSRange(location: 0, length: 5), text: "Hello"),
+      .init(cueID: cue2ID, localRange: NSRange(location: 0, length: 3), text: " wo"),
+    ],
+    fullText: "Hello wo",
+    globalRange: NSRange(location: 0, length: 8)
+  )
+}
+
+// MARK: - Tests
+
 struct SubtitleViewModelTests {
-  
+
   @Test
   @MainActor
   func testInitialState() {
     let viewModel = SubtitleViewModel()
-    
+
     #expect(viewModel.currentCueID == nil)
     #expect(viewModel.scrollState == .autoScrolling)
-    #expect(viewModel.wordSelection == .none)
+    #expect(viewModel.textSelection == .none)
   }
-  
+
   @Test
   @MainActor
   func testHandleUserScroll() async {
     let viewModel = SubtitleViewModel()
-    
+
     viewModel.handleUserScroll()
-    
+
     #expect(viewModel.scrollState.isUserScrolling)
-    if case .userScrolling(let countdown) = viewModel.scrollState {
-      #expect(countdown == 3)
-    } else {
-      Issue.record("Expected userScrolling state")
-    }
+    #expect(viewModel.scrollState == .userScrolling)
   }
-  
+
   @Test
   @MainActor
   func testCancelScrollResume() {
     let viewModel = SubtitleViewModel()
-    
+
     viewModel.handleUserScroll()
     viewModel.cancelScrollResume()
-    
+
     #expect(viewModel.scrollState == .autoScrolling)
   }
-  
+
   @Test
   @MainActor
-  func testHandleWordSelection() {
+  func testHandleTextSelection() {
     let viewModel = SubtitleViewModel()
     let cueID = UUID()
     var pauseCalled = false
-    
-    viewModel.handleWordSelection(
-      wordIndex: 0,
-      cueID: cueID,
+
+    let selection = makeSelection(cueID: cueID, location: 0, length: 5, text: "hello")
+
+    viewModel.handleTextSelection(
+      selection: selection,
       isPlaying: true,
       onPause: { pauseCalled = true },
       onPlay: {}
     )
-    
+
     #expect(pauseCalled)
-    if case .selected(let selectedCueID, let wordIndex) = viewModel.wordSelection {
-      #expect(selectedCueID == cueID)
-      #expect(wordIndex == 0)
+    if case let .selecting(sel) = viewModel.textSelection {
+      #expect(sel.singleCueID == cueID)
+      #expect(sel.singleLocalRange?.location == 0)
+      #expect(sel.singleLocalRange?.length == 5)
+      #expect(sel.fullText == "hello")
     } else {
-      Issue.record("Expected selected state")
+      Issue.record("Expected selecting state")
     }
   }
-  
+
   @Test
   @MainActor
-  func testDismissWord() {
+  func testHandleTextSelectionDoesNotPauseWhenAlreadyPaused() {
     let viewModel = SubtitleViewModel()
     let cueID = UUID()
+    var pauseCalled = false
+
+    let selection = makeSelection(cueID: cueID)
+
+    viewModel.handleTextSelection(
+      selection: selection,
+      isPlaying: false,
+      onPause: { pauseCalled = true },
+      onPlay: {}
+    )
+
+    #expect(!pauseCalled)
+    #expect(viewModel.textSelection.isActive)
+  }
+
+  @Test
+  @MainActor
+  func testDismissSelection() {
+    let viewModel = SubtitleViewModel()
     var playCalled = false
-    
-    viewModel.handleWordSelection(
-      wordIndex: 0,
-      cueID: cueID,
+
+    viewModel.handleTextSelection(
+      selection: makeSelection(),
       isPlaying: true,
       onPause: {},
       onPlay: {}
     )
-    
-    viewModel.dismissWord(onPlay: { playCalled = true })
-    
+
+    viewModel.dismissSelection(onPlay: { playCalled = true })
+
     #expect(playCalled)
-    #expect(viewModel.wordSelection == .none)
+    #expect(viewModel.textSelection == .none)
   }
-  
+
+  @Test
+  @MainActor
+  func testDismissSelectionNoPlayWhenWasNotPlaying() {
+    let viewModel = SubtitleViewModel()
+    var playCalled = false
+
+    viewModel.handleTextSelection(
+      selection: makeSelection(),
+      isPlaying: false,
+      onPause: {},
+      onPlay: {}
+    )
+
+    viewModel.dismissSelection(onPlay: { playCalled = true })
+
+    #expect(!playCalled)
+    #expect(viewModel.textSelection == .none)
+  }
+
+  @Test
+  @MainActor
+  func testSelectAnnotation() {
+    let viewModel = SubtitleViewModel()
+    let cueID = UUID()
+    let annotationID = UUID()
+    var pauseCalled = false
+
+    viewModel.selectAnnotation(
+      cueID: cueID,
+      annotationID: annotationID,
+      isPlaying: true,
+      onPause: { pauseCalled = true }
+    )
+
+    #expect(pauseCalled)
+    if case let .annotationSelected(selectedCueID, selectedAnnotationID) = viewModel.textSelection {
+      #expect(selectedCueID == cueID)
+      #expect(selectedAnnotationID == annotationID)
+    } else {
+      Issue.record("Expected annotationSelected state")
+    }
+  }
+
+  @Test
+  @MainActor
+  func testTextSelectionStateEquality() {
+    let cueID = UUID()
+    let selection = makeSelection(cueID: cueID, location: 0, length: 5, text: "hello")
+    let a = SubtitleViewModel.TextSelectionState.selecting(selection: selection)
+    let b = SubtitleViewModel.TextSelectionState.selecting(selection: selection)
+    #expect(a == b)
+
+    let c = SubtitleViewModel.TextSelectionState.none
+    #expect(a != c)
+  }
+
+  @Test
+  @MainActor
+  func testTextSelectionStateSelectedRange() {
+    let cueID = UUID()
+    let selection = makeSelection(cueID: cueID, location: 5, length: 10, text: "some words")
+    let state = SubtitleViewModel.TextSelectionState.selecting(selection: selection)
+
+    let selected = state.selectedRange
+    #expect(selected?.cueID == cueID)
+    #expect(selected?.range.location == 5)
+    #expect(selected?.range.length == 10)
+    #expect(selected?.text == "some words")
+
+    let noneState = SubtitleViewModel.TextSelectionState.none
+    #expect(noneState.selectedRange == nil)
+  }
+
+  @Test
+  @MainActor
+  func testCrossCueSelectionState() {
+    let cue1ID = UUID()
+    let cue2ID = UUID()
+    let selection = makeCrossSelection(cue1ID: cue1ID, cue2ID: cue2ID)
+    let state = SubtitleViewModel.TextSelectionState.selecting(selection: selection)
+
+    #expect(state.isActive)
+    // Cross-cue: selectedRange falls back to first segment
+    let selected = state.selectedRange
+    #expect(selected?.cueID == cue1ID)
+    #expect(selected?.text == "Hello wo")
+
+    guard case let .selecting(sel) = state else {
+      Issue.record("Expected selecting state"); return
+    }
+    #expect(sel.isCrossCue)
+    #expect(sel.segments.count == 2)
+    #expect(sel.singleCueID == nil)
+  }
+
   @Test
   @MainActor
   func testFindActiveCueWithBinarySearch() {
     let viewModel = SubtitleViewModel()
-    
+
     let cues = [
       SubtitleCue(startTime: 0.0, endTime: 2.0, text: "First"),
       SubtitleCue(startTime: 2.0, endTime: 4.0, text: "Second"),
       SubtitleCue(startTime: 4.0, endTime: 6.0, text: "Third"),
-      SubtitleCue(startTime: 6.0, endTime: 8.0, text: "Fourth")
+      SubtitleCue(startTime: 6.0, endTime: 8.0, text: "Fourth"),
     ]
-    
+
     viewModel.updateCurrentCue(time: 2.5, cues: cues)
     #expect(viewModel.currentCueID == cues[1].id)
-    
+
     viewModel.updateCurrentCue(time: 5.0, cues: cues)
     #expect(viewModel.currentCueID == cues[2].id)
   }
-  
+
   @Test
   @MainActor
   func testUpdateCurrentCueDoesNotUpdateDuringUserScroll() {
     let viewModel = SubtitleViewModel()
-    
+
     let cues = [
       SubtitleCue(startTime: 0.0, endTime: 2.0, text: "First"),
-      SubtitleCue(startTime: 2.0, endTime: 4.0, text: "Second")
+      SubtitleCue(startTime: 2.0, endTime: 4.0, text: "Second"),
     ]
-    
+
     viewModel.updateCurrentCue(time: 1.0, cues: cues)
     let firstCueID = viewModel.currentCueID
-    
+
     viewModel.handleUserScroll()
     viewModel.updateCurrentCue(time: 3.0, cues: cues)
-    
+
     #expect(viewModel.currentCueID == firstCueID)
   }
-  
+
   @Test
   @MainActor
   func testReset() {
     let viewModel = SubtitleViewModel()
-    let cueID = UUID()
-    
+
     viewModel.handleUserScroll()
-    viewModel.handleWordSelection(wordIndex: 0, cueID: cueID, isPlaying: false, onPause: {}, onPlay: {})
-    
+    viewModel.handleTextSelection(
+      selection: makeSelection(),
+      isPlaying: false,
+      onPause: {},
+      onPlay: {}
+    )
+
     viewModel.reset()
-    
+
     #expect(viewModel.scrollState == .autoScrolling)
     #expect(viewModel.currentCueID == nil)
-    #expect(viewModel.wordSelection == .none)
+    #expect(viewModel.textSelection == .none)
   }
-  
+
   @Test
   @MainActor
   func testHandleCueTap() async {
     let viewModel = SubtitleViewModel()
     let cueID = UUID()
-    
+
     viewModel.handleUserScroll()
-    
-    await viewModel.handleCueTap(
-      cueID: cueID,
-      cueStartTime: 10.0
-    )
-    
+
+    await viewModel.handleCueTap(cueID: cueID, cueStartTime: 10.0)
+
     #expect(viewModel.scrollState == .autoScrolling)
   }
-  
+
   @Test
   @MainActor
   func testTrackPlaybackWithInvalidTime() async {
     let viewModel = SubtitleViewModel()
-    let cues = [
-      SubtitleCue(startTime: 0.0, endTime: 2.0, text: "First")
-    ]
+    let cues = [SubtitleCue(startTime: 0.0, endTime: 2.0, text: "First")]
 
     await viewModel.trackPlayback(cues: cues)
 
     #expect(viewModel.currentCueID == nil)
   }
-  
+
   @Test
   @MainActor
   func testTrackPlaybackWithEmptyCues() async {
     let viewModel = SubtitleViewModel()
 
     await viewModel.trackPlayback(cues: [])
-    
+
     #expect(viewModel.currentCueID == nil)
   }
-  
+
   @Test
   @MainActor
-  func testCountdownAsyncStream() async {
+  func testOutputProperties() {
     let viewModel = SubtitleViewModel()
-    
-    viewModel.handleUserScroll()
-    
-    if case .userScrolling(let countdown) = viewModel.scrollState {
-      #expect(countdown == 3)
-    } else {
-      Issue.record("Expected userScrolling state")
-    }
-    
-    try? await Task.sleep(for: .seconds(1.2))
-    
-    if case .userScrolling(let countdown) = viewModel.scrollState {
-      #expect(countdown < 3)
-    }
+    let output = viewModel.output
+
+    #expect(output.currentCueID == nil)
+    #expect(output.scrollState == .autoScrolling)
+    #expect(output.textSelection == .none)
   }
-  
-  @Test
-  func testAttributedStringBuilderWithEmptyWords() {
-    let builder = AttributedStringBuilder(
-      fontSize: 16.0,
-      defaultTextColor: .labelColor,
-      difficultyLevelProvider: { _ in nil }
-    )
-    
-    let result = builder.build(words: [])
-    
-    #expect(result.wordRanges.isEmpty)
-    #expect(result.attributedString.string.isEmpty)
-  }
-  
+
   @Test
   @MainActor
-  func testWordLayoutManagerBoundingRectWithMissingTextContainer() {
-    let layoutManager = WordLayoutManager()
-    
-    let mockTextView = NSTextView(frame: .zero)
-    mockTextView.layoutManager?.removeTextContainer(at: 0)
-    
-    let wordRanges: [NSRange] = [NSRange(location: 0, length: 5)]
-    
-    let rect = layoutManager.boundingRect(
-      forWordAt: 0,
-      wordRanges: wordRanges,
-      in: mockTextView
+  func testHandleNilSelectionDismisses() {
+    let viewModel = SubtitleViewModel()
+    var playCalled = false
+
+    viewModel.handleTextSelection(
+      selection: makeSelection(),
+      isPlaying: true,
+      onPause: {},
+      onPlay: {}
     )
-    
-    #expect(rect == nil)
+
+    viewModel.handleTextSelection(
+      selection: nil,
+      isPlaying: false,
+      onPause: {},
+      onPlay: { playCalled = true }
+    )
+
+    #expect(playCalled)
+    #expect(viewModel.textSelection == .none)
+  }
+
+  @Test
+  @MainActor
+  func testCrossCueSelectionAnnotationCueID() {
+    let cue1ID = UUID()
+    let cue2ID = UUID()
+    let selection = makeCrossSelection(cue1ID: cue1ID, cue2ID: cue2ID)
+    let state = SubtitleViewModel.TextSelectionState.selecting(selection: selection)
+
+    // annotationCueID is only set for `.annotationSelected`
+    #expect(state.annotationCueID == nil)
+
+    let annotState = SubtitleViewModel.TextSelectionState.annotationSelected(
+      cueID: cue1ID, annotationID: UUID())
+    #expect(annotState.annotationCueID == cue1ID)
+  }
+
+  @Test
+  @MainActor
+  func testCrossTextSelectionIsCrossCue() {
+    let single = makeSelection()
+    let cross = makeCrossSelection()
+    #expect(!single.isCrossCue)
+    #expect(cross.isCrossCue)
   }
 }

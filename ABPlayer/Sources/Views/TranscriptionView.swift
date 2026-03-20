@@ -120,7 +120,6 @@ struct TranscriptionView: View {
 
       SubtitleView(
         cues: viewModel.cachedCues,
-        countdownSeconds: $viewModel.pauseCountdown,
         fontSize: viewModel.subtitleFontSize,
         onEditSubtitle: { cueID, subtitle in
           Task {

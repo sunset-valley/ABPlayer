@@ -42,6 +42,7 @@ struct ABPlayerApp: App {
   private let playerSettings = PlayerSettings()
   private let proxySettings = ProxySettings()
   private let vocabularyService: VocabularyService
+  private let annotationService: AnnotationService
   private let subtitleLoader = SubtitleLoader()
 
   private let queueManager: TranscriptionQueueManager
@@ -71,6 +72,7 @@ struct ABPlayerApp: App {
         SubtitleFile.self,
         Transcription.self,
         Vocabulary.self,
+        TextAnnotation.self,
       ])
 
       guard let appSupportDir = FileManager.default.urls(
@@ -93,6 +95,7 @@ struct ABPlayerApp: App {
 
       sessionTracker = SessionTracker(modelContainer: modelContainer)
       vocabularyService = VocabularyService(modelContext: modelContainer.mainContext)
+      annotationService = AnnotationService(modelContext: modelContainer.mainContext)
       
       queueManager = TranscriptionQueueManager(
         transcriptionManager: transcriptionManager,
@@ -194,6 +197,7 @@ struct ABPlayerApp: App {
         .environment(proxySettings)
         .environment(queueManager)
         .environment(vocabularyService)
+        .environment(annotationService)
         .environment(subtitleLoader)
     }
     .defaultSize(width: 1600, height: 900)
