@@ -15,7 +15,7 @@ final class FolderNavigationViewModel {
 
   var sortOrder: SortOrder = .nameAZ {
     didSet {
-      UserDefaults.standard.set(sortOrder.rawValue, forKey: "folderNavigationSortOrder")
+      UserDefaults.standard.set(sortOrder.rawValue, forKey: UserDefaultsKey.folderNavigationSortOrder)
     }
   }
   var hovering: SelectionItem?
@@ -82,7 +82,7 @@ final class FolderNavigationViewModel {
 
   var lastKnownSortOrder: SortOrder {
     guard
-      let rawValue = UserDefaults.standard.string(forKey: "folderNavigationSortOrder"),
+      let rawValue = UserDefaults.standard.string(forKey: UserDefaultsKey.folderNavigationSortOrder),
       let restored = SortOrder(rawValue: rawValue)
     else {
       return .nameAZ
@@ -259,13 +259,13 @@ final class FolderNavigationViewModel {
     _ folder: Folder,
     deleteFromDisk: Bool = true
   ) {
-    var selectedFileRef = selectedFile
-    deletionService.deleteFolder(
-      folder,
-      deleteFromDisk: deleteFromDisk,
-      selectedFile: &selectedFileRef
-    )
-    selectedFile = selectedFileRef
+    updateSelectedFile { selectedFile in
+      deletionService.deleteFolder(
+        folder,
+        deleteFromDisk: deleteFromDisk,
+        selectedFile: &selectedFile
+      )
+    }
 
     if deletionService.isSelectedFileInFolder(folder, selectedFile: selectedFile) {
       selectionService.clearSelection()
@@ -378,18 +378,24 @@ final class FolderNavigationViewModel {
       )
 
     case let .audioFile(file):
-      var selectedFile = self.selectedFile
-      deleteAudioFile(
-        file,
-        deleteFromDisk: deleteFromDisk,
-        updateSelection: true,
-        checkPlayback: true,
-        selectedFile: &selectedFile
-      )
-      self.selectedFile = selectedFile
+      updateSelectedFile { selectedFile in
+        deleteAudioFile(
+          file,
+          deleteFromDisk: deleteFromDisk,
+          updateSelection: true,
+          checkPlayback: true,
+          selectedFile: &selectedFile
+        )
+      }
 
     case .empty, .none:
       break
     }
+  }
+
+  private func updateSelectedFile(_ mutation: (inout ABFile?) -> Void) {
+    var selectedFile = self.selectedFile
+    mutation(&selectedFile)
+    self.selectedFile = selectedFile
   }
 }

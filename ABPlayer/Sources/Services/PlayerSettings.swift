@@ -6,7 +6,7 @@ import SwiftUI
 @Observable
 final class PlayerSettings {
   /// Whether to prevent system sleep during playback
-  var preventSleep: Bool = UserDefaults.standard.object(forKey: "player_prevent_sleep") as? Bool ?? true {
-    didSet { UserDefaults.standard.set(preventSleep, forKey: "player_prevent_sleep") }
+  var preventSleep: Bool = UserDefaults.standard.object(forKey: UserDefaultsKey.playerPreventSleep) as? Bool ?? true {
+    didSet { UserDefaults.standard.set(preventSleep, forKey: UserDefaultsKey.playerPreventSleep) }
   }
 }

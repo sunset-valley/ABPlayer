@@ -7,12 +7,12 @@ import AppKit
 final class CounterPluginSettings {
   var alwaysOnTop: Bool {
     didSet {
-      UserDefaults.standard.set(alwaysOnTop, forKey: "counterPlugin.alwaysOnTop")
+      UserDefaults.standard.set(alwaysOnTop, forKey: UserDefaultsKey.counterPluginAlwaysOnTop)
     }
   }
   
   init() {
-    self.alwaysOnTop = UserDefaults.standard.bool(forKey: "counterPlugin.alwaysOnTop")
+    self.alwaysOnTop = UserDefaults.standard.bool(forKey: UserDefaultsKey.counterPluginAlwaysOnTop)
   }
 }
 

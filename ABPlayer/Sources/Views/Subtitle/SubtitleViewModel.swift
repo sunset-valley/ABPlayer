@@ -8,22 +8,6 @@ final class SubtitleViewModel {
 
   // MARK: - Types
 
-  enum Action {
-    case setPlayerManager(PlayerManager)
-    case handleUserScroll
-    case cancelScrollResume
-    case handleTextSelection(
-      selection: CrossCueTextSelection?,
-      isPlaying: Bool,
-      onPause: () -> Void,
-      onPlay: () -> Void
-    )
-    case handleCueTap(cueID: UUID, cueStartTime: Double)
-    case reset
-    case trackPlayback(cues: [SubtitleCue])
-    case stopTrackingPlayback
-  }
-
   // MARK: - Output
 
   struct Output: Equatable {
@@ -81,34 +65,6 @@ final class SubtitleViewModel {
     self.playerManager = playerManager
   }
 
-  // MARK: - Actions
-
-  func perform(action: Action) async {
-    switch action {
-    case let .setPlayerManager(playerManager):
-      setPlayerManager(playerManager)
-    case .handleUserScroll:
-      handleUserScroll()
-    case .cancelScrollResume:
-      cancelScrollResume()
-    case let .handleTextSelection(selection, isPlaying, onPause, onPlay):
-      handleTextSelection(
-        selection: selection,
-        isPlaying: isPlaying,
-        onPause: onPause,
-        onPlay: onPlay
-      )
-    case let .handleCueTap(cueID, cueStartTime):
-      await handleCueTap(cueID: cueID, cueStartTime: cueStartTime)
-    case .reset:
-      reset()
-    case let .trackPlayback(cues):
-      await trackPlayback(cues: cues)
-    case .stopTrackingPlayback:
-      stopTrackingPlayback()
-    }
-  }
-
   // MARK: - Public API
 
   func setPlayerManager(_ playerManager: PlayerManager) {
@@ -131,10 +87,7 @@ final class SubtitleViewModel {
     onPlay: () -> Void
   ) {
     if let selection {
-      if textSelection == .none {
-        wasPlayingBeforeSelection = isPlaying
-        if isPlaying { onPause() }
-      }
+      pausePlaybackForSelectionIfNeeded(isPlaying: isPlaying, onPause: onPause)
       textSelection = .selecting(selection: selection)
       Self.logger.debug(
         "Selected '\(selection.fullText.prefix(40))' across \(selection.segments.count) cue(s)")
@@ -144,10 +97,7 @@ final class SubtitleViewModel {
   }
 
   func selectAnnotation(cueID: UUID, annotationID: UUID, isPlaying: Bool, onPause: () -> Void) {
-    if textSelection == .none {
-      wasPlayingBeforeSelection = isPlaying
-      if isPlaying { onPause() }
-    }
+    pausePlaybackForSelectionIfNeeded(isPlaying: isPlaying, onPause: onPause)
     textSelection = .annotationSelected(cueID: cueID, annotationID: annotationID)
   }
 
@@ -239,6 +189,15 @@ final class SubtitleViewModel {
       scrollState: scrollState,
       textSelection: textSelection
     )
+  }
+
+  private func pausePlaybackForSelectionIfNeeded(isPlaying: Bool, onPause: () -> Void) {
+    guard textSelection == .none else { return }
+
+    wasPlayingBeforeSelection = isPlaying
+    if isPlaying {
+      onPause()
+    }
   }
 
   private func trackCurrentCue(at currentTime: Double, in cues: [SubtitleCue], epsilon: Double) {

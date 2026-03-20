@@ -26,13 +26,13 @@ final class TranscriptionViewModel {
   // MARK: - Persistence
   var subtitleFontSize: Double {
     didSet {
-      UserDefaults.standard.set(subtitleFontSize, forKey: "subtitleFontSize")
+      UserDefaults.standard.set(subtitleFontSize, forKey: UserDefaultsKey.subtitleFontSize)
     }
   }
   
   // MARK: - Initialization
   init() {
-    let storedSize = UserDefaults.standard.double(forKey: "subtitleFontSize")
+    let storedSize = UserDefaults.standard.double(forKey: UserDefaultsKey.subtitleFontSize)
     self.subtitleFontSize = storedSize > 0 ? storedSize : 16.0
   }
   
@@ -126,15 +126,12 @@ final class TranscriptionViewModel {
     }
 
     if let srtURL = audioFile.srtFileURL {
-      if let audioURL = try? resolveURL(from: audioFile.bookmarkData),
-        audioURL.startAccessingSecurityScopedResource()
-      {
+      withSecurityScopedAccess(to: audioFile.bookmarkData) {
         do {
           try FileManager.default.removeItem(at: srtURL)
         } catch {
           Logger.data.error("⚠️ Failed to remove SRT file at \(srtURL.path): \(error.localizedDescription)")
         }
-        audioURL.stopAccessingSecurityScopedResource()
       }
     }
     audioFile.hasTranscriptionRecord = false
@@ -159,7 +156,19 @@ final class TranscriptionViewModel {
     updatedCues[index] = updatedCue
 
     guard let srtURL = audioFile.srtFileURL else { return }
-    guard let audioURL = try? resolveURL(from: audioFile.bookmarkData) else { return }
+
+    withSecurityScopedAccess(to: audioFile.bookmarkData) {
+      do {
+        try SubtitleParser.writeSRT(cues: updatedCues, to: srtURL)
+        cachedCues = updatedCues
+      } catch {
+        return
+      }
+    }
+  }
+
+  private func withSecurityScopedAccess(to bookmarkData: Data, _ body: () -> Void) {
+    guard let audioURL = try? resolveURL(from: bookmarkData) else { return }
 
     let gotAccess = audioURL.startAccessingSecurityScopedResource()
     defer {
@@ -169,14 +178,7 @@ final class TranscriptionViewModel {
     }
 
     guard gotAccess else { return }
-
-    do {
-      try SubtitleParser.writeSRT(cues: updatedCues, to: srtURL)
-    } catch {
-      return
-    }
-
-    cachedCues = updatedCues
+    body()
   }
   
   private func resolveURL(from bookmarkData: Data) throws -> URL {
