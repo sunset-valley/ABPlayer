@@ -34,6 +34,7 @@ Platform:       macOS 15.7+ | Swift 6.2 | SwiftUI
 | Build after changes             | `build.md`       | Use project-standard build command              |
 | Run test suite                  | `test.md`        | Use project-standard test command               |
 | Handle ambiguity / quick commit | `workflow.md`    | Follow collaboration and commit conventions     |
+| Create or update documentation  | `doc.md`         | Follow doc routing, naming, and quality rules   |
 
 ## Rules Reference
 
@@ -45,7 +46,8 @@ Platform:       macOS 15.7+ | Swift 6.2 | SwiftUI
     |-- mvvm.md          # MVVM contract and boundaries
     |-- build.md         # Build command
     |-- test.md          # Test command
-|   `-- workflow.md      # Collaboration + quick-commit convention
+|   |-- workflow.md      # Collaboration + quick-commit convention
+|   `-- doc.md           # Documentation routing, naming, and quality
 `-- skills/              # Repository-local skill definitions (trigger when relevant)
 ```
 
@@ -64,3 +66,4 @@ Platform:       macOS 15.7+ | Swift 6.2 | SwiftUI
 | `build.md`       | `model_decision` | Build command                                         |
 | `test.md`        | `model_decision` | Test command                                          |
 | `workflow.md`    | `model_decision` | Ambiguity handling, quick-commit format               |
+| `doc.md`         | `model_decision` | Doc routing, naming, structure, archival              |
