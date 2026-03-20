@@ -41,6 +41,7 @@ nextId=5
 - Create or update `mem-backbone` docs when a pattern is repeated and should become a standard operating rule.
 - Create or update `postmortem` docs after bugs, regressions, outages, failed releases, or major debugging efforts.
 - When a doc is obsolete, move it to a `Docs/<directory>/archive/` subfolder. Do not delete docs outright.
+- Archive docs are out of scope for routine updates/cleanup unless explicitly requested.
 
 # Document Structure Template
 
