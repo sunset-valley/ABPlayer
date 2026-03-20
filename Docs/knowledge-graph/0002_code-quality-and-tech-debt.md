@@ -37,41 +37,7 @@ Commit `0e7f046` removed thin wrappers, single-use helpers, and declaration-only
 
 ### Active Technical Debt
 
-#### TD-001 — `MainSplitViewModel` has sprawling responsibilities
-**Location:** `ABPlayer/Sources/ViewModels/MainSplitViewModel.swift`
-**Description:** One ViewModel now manages panel layout persistence, media type switching (audio ↔ video), `PaneContent` tab allocation across two panes (leftTabs/rightTabs/selections, dedup, overlap removal, per-media-type UserDefaults persistence), playback queue sync, session restore, and full data wipe.
-**Risk:** Medium-high. The pane allocation system (`PaneContent`, `Panel`, `sanitizeAllocations`, `loadTabs`, `persistTabs`, etc.) has grown into a sizeable subsystem within the same class. Following the `FolderNavigationViewModel` delegation pattern would significantly reduce complexity.
-**Suggested fix:** Extract `PaneAllocationState` (or a `PaneAllocationService`) to own the tab lists, selections, and persistence logic. Keep `MainSplitViewModel` focused on media coordination and session restore.
-
-#### TD-002 — `UserDefaults` keys are scattered
-**Location:** Multiple files — `MainSplitViewModel`, `BasePlayerViewModel`, `FolderNavigationViewModel`, settings services.
-**Description:** Each type defines its own key string literals. No central namespace or enum guards against key collisions or typos.
-**Risk:** Low-medium. Risk increases as more state is persisted.
-**Suggested fix:** Introduce a `UserDefaultsKey` enum (or `extension UserDefaults`) as a single source of truth for all key strings.
-
-#### TD-003 — Mixed comment language
-**Location:** `AudioModels.swift`, `Folder.swift`, `FolderImporter.swift`, others.
-**Description:** Some files contain Chinese-language inline comments alongside English comments. Not a functional issue, but reduces codebase uniformity.
-**Risk:** Low.
-**Suggested fix:** Translate comments to English on next touch of each file. Doc rule already mandates English for docs.
-
-#### TD-004 — `SubtitleViewModel.perform(action:)` growth risk
-**Location:** `ABPlayer/Sources/Views/Subtitle/SubtitleViewModel.swift`
-**Description:** The `Action` enum now has exactly 8 cases (`setPlayerManager`, `handleUserScroll`, `cancelScrollResume`, `handleTextSelection`, `handleCueTap`, `reset`, `trackPlayback`, `stopTrackingPlayback`) — at the monitoring threshold. The flat `perform(action:)` dispatch is still readable but has reached the point where further additions should be scrutinised.
-**Risk:** Medium. The threshold has been reached.
-**Suggested fix:** Do not add new `Action` cases without first evaluating whether to split by concern (scroll, selection, playback tracking). Consider a direct-method API over enum dispatch if the caller set is small and well-defined.
-
-#### TD-005 — Plugin system is prototype-level
-**Location:** `ABPlayer/Sources/Plugins/`
-**Description:** `Plugin` protocol exposes only `id`, `name`, `icon`, `open()`. The only concrete plugin is `CounterPlugin` (sample). No lifecycle hooks, sandboxing, or inter-plugin communication.
-**Risk:** Low as long as plugins remain first-party. High if third-party plugin loading is ever introduced.
-**Suggested fix:** Document the plugin API as "internal only" until requirements for third-party extension are defined. Avoid growing the protocol surface ad-hoc.
-
-#### TD-006 — `TranscriptionManager` lacks a testable protocol boundary
-**Location:** `ABPlayer/Sources/Services/TranscriptionManager.swift`
-**Description:** Unlike `PlayerEngine`, WhisperKit is called directly in `TranscriptionManager` with no abstraction layer. This makes it impossible to unit-test transcription orchestration without a real model download.
-**Risk:** Low now (transcription tests verify state machine, not WhisperKit). Medium if orchestration logic becomes more complex.
-**Suggested fix:** Extract a `WhisperKitProtocol` (or `TranscriptionEngineProtocol`) wrapping the WhisperKit call. Mirror the `PlayerEngineProtocol` pattern.
+No currently tracked active debt from the 2026-03-20 review. Items TD-001 through TD-006 were resolved and moved to the resolved table below.
 
 ---
 
@@ -79,6 +45,12 @@ Commit `0e7f046` removed thin wrappers, single-use helpers, and declaration-only
 
 | Item | Resolved In | Notes |
 |------|-------------|-------|
+| TD-001 `MainSplitViewModel` pane-allocation sprawl | unreleased (2026-03-20) | Extracted `MainSplitPaneAllocationState`; `MainSplitViewModel` now delegates pane allocation/persistence logic |
+| TD-002 scattered `UserDefaults` key literals | unreleased (2026-03-20) | Added centralized `UserDefaultsKey` and migrated key usage |
+| TD-003 mixed comment language | unreleased (2026-03-20) | Translated touched model/service comments to English (`AudioModels`, `Folder`, `FolderImporter`, `PlaybackRecord`, `TextAnnotation`, `Vocabulary`) |
+| TD-004 `SubtitleViewModel.perform(action:)` growth risk | unreleased (2026-03-20) | Removed `Action` enum dispatch; switched callers to direct method API |
+| TD-005 plugin system internal-surface ambiguity | unreleased (2026-03-20) | Documented `Plugin` protocol as internal-only first-party API |
+| TD-006 `TranscriptionManager` lacks protocol boundary | unreleased (2026-03-20) | Added `TranscriptionEngineProtocol` + `WhisperKitTranscriptionEngine`; `TranscriptionManager` now depends on protocol |
 | `FolderNavigationViewModel` monolithic navigation/selection/deletion/import logic | extracted via service delegation | `NavigationService`, `SelectionStateService`, `DeletionService`, `ImportService` |
 | Thin wrapper APIs (`refreshCurrentFolderAndQueue`, `clearAllDataAsync`) | `0e7f046` | Inlined at call sites |
 | Unused font token `Font.xs` | `0e7f046` | Removed from Typography |

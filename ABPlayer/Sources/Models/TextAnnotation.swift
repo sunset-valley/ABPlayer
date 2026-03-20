@@ -3,11 +3,11 @@ import SwiftData
 
 /// Type of text annotation in subtitle cues
 enum AnnotationType: String, Codable, CaseIterable, Sendable {
-  /// 生词 - New/difficult vocabulary word
+  /// New or difficult vocabulary word
   case vocabulary
-  /// 固定搭配 - Fixed collocation or phrase
+  /// Fixed collocation or phrase
   case collocation
-  /// 好句子 - Good sentence worth noting
+  /// Good sentence worth noting
   case goodSentence
 }
 

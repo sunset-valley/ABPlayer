@@ -6,26 +6,26 @@ import SwiftData
 final class Vocabulary {
   var id: UUID
 
-  /// The base form of the word (原型)
+  /// The base form of the word
   @Attribute(.unique)
   var word: String
 
-  /// Number of times forgotten (忘记次数)
+  /// Number of times forgotten
   var forgotCount: Int
 
-  /// Number of times remembered (记得次数)
+  /// Number of times remembered
   var rememberedCount: Int
 
   /// Creation timestamp
   var createdAt: Date
 
-  /// Optional past tense form (过去式)
+  /// Optional past tense form
   var pastTense: String?
 
-  /// Optional past participle form (过去分词)
+  /// Optional past participle form
   var pastParticiple: String?
 
-  /// Optional present participle form (现在进行时)
+  /// Optional present participle form
   var presentParticiple: String?
 
   /// Difficulty level based on forgot vs remembered count

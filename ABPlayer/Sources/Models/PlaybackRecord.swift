@@ -5,16 +5,16 @@ import SwiftData
 final class PlaybackRecord {
   var id: UUID
 
-  /// 上次播放时间戳
+  /// Last playback timestamp
   var lastPlayedAt: Date?
 
-  /// 播放完成次数
+  /// Number of completed playbacks
   var completionCount: Int
 
-  /// 当前播放位置（秒）
+  /// Current playback position in seconds
   var currentPosition: Double
 
-  /// 关联的音频文件
+  /// Related audio file
   var audioFile: ABFile?
 
   init(
