@@ -44,7 +44,8 @@ struct FolderNavigationView: View {
       fileList
     }
     .onAppear {
-      viewModel.handleAppear()
+      viewModel.sortOrder = viewModel.lastKnownSortOrder
+      viewModel.selection = viewModel.restoredSelection
     }
     .confirmationDialog(
       viewModel.deleteConfirmationTitle,
@@ -63,12 +64,6 @@ struct FolderNavigationView: View {
     } message: {
       Text(viewModel.deleteConfirmationMessage)
     }
-    .onChange(of: viewModel.sortOrder) { _, newValue in
-      viewModel.persistSortOrder(newValue)
-    }
-    .onChange(of: viewModel.selectedFile) { _, newValue in
-      viewModel.syncSelectionWithSelectedFile(newValue)
-    }
   }
 
   // MARK: - Navigation Header
@@ -76,10 +71,11 @@ struct FolderNavigationView: View {
   private var navigationHeader: some View {
     FolderNavigationHeaderView(
       currentFolder: viewModel.currentFolder,
-      canNavigateBack: viewModel.canNavigateBack(),
+      canNavigateBack: !viewModel.navigationPath.isEmpty,
       sortOrder: viewModel.sortOrder,
       onNavigateBack: {
-        viewModel.navigateBack()
+        viewModel.navigationPath.removeLast()
+        viewModel.currentFolder = viewModel.navigationPath.last
       },
       onSortChange: { viewModel.sortOrder = $0 }
     )

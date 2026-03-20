@@ -50,30 +50,6 @@ final class SubtitleViewModel {
 
     // MARK: Convenience accessors
 
-    /// Backward-compatible accessor for single-cue selections.
-    ///
-    /// Returns `(cueID, localRange, text)` when the selection is confined to
-    /// one cue; for cross-cue selections the first segment is returned.
-    var selectedRange: (cueID: UUID, range: NSRange, text: String)? {
-      if case let .selecting(selection) = self {
-        if let cueID = selection.singleCueID,
-          let localRange = selection.singleLocalRange
-        {
-          return (cueID, localRange, selection.fullText)
-        }
-        // Cross-cue: return the first segment so callers still get something.
-        if let first = selection.segments.first {
-          return (first.cueID, first.localRange, selection.fullText)
-        }
-      }
-      return nil
-    }
-
-    var annotationCueID: UUID? {
-      if case let .annotationSelected(cueID, _) = self { return cueID }
-      return nil
-    }
-
     var isActive: Bool { self != .none }
   }
 

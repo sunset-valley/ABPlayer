@@ -26,11 +26,6 @@ final class TranscriptionManager {
   /// Name of the most recently failed-to-load model (corrupt/incomplete files), nil if none
   var invalidModelName: String?
 
-  /// Whether the model is loaded and ready
-  var isModelLoaded: Bool {
-    whisperKit != nil
-  }
-
   /// Download model with progress tracking
   func downloadModel(
     modelName: String,
