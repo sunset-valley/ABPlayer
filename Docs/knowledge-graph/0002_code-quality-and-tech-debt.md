@@ -79,6 +79,7 @@ Commit `0e7f046` removed thin wrappers, single-use helpers, and declaration-only
 
 | Item | Resolved In | Notes |
 |------|-------------|-------|
+| `FolderNavigationViewModel` monolithic navigation/selection/deletion/import logic | extracted via service delegation | `NavigationService`, `SelectionStateService`, `DeletionService`, `ImportService` |
 | Thin wrapper APIs (`refreshCurrentFolderAndQueue`, `clearAllDataAsync`) | `0e7f046` | Inlined at call sites |
 | Unused font token `Font.xs` | `0e7f046` | Removed from Typography |
 | Force-unwraps in critical paths | `6ed3dac` | Replaced with guard / optional chaining |
@@ -94,7 +95,7 @@ Commit `0e7f046` removed thin wrappers, single-use helpers, and declaration-only
 | `PlayerManager` playback state | Covered via protocol mock | `PlayerEngineProtocol` enables isolation |
 | `TranscriptionManager` orchestration | Partial — state machine only | No mock for WhisperKit calls (TD-006) |
 | `MainSplitViewModel` layout transitions | Not covered | Requires view integration test |
-| `FolderNavigationViewModel` import flow | Not covered | `ImportService` / `FolderImporter` untested |
+| `FolderNavigationViewModel` sub-services | Not covered | `NavigationService`, `SelectionStateService`, `DeletionService`, `ImportService` each testable in isolation now — no tests yet |
 | Security-scoped bookmark resolution | Not covered | Requires sandboxed environment |
 
 ---

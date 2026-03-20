@@ -13,7 +13,11 @@ final class FolderNavigationViewModel {
   private let deletionService: DeletionService
   private let importService: ImportService
 
-  var sortOrder: SortOrder = .nameAZ
+  var sortOrder: SortOrder = .nameAZ {
+    didSet {
+      UserDefaults.standard.set(sortOrder.rawValue, forKey: "folderNavigationSortOrder")
+    }
+  }
   var hovering: SelectionItem?
   var pressing: SelectionItem?
   var isDeselecting = false
@@ -23,7 +27,7 @@ final class FolderNavigationViewModel {
   var showDeleteConfirmation = false
   
   var importType: MainSplitView.ImportType?
-  var presetnImportType: MainSplitView.ImportType?
+  var pendingImportType: MainSplitView.ImportType?
   
   /// Observation trigger: bumped after import/refresh to invalidate `currentFolders()` / `currentAudioFiles()`.
   private(set) var refreshToken = 0
@@ -40,7 +44,15 @@ final class FolderNavigationViewModel {
   
   var selectedFile: ABFile? {
     get { selectionService.selectedFile }
-    set { selectionService.selectedFile = newValue }
+    set {
+      selectionService.selectedFile = newValue
+
+      if let newValue {
+        selectionService.selection = .audioFile(newValue)
+      } else if case .audioFile? = selectionService.selection {
+        selectionService.selection = nil
+      }
+    }
   }
   
   var selection: SelectionItem? {
@@ -66,6 +78,25 @@ final class FolderNavigationViewModel {
   var importErrorMessage: String? {
     get { importService.importErrorMessage }
     set { importService.importErrorMessage = newValue }
+  }
+
+  var lastKnownSortOrder: SortOrder {
+    guard
+      let rawValue = UserDefaults.standard.string(forKey: "folderNavigationSortOrder"),
+      let restored = SortOrder(rawValue: rawValue)
+    else {
+      return .nameAZ
+    }
+    return restored
+  }
+
+  var restoredSelection: SelectionItem? {
+    if let selectedFile {
+      return .audioFile(selectedFile)
+    }
+
+    guard let lastSelectionItemID else { return nil }
+    return selectionItem(for: lastSelectionItemID)
   }
 
   init(
@@ -96,41 +127,16 @@ final class FolderNavigationViewModel {
     }
   }
   
-  func sortedFolders(_ folders: [Folder]) -> [Folder] {
-    SortingUtility.sortFolders(folders, by: sortOrder)
-  }
-  
-  func sortedAudioFiles(_ files: [ABFile]) -> [ABFile] {
-    SortingUtility.sortAudioFiles(files, by: sortOrder)
-  }
-
-  func handleAppear() {
-    restoreSortOrder()
-    restoreSelection()
-  }
-
-  func persistSortOrder(_ newValue: SortOrder) {
-    UserDefaults.standard.set(newValue.rawValue, forKey: "folderNavigationSortOrder")
-  }
-
-  func syncSelectionWithSelectedFile(_ newValue: ABFile?) {
-    if let newValue {
-      selection = .audioFile(newValue)
-    } else if case .audioFile? = selection {
-      selection = nil
-    }
-  }
-
   func currentFolders() -> [Folder] {
     _ = refreshToken
     let folders = currentFolder.map { Array($0.subfolders) } ?? rootFolders()
-    return sortedFolders(folders)
+    return SortingUtility.sortFolders(folders, by: sortOrder)
   }
 
   func currentAudioFiles() -> [ABFile] {
     _ = refreshToken
     let files = currentFolder.map { Array($0.audioFiles) } ?? rootAudioFiles()
-    return sortedAudioFiles(files)
+    return SortingUtility.sortAudioFiles(files, by: sortOrder)
   }
 
   func setHovering(isHovering: Bool, file: ABFile) {
@@ -216,25 +222,7 @@ final class FolderNavigationViewModel {
   }
 
   func performDeleteConfirmation(deleteFromDisk: Bool) {
-    switch deleteTarget {
-    case let .folder(folder):
-      deleteFolder(
-        folder,
-        deleteFromDisk: deleteFromDisk
-      )
-    case let .audioFile(file):
-      var selectedFile = self.selectedFile
-      deleteAudioFile(
-        file,
-        deleteFromDisk: deleteFromDisk,
-        updateSelection: true,
-        checkPlayback: true,
-        selectedFile: &selectedFile
-      )
-      self.selectedFile = selectedFile
-    case .empty, .none:
-      break
-    }
+    executeDelete(deleteTarget, deleteFromDisk: deleteFromDisk)
 
     cancelDeleteConfirmation()
   }
@@ -242,37 +230,7 @@ final class FolderNavigationViewModel {
   func handleDeleteCommand() {
     guard let selection else { return }
 
-    switch selection {
-    case let .folder(folder):
-      deleteFolder(
-        folder,
-        deleteFromDisk: false
-      )
-    case let .audioFile(file):
-      var selectedFile = self.selectedFile
-      deleteAudioFile(
-        file,
-        deleteFromDisk: false,
-        updateSelection: true,
-        checkPlayback: true,
-        selectedFile: &selectedFile
-      )
-      self.selectedFile = selectedFile
-    case .empty:
-      break
-    }
-  }
-  
-  func navigateInto(_ folder: Folder) {
-    navigationService.navigateInto(folder)
-  }
-  
-  func navigateBack() {
-    navigationService.navigateBack()
-  }
-  
-  func canNavigateBack() -> Bool {
-    navigationService.canNavigateBack()
+    executeDelete(selection, deleteFromDisk: false)
   }
   
   func handleSelectionChange(
@@ -285,7 +243,7 @@ final class FolderNavigationViewModel {
 
     switch newSelection {
     case .folder(let folder):
-      navigateInto(folder)
+      navigationService.navigateInto(folder)
 
     case .audioFile(let file):
       Task { @MainActor in
@@ -314,7 +272,7 @@ final class FolderNavigationViewModel {
     }
 
     if currentFolder?.id == folder.id {
-      navigateBack()
+      navigationService.navigateBack()
     }
 
     if lastFolderID == folder.id.uuidString {
@@ -357,38 +315,14 @@ final class FolderNavigationViewModel {
   
   func syncSelectedFileWithPlayer() {
     guard let newFileID = playerManager.currentFile?.id else { return }
-    
+
     if selectedFile?.id == newFileID {
       return
     }
-    
-    let descriptor = FetchDescriptor<ABFile>(
-      predicate: #Predicate<ABFile> { $0.id == newFileID }
-    )
 
-    guard let matchedFile = try? modelContext.fetch(descriptor).first else {
-      return
-    }
-    
+    guard let matchedFile = fetchAudioFile(id: newFileID) else { return }
+
     selectedFile = matchedFile
-  }
-
-  private func restoreSortOrder() {
-    if let savedSortOrder = UserDefaults.standard.string(forKey: "folderNavigationSortOrder"),
-       let sortOrder = SortOrder(rawValue: savedSortOrder)
-    {
-      self.sortOrder = sortOrder
-    }
-  }
-
-  private func restoreSelection() {
-    if let selectedFile {
-      selection = .audioFile(selectedFile)
-      return
-    }
-
-    guard let lastSelectionItemID else { return }
-    selection = selectionItem(for: lastSelectionItemID)
   }
 
   private func rootFolders() -> [Folder] {
@@ -433,5 +367,29 @@ final class FolderNavigationViewModel {
       predicate: #Predicate<ABFile> { $0.id == id }
     )
     return try? modelContext.fetch(descriptor).first
+  }
+
+  private func executeDelete(_ target: SelectionItem?, deleteFromDisk: Bool) {
+    switch target {
+    case let .folder(folder):
+      deleteFolder(
+        folder,
+        deleteFromDisk: deleteFromDisk
+      )
+
+    case let .audioFile(file):
+      var selectedFile = self.selectedFile
+      deleteAudioFile(
+        file,
+        deleteFromDisk: deleteFromDisk,
+        updateSelection: true,
+        checkPlayback: true,
+        selectedFile: &selectedFile
+      )
+      self.selectedFile = selectedFile
+
+    case .empty, .none:
+      break
+    }
   }
 }

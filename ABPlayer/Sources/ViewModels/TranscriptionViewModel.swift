@@ -10,7 +10,6 @@ final class TranscriptionViewModel {
   // MARK: - Dependencies
   var transcriptionManager: TranscriptionManager?
   var queueManager: TranscriptionQueueManager?
-  var settings: TranscriptionSettings?
   var modelContext: ModelContext?
   var subtitleLoader: SubtitleLoader?
   
@@ -42,7 +41,6 @@ final class TranscriptionViewModel {
     audioFile: ABFile,
     transcriptionManager: TranscriptionManager,
     queueManager: TranscriptionQueueManager,
-    settings: TranscriptionSettings,
     modelContext: ModelContext,
     subtitleLoader: SubtitleLoader
   ) {
@@ -54,7 +52,6 @@ final class TranscriptionViewModel {
     self.audioFile = audioFile
     self.transcriptionManager = transcriptionManager
     self.queueManager = queueManager
-    self.settings = settings
     self.modelContext = modelContext
     self.subtitleLoader = subtitleLoader
     
@@ -192,16 +189,4 @@ final class TranscriptionViewModel {
     )
   }
   
-  func cancelDownload(modelName: String) {
-    transcriptionManager?.cancelDownload()
-    settings?.deleteDownloadCache(modelName: modelName)
-  }
-  
-  func removeTask(id: UUID) {
-    queueManager?.removeTask(id: id)
-  }
-  
-  func cancelTask(id: UUID) {
-    queueManager?.cancelTask(id: id)
-  }
 }

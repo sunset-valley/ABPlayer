@@ -5,6 +5,15 @@ import SwiftUI
 @Observable
 @MainActor
 class BasePlayerViewModel {
+  private enum DefaultsKey {
+    static let playerVolume = "playerVolume"
+    static let playerLoopMode = "playerLoopMode"
+  }
+
+  private let defaultPlayerVolume: Double = 1.0
+  private let backwardSeekInterval: Double = 5
+  private let forwardSeekInterval: Double = 10
+
   // MARK: - Dependencies
   weak var playerManager: PlayerManager?
 
@@ -16,7 +25,7 @@ class BasePlayerViewModel {
   // MARK: - Volume State
   var playerVolume: Double {
     didSet {
-      UserDefaults.standard.set(playerVolume, forKey: "playerVolume")
+      UserDefaults.standard.set(playerVolume, forKey: DefaultsKey.playerVolume)
       debounceVolumeUpdate()
     }
   }
@@ -24,19 +33,14 @@ class BasePlayerViewModel {
 
   // MARK: - Initialization
   init() {
-    let storedVolume = UserDefaults.standard.double(forKey: "playerVolume")
-    if UserDefaults.standard.object(forKey: "playerVolume") == nil {
-      self.playerVolume = 1.0
-    } else {
-      self.playerVolume = storedVolume
-    }
+    self.playerVolume = Self.resolvedInitialVolume(defaultValue: defaultPlayerVolume)
   }
 
   // MARK: - Setup
   func setup(with manager: PlayerManager) {
     self.playerManager = manager
 
-    if let storedLoopMode = UserDefaults.standard.string(forKey: "playerLoopMode"),
+    if let storedLoopMode = UserDefaults.standard.string(forKey: DefaultsKey.playerLoopMode),
        let mode = PlaybackQueue.LoopMode(rawValue: storedLoopMode) {
       manager.loopMode = mode
     }
@@ -50,7 +54,7 @@ class BasePlayerViewModel {
 
   func updateLoopMode(_ mode: PlaybackQueue.LoopMode) {
     playerManager?.loopMode = mode
-    UserDefaults.standard.set(mode.rawValue, forKey: "playerLoopMode")
+    UserDefaults.standard.set(mode.rawValue, forKey: DefaultsKey.playerLoopMode)
   }
 
   private func debounceVolumeUpdate() {
@@ -71,19 +75,27 @@ class BasePlayerViewModel {
   }
 
   func seekBack() {
+    seek(by: -backwardSeekInterval)
+  }
+
+  func seekForward() {
+    seek(by: forwardSeekInterval)
+  }
+
+  private func seek(by interval: Double) {
     guard let manager = playerManager else { return }
-    let targetTime = manager.currentTime - 5
+    let targetTime = manager.currentTime + interval
     Task {
       await manager.seek(to: targetTime)
     }
   }
 
-  func seekForward() {
-    guard let manager = playerManager else { return }
-    let targetTime = manager.currentTime + 10
-    Task {
-      await manager.seek(to: targetTime)
+  private static func resolvedInitialVolume(defaultValue: Double) -> Double {
+    guard UserDefaults.standard.object(forKey: DefaultsKey.playerVolume) != nil else {
+      return defaultValue
     }
+
+    return UserDefaults.standard.double(forKey: DefaultsKey.playerVolume)
   }
 
   func timeString(from value: Double) -> String {

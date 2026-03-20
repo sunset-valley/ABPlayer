@@ -9,8 +9,23 @@ description: Documentation routing and naming rules for Docs/
 - Place documents only under `Docs/knowledge-graph`, `Docs/knowledge-mem-exchange`, `Docs/mem-backbone`, or `Docs/postmortem`.
 - Use this filename format for all new docs: `NNNN_short-topic.md`.
 - `NNNN` must be a 4-digit zero-padded number (for example: `0001`, `0042`, `0120`).
-- Pick the next available number in the target directory by incrementing the current highest prefix.
-- If a numbering collision is detected (e.g., concurrent sessions), increment again until the number is unique.
+
+## File ID Management via `.config`
+
+Each doc subdirectory contains a `.config` file that tracks the next available numeric ID:
+
+```
+nextId=5
+```
+
+**Workflow for creating a new doc:**
+
+1. Read `Docs/<target-dir>/.config` to get `nextId`.
+2. Use that value (zero-padded to 4 digits) as the filename prefix.
+3. Write the new doc file.
+4. Increment `nextId` by 1 and write the updated value back to `.config`.
+
+**Collision handling:** If a file with that prefix already exists (e.g., concurrent sessions), increment `nextId` and retry until the prefix is unique, then save the final incremented value to `.config`.
 
 # Directory Decision Guide
 
