@@ -196,7 +196,10 @@ final class TranscriptionManager {
         state = .cancelled
         throw CancellationError()
       } catch {
-        // Load failed — model not downloaded yet, download then retry
+        // Only download if the model is genuinely absent; re-throw if it exists but failed to load
+        guard !settings.isModelDownloaded(modelName: settings.modelName) else {
+          throw error
+        }
         do {
           try await downloadModel(
             modelName: settings.modelName,
