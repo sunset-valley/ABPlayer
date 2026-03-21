@@ -499,7 +499,7 @@ final class TranscriptNSTextView: NSTextView {
   // MARK: - Mouse handling
 
   override func mouseDown(with event: NSEvent) {
-    guard let coordinator, !coordinator.isUserScrolling else { return }
+    guard let coordinator else { return }
 
     let point = convert(event.locationInWindow, from: nil)
     let charIndex = characterIndex(at: point)
