@@ -15,17 +15,68 @@ extension Logger {
   static let general = Logger(subsystem: subsystem, category: "general")
 }
 
+enum UpdateFeedSource: String, CaseIterable, Identifiable {
+  case github
+  case kcoding
+  case ghProxy = "gh-proxy"
+  case ghproxy
+
+  var id: Self { self }
+
+  var appcastURL: String {
+    switch self {
+    case .github:
+      return "https://github.com/sunset-valley/ABPlayer/releases/latest/download/appcast.xml"
+    case .ghProxy:
+      return "https://gh-proxy.com/github.com/sunset-valley/ABPlayer/releases/latest/download/appcast.xml"
+    case .ghproxy:
+      return "https://ghproxy.net/github.com/sunset-valley/ABPlayer/releases/latest/download/appcast.xml"
+    case .kcoding:
+      return "https://s3.kcoding.cn/d/ABPlayerRelease/appcast.xml"
+    }
+  }
+}
+
 @MainActor
-final class SparkleUpdater: ObservableObject {
+@Observable
+final class SparkleUpdater {
+  @ObservationIgnored
   private let controller: SPUStandardUpdaterController
+
+  @ObservationIgnored
+  @AppStorage(UserDefaultsKey.updateFeedSource) private var _selectedFeedSourceRawValue: String =
+    UpdateFeedSource.kcoding.rawValue
+
+  var selectedFeedSource: UpdateFeedSource {
+    get {
+      access(keyPath: \.selectedFeedSource)
+      return UpdateFeedSource(rawValue: _selectedFeedSourceRawValue) ?? .kcoding
+    }
+    set {
+      withMutation(keyPath: \.selectedFeedSource) {
+        _selectedFeedSourceRawValue = newValue.rawValue
+        applyFeedURLOverride(for: newValue)
+      }
+    }
+  }
+
+  var selectedFeedURL: String {
+    selectedFeedSource.appcastURL
+  }
 
   init() {
     controller = SPUStandardUpdaterController(
       startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+    applyFeedURLOverride(for: selectedFeedSource)
   }
 
   func checkForUpdates() {
+    applyFeedURLOverride(for: selectedFeedSource)
     controller.checkForUpdates(nil)
+  }
+
+  private func applyFeedURLOverride(for source: UpdateFeedSource) {
+    UserDefaults.standard.set(source.appcastURL, forKey: UserDefaultsKey.sparkleFeedURL)
   }
 }
 
@@ -230,6 +281,7 @@ struct ABPlayerApp: App {
           .environment(playerSettings)
           .environment(proxySettings)
           .environment(transcriptionManager)
+          .environment(updater)
       }
       .defaultPosition(.center)
       .commandsRemoved()

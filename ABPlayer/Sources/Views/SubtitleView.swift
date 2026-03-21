@@ -58,10 +58,10 @@ struct SubtitleView: View {
         onPopoverAnchorChanged: { anchors in
           popoverAnchors = anchors
         },
-        onAnnotationTapped: { cueID, annotation in
+        onAnnotationTapped: { groupID, selection, _ in
           viewModel.selectAnnotation(
-            cueID: cueID,
-            annotationID: annotation.id,
+            groupID: groupID,
+            selection: selection,
             isPlaying: playerManager.isPlaying,
             onPause: { Task { await playerManager.pause() } }
           )
@@ -192,7 +192,7 @@ struct SubtitleView: View {
       CommentEditorView(
         existingComment: annotation.comment,
         onSave: { comment in
-          annotationService.updateComment(annotationID: annotation.id, comment: comment)
+          annotationService.updateComment(groupID: annotation.groupID, comment: comment)
           dismissPopoverSelection()
         },
         onCancel: {
@@ -218,12 +218,12 @@ struct SubtitleView: View {
         },
         onChangeType: { type in
           if let annotation = existingAnnotation {
-            annotationService.updateType(annotationID: annotation.id, type: type)
+            annotationService.updateType(groupID: annotation.groupID, type: type)
           }
         },
         onDelete: {
           if let annotation = existingAnnotation {
-            annotationService.removeAnnotation(id: annotation.id)
+            annotationService.removeAnnotationGroup(groupID: annotation.groupID)
           }
         },
         onLookup: {},
@@ -247,17 +247,16 @@ struct SubtitleView: View {
       return ""
     case let .selecting(selection):
       return selection.fullText
-    case let .annotationSelected(cueID, annotationID):
-      return annotationService.annotations(for: cueID)
-        .first { $0.id == annotationID }?.selectedText ?? ""
+    case let .annotationSelected(_, selection):
+      return selection.fullText
     }
   }
 
   private func existingAnnotationForPopover(
     output: SubtitleViewModel.Output
   ) -> AnnotationDisplayData? {
-    if case let .annotationSelected(cueID, annotationID) = output.textSelection {
-      return annotationService.annotations(for: cueID).first { $0.id == annotationID }
+    if case let .annotationSelected(groupID, _) = output.textSelection {
+      return annotationService.annotations(inGroup: groupID).first
     }
     return nil
   }
@@ -268,9 +267,11 @@ struct SubtitleView: View {
     type: AnnotationType
   ) {
     guard case let .selecting(selection) = state else { return }
+    let groupID = UUID()
     for segment in selection.segments {
       annotationService.addAnnotation(
         cueID: segment.cueID,
+        groupID: groupID,
         range: segment.localRange,
         selectedText: segment.text,
         type: type

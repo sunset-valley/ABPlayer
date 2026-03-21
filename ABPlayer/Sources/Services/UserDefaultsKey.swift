@@ -10,6 +10,8 @@ enum UserDefaultsKey {
   static let proxyHost = "proxy_host"
   static let proxyPort = "proxy_port"
   static let proxyType = "proxy_type"
+  static let updateFeedSource = "update_feed_source"
+  static let sparkleFeedURL = "SUFeedURL"
 
   enum MainSplitSuffix: String {
     case showContentPanel = "ShowContentPanel"

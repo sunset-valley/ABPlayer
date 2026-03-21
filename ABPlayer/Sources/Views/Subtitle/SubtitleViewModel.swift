@@ -30,7 +30,7 @@ final class SubtitleViewModel {
     /// User has selected (possibly cross-cue) text.
     case selecting(selection: CrossCueTextSelection)
     /// User has tapped an existing annotation.
-    case annotationSelected(cueID: UUID, annotationID: UUID)
+    case annotationSelected(groupID: UUID, selection: CrossCueTextSelection)
 
     // MARK: Convenience accessors
 
@@ -96,9 +96,9 @@ final class SubtitleViewModel {
     }
   }
 
-  func selectAnnotation(cueID: UUID, annotationID: UUID, isPlaying: Bool, onPause: () -> Void) {
+  func selectAnnotation(groupID: UUID, selection: CrossCueTextSelection, isPlaying: Bool, onPause: () -> Void) {
     pausePlaybackForSelectionIfNeeded(isPlaying: isPlaying, onPause: onPause)
-    textSelection = .annotationSelected(cueID: cueID, annotationID: annotationID)
+    textSelection = .annotationSelected(groupID: groupID, selection: selection)
   }
 
   func dismissSelection(onPlay: () -> Void) {

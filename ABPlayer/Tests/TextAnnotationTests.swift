@@ -87,18 +87,20 @@ struct AnnotationDisplayDataTests {
   @Test
   func testEquality() {
     let id = UUID()
+    let groupID = UUID()
     let range = NSRange(location: 0, length: 5)
-    let a = AnnotationDisplayData(id: id, type: .vocabulary, range: range, selectedText: "hello", comment: nil)
-    let b = AnnotationDisplayData(id: id, type: .vocabulary, range: range, selectedText: "hello", comment: nil)
+    let a = AnnotationDisplayData(id: id, groupID: groupID, type: .vocabulary, range: range, selectedText: "hello", comment: nil)
+    let b = AnnotationDisplayData(id: id, groupID: groupID, type: .vocabulary, range: range, selectedText: "hello", comment: nil)
     #expect(a == b)
   }
 
   @Test
   func testInequalityDifferentType() {
     let id = UUID()
+    let groupID = UUID()
     let range = NSRange(location: 0, length: 5)
-    let a = AnnotationDisplayData(id: id, type: .vocabulary, range: range, selectedText: "hello", comment: nil)
-    let b = AnnotationDisplayData(id: id, type: .collocation, range: range, selectedText: "hello", comment: nil)
+    let a = AnnotationDisplayData(id: id, groupID: groupID, type: .vocabulary, range: range, selectedText: "hello", comment: nil)
+    let b = AnnotationDisplayData(id: id, groupID: groupID, type: .collocation, range: range, selectedText: "hello", comment: nil)
     #expect(a != b)
   }
 
@@ -116,11 +118,25 @@ struct AnnotationDisplayDataTests {
 
     let display = AnnotationDisplayData(from: annotation)
     #expect(display.id == annotation.id)
+    #expect(display.groupID == annotation.groupID)
     #expect(display.type == .goodSentence)
     #expect(display.range.location == 5)
     #expect(display.range.length == 10)
     #expect(display.selectedText == "test phrase")
     #expect(display.comment == "nice!")
+  }
+
+  @Test
+  func testTextAnnotationDefaultGroupIDMatchesID() {
+    let annotation = TextAnnotation(
+      cueID: UUID(),
+      rangeLocation: 0,
+      rangeLength: 4,
+      type: .vocabulary,
+      selectedText: "test"
+    )
+
+    #expect(annotation.groupID == annotation.id)
   }
 }
 
