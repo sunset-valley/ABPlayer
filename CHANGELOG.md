@@ -1,3 +1,9 @@
+## [0.2.18.99] - 2026-03-21
+
+### Features
+- add preset mirror options for transcription downloads
+
+
 ## [0.2.17.98] - 2026-03-21
 
 ### Bug Fixes
