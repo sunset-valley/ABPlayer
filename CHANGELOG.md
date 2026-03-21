@@ -1,3 +1,10 @@
+## [0.2.16.97] - 2026-03-21
+
+### Features
+- add selectable Sparkle feed source in settings
+- group cross-cue text marks into unified selection actions
+
+
 ## [0.2.15.96] - 2026-03-21
 
 ### Chores
