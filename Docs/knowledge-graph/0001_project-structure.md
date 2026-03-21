@@ -35,6 +35,7 @@ Dependencies flow **downward only**: Views → ViewModels → Services → Model
 | **Services/PlayerManager/** | Playback engine with AB-loop and segment support | `PlayerManager` (coordinator), `PlayerEngine` (AVPlayer wrapper), `PlayerEngineProtocol` (testable boundary) |
 | **Services/FolderNavigation** | Sub-services delegated from `FolderNavigationViewModel` | `NavigationService` (folder stack), `SelectionStateService` (selection + UserDefaults persistence), `DeletionService` (file/folder delete), `ImportService` (import + refresh) |
 | **Services/*Settings** | UserDefaults-backed preferences | `TranscriptionSettings`, `PlayerSettings`, `LibrarySettings`, `ProxySettings` |
+| **Services/URLSessionProxyInjector** | Installs global URLSession proxy via method swizzling so WhisperKit and swift-transformers route through the configured proxy at startup | `URLSessionProxyInjector.install(settings:)` called once in `ABPlayerApp.init()` |
 | **ViewModels/** | Presentation logic binding Services to Views | `BasePlayerViewModel` (shared), `Audio/VideoPlayerViewModel`, `TranscriptionViewModel`, `MainSplitViewModel` (split layout + pane allocation), `FolderNavigationViewModel` (delegates sub-concerns to folder-navigation services) |
 | **Views/** | SwiftUI screens and AppKit-bridged components | Split layout, player views, subtitle overlay, settings panels |
 | **Views/TextView/** | Custom transcript renderer (NSTextView-backed) | `TranscriptTextView` (unified multi-cue), `AnnotatedTextView` (per-cue), `ECTextNativeView` |
