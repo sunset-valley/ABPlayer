@@ -281,11 +281,6 @@ final class TranscriptionManager {
     }
   }
 
-  /// Transcribe audio file with default settings (for backwards compatibility)
-  func transcribe(audioURL: URL) async throws -> [SubtitleCue] {
-    try await transcribe(audioURL: audioURL, settings: TranscriptionSettings())
-  }
-
   /// Reset state to idle
   func reset() {
     state = .idle
@@ -386,7 +381,6 @@ enum TranscriptionError: LocalizedError {
   case modelNotLoaded
   case accessDenied
   case audioExtractionFailed(String)
-  case transcriptionFailed(String)
 
   var errorDescription: String? {
     switch self {

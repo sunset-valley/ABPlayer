@@ -33,8 +33,8 @@ let project = Project(
             "s3.kcoding.cn": .dictionary([
               "NSExceptionAllowsInsecureHTTPLoads": true,
               "NSIncludesSubdomains": true,
-            ])
-          ])
+            ]),
+          ]),
         ]),
       ]),
       buildableFolders: [
@@ -69,8 +69,8 @@ let project = Project(
             "s3.kcoding.cn": .dictionary([
               "NSExceptionAllowsInsecureHTTPLoads": true,
               "NSIncludesSubdomains": true,
-            ])
-          ])
+            ]),
+          ]),
         ]),
       ]),
       buildableFolders: [

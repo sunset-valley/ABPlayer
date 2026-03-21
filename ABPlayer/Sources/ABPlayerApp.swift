@@ -41,7 +41,6 @@ struct ABPlayerApp: App {
   private let librarySettings = LibrarySettings()
   private let playerSettings = PlayerSettings()
   private let proxySettings = ProxySettings()
-  private let vocabularyService: VocabularyService
   private let annotationService: AnnotationService
   private let subtitleLoader = SubtitleLoader()
 
@@ -94,7 +93,6 @@ struct ABPlayerApp: App {
       modelContainer.mainContext.autosaveEnabled = true
 
       sessionTracker = SessionTracker(modelContainer: modelContainer)
-      vocabularyService = VocabularyService(modelContext: modelContainer.mainContext)
       annotationService = AnnotationService(modelContext: modelContainer.mainContext)
       
       queueManager = TranscriptionQueueManager(
@@ -196,7 +194,6 @@ struct ABPlayerApp: App {
         .environment(playerSettings)
         .environment(proxySettings)
         .environment(queueManager)
-        .environment(vocabularyService)
         .environment(annotationService)
         .environment(subtitleLoader)
     }

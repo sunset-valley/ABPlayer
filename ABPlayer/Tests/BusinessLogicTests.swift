@@ -12,8 +12,7 @@ struct ABLoopTests {
 
   @Test
   func testLoopCheckTriggersWhenTimeExceedsPointB() {
-    // Given: pointA = 10.0, pointB = 20.0, currentTime = 20.0
-    let pointA = 10.0
+    // Given: pointB = 20.0, currentTime = 20.0
     let pointB = 20.0
     let currentTime = 20.0
 
@@ -26,8 +25,7 @@ struct ABLoopTests {
 
   @Test
   func testLoopCheckDoesNotTriggerBeforePointB() {
-    // Given: pointA = 10.0, pointB = 20.0, currentTime = 15.0
-    let pointA = 10.0
+    // Given: pointB = 20.0, currentTime = 15.0
     let pointB = 20.0
     let currentTime = 15.0
 
@@ -40,8 +38,7 @@ struct ABLoopTests {
 
   @Test
   func testLoopCheckWithZeroPointA() {
-    // Given: pointA = 0.0 (start of file)
-    let pointA = 0.0
+    // Given: pointB = 5.0, currentTime = 5.5
     let pointB = 5.0
     let currentTime = 5.5
 
@@ -306,7 +303,7 @@ struct SessionTrackerLogicTests {
   @Test
   func testSaveIntervalThreshold() {
     // Given: save interval of 5 seconds
-    var lastSavedSeconds = 0.0
+    let lastSavedSeconds = 0.0
     var currentSeconds = 4.9
 
     // When: checking if save should trigger
@@ -605,16 +602,7 @@ struct VocabularyLogicTests {
 
   @Test
   func testDifficultyColorLevel1IsGreen() {
-    // Given: difficulty level 1
-    let level = 1
-
-    // When: determining color
-    let color: String
-    switch level {
-    case 1: color = "green"
-    case 2: color = "yellow"
-    default: color = "red"
-    }
+    let color = colorForDifficulty(level: 1)
 
     // Then: should be green
     #expect(color == "green")
@@ -622,16 +610,7 @@ struct VocabularyLogicTests {
 
   @Test
   func testDifficultyColorLevel2IsYellow() {
-    // Given: difficulty level 2
-    let level = 2
-
-    // When: determining color
-    let color: String
-    switch level {
-    case 1: color = "green"
-    case 2: color = "yellow"
-    default: color = "red"
-    }
+    let color = colorForDifficulty(level: 2)
 
     // Then: should be yellow
     #expect(color == "yellow")
@@ -639,15 +618,8 @@ struct VocabularyLogicTests {
 
   @Test
   func testDifficultyColorLevel3OrMoreIsRed() {
-    // Given: difficulty level >= 3
     for level in [3, 4, 5, 10] {
-      // When: determining color
-      let color: String
-      switch level {
-      case 1: color = "green"
-      case 2: color = "yellow"
-      default: color = "red"
-      }
+      let color = colorForDifficulty(level: level)
 
       // Then: should be red
       #expect(color == "red")
@@ -676,6 +648,14 @@ struct VocabularyLogicTests {
 
     // Then: should be lowercase without punctuation
     #expect(normalized == "hello")
+  }
+
+  private func colorForDifficulty(level: Int) -> String {
+    switch level {
+    case 1: "green"
+    case 2: "yellow"
+    default: "red"
+    }
   }
 }
 

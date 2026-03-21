@@ -245,13 +245,3 @@ struct SubtitleView: View {
     }
   }
 }
-
-struct SubtitleEmptyView: View {
-  var body: some View {
-    ContentUnavailableView(
-      "No Subtitles",
-      systemImage: "text.bubble",
-      description: Text("This audio file has no associated subtitle file")
-    )
-  }
-}
