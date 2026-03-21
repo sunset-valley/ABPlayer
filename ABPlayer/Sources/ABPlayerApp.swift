@@ -16,21 +16,14 @@ extension Logger {
 }
 
 enum UpdateFeedSource: String, CaseIterable, Identifiable {
-  case github
   case kcoding
-  case ghProxy = "gh-proxy"
-  case ghproxy
 
-  var id: Self { self }
+  var id: Self {
+    self
+  }
 
   var appcastURL: String {
     switch self {
-    case .github:
-      return "https://github.com/sunset-valley/ABPlayer/releases/latest/download/appcast.xml"
-    case .ghProxy:
-      return "https://gh-proxy.com/github.com/sunset-valley/ABPlayer/releases/latest/download/appcast.xml"
-    case .ghproxy:
-      return "https://ghproxy.net/github.com/sunset-valley/ABPlayer/releases/latest/download/appcast.xml"
     case .kcoding:
       return "https://s3.kcoding.cn/d/ABPlayerRelease/appcast.xml"
     }
@@ -66,7 +59,8 @@ final class SparkleUpdater {
 
   init() {
     controller = SPUStandardUpdaterController(
-      startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+      startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil
+    )
     applyFeedURLOverride(for: selectedFeedSource)
   }
 
@@ -129,7 +123,7 @@ struct ABPlayerApp: App {
         for: .applicationSupportDirectory, in: .userDomainMask
       ).first else {
         throw CocoaError(.fileNoSuchFile, userInfo: [
-          NSLocalizedDescriptionKey: "Application Support directory not found"
+          NSLocalizedDescriptionKey: "Application Support directory not found",
         ])
       }
       let folderName = Bundle.main.bundleIdentifier ?? "cc.ihugo.app.ABPlayer"
@@ -149,7 +143,7 @@ struct ABPlayerApp: App {
 
       sessionTracker = SessionTracker(modelContainer: modelContainer)
       annotationService = AnnotationService(modelContext: modelContainer.mainContext)
-      
+
       queueManager = TranscriptionQueueManager(
         transcriptionManager: transcriptionManager,
         settings: transcriptionSettings
@@ -210,13 +204,13 @@ struct ABPlayerApp: App {
           playerManager.selectNextSegment()
         }
       }
-      
+
       KeyboardShortcuts.onKeyUp(for: .counterIncrement) {
         Task { @MainActor in
           CounterPlugin.shared.increment()
         }
       }
-      
+
       KeyboardShortcuts.onKeyUp(for: .counterDecrement) {
         Task { @MainActor in
           CounterPlugin.shared.decrement()
@@ -255,7 +249,7 @@ struct ABPlayerApp: App {
     let targetVersion = "0.2.17"
     let currentVersion =
       (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
-      ?? "0.0.0"
+        ?? "0.0.0"
 
     return currentVersion.compare(targetVersion, options: .numeric) != .orderedDescending
   }
@@ -291,9 +285,10 @@ struct ABPlayerApp: App {
               string: "Developed by Sunset Valley",
               attributes: [
                 NSAttributedString.Key.font: NSFont.systemFont(
-                  ofSize: 11)
+                  ofSize: 11
+                ),
               ]
-            )
+            ),
           ])
         }
 
@@ -320,6 +315,7 @@ struct ABPlayerApp: App {
 }
 
 // MARK: - Plugin Commands
+
 struct PluginCommands: Commands {
   var body: some Commands {
     CommandMenu("Plugins") {
@@ -333,6 +329,7 @@ struct PluginCommands: Commands {
 }
 
 // MARK: - Settings Commands
+
 struct SettingsCommands: Commands {
   @Environment(\.openWindow) private var openWindow
 

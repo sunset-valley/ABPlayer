@@ -523,7 +523,7 @@ struct TranscriptionSettingsView: View {
   // MARK: - Helpers
 
   private var displayFFmpegPath: String {
-    if !settings.ffmpegPath.isEmpty, TranscriptionSettings.isFFmpegValid(at: settings.ffmpegPath) {
+    if !settings.ffmpegPath.isEmpty, ffmpegPathStatus == .valid {
       return settings.ffmpegPath
     }
     if settings.isFFmpegDownloaded {

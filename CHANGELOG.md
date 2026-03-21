@@ -1,3 +1,9 @@
+## [0.2.19.100] - 2026-03-21
+
+### Improvements
+- drop extra update mirrors and reuse ffmpeg status
+
+
 ## [0.2.18.99] - 2026-03-21
 
 ### Features
