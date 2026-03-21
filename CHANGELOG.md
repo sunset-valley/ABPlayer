@@ -1,3 +1,17 @@
+## [0.2.14.92] - 2026-03-20
+
+### Bug Fixes
+- support custom download endpoint for models and tokenizer
+- vendor WhisperKit dependencies and disable fallback downloads
+- skip download when model already exists on disk
+
+### Chores
+- point Sparkle feed to S3 and validate appcast URL (#137)
+
+### Other
+- fix tests (#138)
+
+
 ## [0.2.13.91] - 2026-03-19
 
 ### Chores
