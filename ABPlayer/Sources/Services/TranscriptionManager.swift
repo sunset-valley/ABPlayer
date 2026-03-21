@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+@preconcurrency import WhisperKit
 
 /// Transcription progress and state
 enum TranscriptionState: Equatable {
@@ -18,44 +19,44 @@ enum TranscriptionState: Equatable {
 @MainActor
 @Observable
 final class TranscriptionManager {
-  private let engine: TranscriptionEngineProtocol
+  private var whisperKit: WhisperKit?
+  private var loadedModelName: String?
   private var downloadTask: Task<Void, Error>?
   var state: TranscriptionState = .idle
   /// Name of the most recently failed-to-load model (corrupt/incomplete files), nil if none
   var invalidModelName: String?
 
-  init(engine: TranscriptionEngineProtocol = WhisperKitTranscriptionEngine()) {
-    self.engine = engine
+  /// Whether the model is loaded and ready
+  var isModelLoaded: Bool {
+    whisperKit != nil
   }
 
   /// Download model with progress tracking
   func downloadModel(
     modelName: String,
     downloadBase: URL,
-    endpoint: String = "https://huggingface.co",
+    endpoint: String,
     progressCallback: (@Sendable (Double) -> Void)? = nil
   ) async throws {
-    // If already downloading (and correct model), return
-    if case .downloading(_, let currentName) = state, currentName == modelName {
+    if case let .downloading(_, currentName) = state, currentName == modelName {
       return
     }
 
     state = .downloading(progress: 0, modelName: modelName)
 
     let task = Task {
-      try await engine.download(
-        modelName: modelName,
+      _ = try await WhisperKit.download(
+        variant: modelName,
         downloadBase: downloadBase,
         endpoint: endpoint,
         progressCallback: { @Sendable [weak self] progress in
           Task { @MainActor [weak self] in
             guard let self else { return }
-            // Update state
-            if case .downloading(_, let currentName) = self.state, currentName == modelName {
-              self.state = .downloading(progress: progress, modelName: modelName)
+            let fractionCompleted = progress.fractionCompleted
+            if case let .downloading(_, currentName) = self.state, currentName == modelName {
+              self.state = .downloading(progress: fractionCompleted, modelName: modelName)
             }
-            // Process callback
-            progressCallback?(progress)
+            progressCallback?(fractionCompleted)
           }
         }
       )
@@ -76,7 +77,6 @@ final class TranscriptionManager {
       state = .cancelled
       throw CancellationError()
     } catch let urlError as URLError where urlError.code == .cancelled {
-      // URLSession throws URLError.cancelled instead of CancellationError
       downloadTask = nil
       state = .cancelled
       throw CancellationError()
@@ -96,31 +96,86 @@ final class TranscriptionManager {
   /// Initialize WhisperKit with the specified model and download folder
   func loadModel(
     modelName: String = "distil-large-v3",
-    downloadBase: URL
+    downloadBase: URL,
+    endpoint: String
   ) async throws {
-    if engine.isModelLoaded(modelName) {
+    if whisperKit != nil, loadedModelName == modelName {
       return
     }
 
     state = .loading(modelName: modelName)
     do {
-      try await engine.loadModel(modelName: modelName, downloadBase: downloadBase)
+      let localFolder = Self.localModelFolder(modelName: modelName, downloadBase: downloadBase)
+      let config = WhisperKitConfig(
+        model: modelName,
+        downloadBase: downloadBase,
+        modelEndpoint: endpoint,
+        modelFolder: localFolder,
+        download: false
+      )
+
+      whisperKit = try await WhisperKit(config)
+      loadedModelName = modelName
       invalidModelName = nil
       state = .idle
-    } catch {
-      if let engineError = error as? TranscriptionEngineError {
-        switch engineError {
-        case .modelsUnavailable:
-          break
-        case .modelNotLoaded, .underlying:
-          invalidModelName = modelName
-        }
+    } catch let whisperError as WhisperError {
+      if case .modelsUnavailable = whisperError {
+        invalidModelName = nil
       } else {
         invalidModelName = modelName
       }
+      state = .failed("Failed to load model: \(whisperError.localizedDescription)")
+      throw whisperError
+    } catch {
+      invalidModelName = modelName
       state = .failed("Failed to load model: \(error.localizedDescription)")
       throw error
     }
+  }
+
+  /// Returns the path to an already-downloaded model folder, or nil if not present.
+  /// WhisperKit stores models at: <downloadBase>/models/argmaxinc/whisperkit-coreml/<variant>/
+  private static func localModelFolder(modelName: String, downloadBase: URL) -> String? {
+    let whisperKitDir = downloadBase
+      .appendingPathComponent("models/argmaxinc/whisperkit-coreml")
+    guard let contents = try? FileManager.default.contentsOfDirectory(
+      at: whisperKitDir,
+      includingPropertiesForKeys: [.isDirectoryKey],
+      options: [.skipsHiddenFiles]
+    ) else { return nil }
+
+    let knownModels = TranscriptionSettings.availableModels.map(\.id)
+      .sorted { $0.count > $1.count }
+
+    return contents.first { url in
+      let folderName = url.lastPathComponent
+      guard let bestMatch = knownModels.first(where: { folderName.contains($0) }) else {
+        return false
+      }
+      return bestMatch == modelName
+    }?.path
+  }
+
+  func checkIfModelExist(
+    modelName: String = "distil-large-v3",
+    downloadBase: URL,
+    endpoint: String
+  ) async throws -> Bool {
+    if whisperKit != nil, loadedModelName == modelName {
+      return true
+    }
+    do {
+      try await loadModel(
+        modelName: modelName,
+        downloadBase: downloadBase,
+        endpoint: endpoint
+      )
+    } catch WhisperError.modelsUnavailable {
+      return false
+    } catch {
+      throw error
+    }
+    return true
   }
 
   /// Transcribe audio file using settings
@@ -130,24 +185,20 @@ final class TranscriptionManager {
   ) async throws -> [SubtitleCue] {
     let fileName = audioURL.lastPathComponent
 
-    if !engine.isModelLoaded(settings.modelName) {
+    if whisperKit == nil || loadedModelName != settings.modelName {
       do {
         try await loadModel(
           modelName: settings.modelName,
-          downloadBase: settings.modelDirectoryURL
+          downloadBase: settings.modelDirectoryURL,
+          endpoint: settings.effectiveDownloadEndpoint
         )
       } catch is CancellationError {
         state = .cancelled
         throw CancellationError()
       } catch {
-        // If the model files are already on disk the error is a load failure (e.g. WhisperKit
-        // timing out on a network call under restricted networks such as China), not a missing
-        // model.  Triggering a download would just time out again and show a misleading
-        // "Download failed" message instead of the real load error.  Re-throw in that case.
         if settings.isModelDownloaded(modelName: settings.modelName) {
           throw error
         }
-        // Model not present locally — download then retry.
         do {
           try await downloadModel(
             modelName: settings.modelName,
@@ -160,16 +211,21 @@ final class TranscriptionManager {
         }
         try await loadModel(
           modelName: settings.modelName,
-          downloadBase: settings.modelDirectoryURL
+          downloadBase: settings.modelDirectoryURL,
+          endpoint: settings.effectiveDownloadEndpoint
         )
       }
     }
 
+    guard let whisperKit else {
+      throw TranscriptionError.modelNotLoaded
+    }
+
     state = .transcribing(progress: 0, fileName: fileName)
-    
+
     var extractedWavURL: URL?
     var workingURL = audioURL
-    
+
     do {
       guard audioURL.startAccessingSecurityScopedResource() else {
         throw TranscriptionError.accessDenied
@@ -182,32 +238,34 @@ final class TranscriptionManager {
       }
 
       let language = settings.language == "auto" ? nil : settings.language
-      let audioPath = workingURL.path
-      let segments = try await engine.transcribe(
-        audioPath: audioPath,
-        language: language
+      let options = DecodingOptions(language: language)
+      let results: [TranscriptionResult] = try await whisperKit.transcribe(
+        audioPath: workingURL.path,
+        decodeOptions: options
       )
 
       audioURL.stopAccessingSecurityScopedResource()
-      
+
       if let wavURL = extractedWavURL {
         try? FileManager.default.removeItem(at: wavURL)
       }
 
-      let cues: [SubtitleCue] = segments.compactMap { segment in
-        let cleanedText = cleanTranscriptionText(segment.text)
+      let cues: [SubtitleCue] = results.flatMap { result in
+        result.segments.compactMap { segment in
+          let cleanedText = cleanTranscriptionText(segment.text)
 
-        guard !cleanedText.isEmpty,
-          segment.end > segment.start
-        else {
-          return nil
+          guard !cleanedText.isEmpty,
+            segment.end > segment.start
+          else {
+            return nil
+          }
+
+          return SubtitleCue(
+            startTime: Double(segment.start),
+            endTime: Double(segment.end),
+            text: cleanedText
+          )
         }
-
-        return SubtitleCue(
-          startTime: segment.start,
-          endTime: segment.end,
-          text: cleanedText
-        )
       }
 
       state = .completed
@@ -260,7 +318,7 @@ final class TranscriptionManager {
       "-ac", "1",
       "-c:a", "pcm_s16le",
       "-y",
-      wavURL.path
+      wavURL.path,
     ]
 
     let errorPipe = Pipe()
@@ -302,11 +360,11 @@ final class TranscriptionManager {
 
   // MARK: - Text Cleaning
 
+  private static let timestampRegex = try? NSRegularExpression(pattern: "<\\|[^>]*\\|>")
+
   /// Remove timestamp patterns like <|16.64|> from transcription text
   private func cleanTranscriptionText(_ text: String) -> String {
-    // Pattern matches <|anything|> including timestamps like <|16.64|>
-    let pattern = "<\\|[^>]*\\|>"
-    guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+    guard let regex = Self.timestampRegex else {
       return text.trimmingCharacters(in: .whitespaces)
     }
 
@@ -335,7 +393,7 @@ enum TranscriptionError: LocalizedError {
       return "WhisperKit model is not loaded"
     case .accessDenied:
       return "Cannot access the audio file"
-    case .audioExtractionFailed(let reason):
+    case let .audioExtractionFailed(reason):
       return "Audio extraction failed: \(reason)"
     }
   }
