@@ -1,3 +1,9 @@
+## [0.2.17.98] - 2026-03-21
+
+### Bug Fixes
+- reset legacy store only for <=0.2.17
+
+
 ## [0.2.16.97] - 2026-03-21
 
 ### Features
