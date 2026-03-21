@@ -46,6 +46,8 @@ open class WhisperKit {
     /// Configuration
     public var modelFolder: URL?
     public var tokenizerFolder: URL?
+    public private(set) var modelToken: String?
+    public private(set) var modelEndpoint: String
     public private(set) var useBackgroundDownloadSession: Bool
 
     /// Callbacks
@@ -67,6 +69,8 @@ open class WhisperKit {
         segmentSeeker = config.segmentSeeker ?? SegmentSeeker()
         voiceActivityDetector = config.voiceActivityDetector
         tokenizerFolder = config.tokenizerFolder ?? config.downloadBase
+        modelToken = config.modelToken
+        modelEndpoint = config.modelEndpoint ?? Constants.defaultRemoteEndpoint
         useBackgroundDownloadSession = config.useBackgroundDownloadSession
         currentTimings = TranscriptionTimings()
         Logging.shared.logLevel = config.verbose ? config.logLevel : .none
@@ -75,9 +79,10 @@ open class WhisperKit {
             model: config.model,
             downloadBase: config.downloadBase,
             modelRepo: config.modelRepo,
-            modelToken: config.modelToken,
+            modelToken: modelToken,
             modelFolder: config.modelFolder,
-            download: config.download
+            download: config.download,
+            endpoint: modelEndpoint
         )
 
         if let prewarm = config.prewarm, prewarm {
@@ -96,6 +101,8 @@ open class WhisperKit {
         model: String? = nil,
         downloadBase: URL? = nil,
         modelRepo: String? = nil,
+        modelToken: String? = nil,
+        modelEndpoint: String? = nil,
         modelFolder: String? = nil,
         tokenizerFolder: URL? = nil,
         computeOptions: ModelComputeOptions? = nil,
@@ -116,6 +123,8 @@ open class WhisperKit {
             model: model,
             downloadBase: downloadBase,
             modelRepo: modelRepo,
+            modelToken: modelToken,
+            modelEndpoint: modelEndpoint,
             modelFolder: modelFolder,
             tokenizerFolder: tokenizerFolder,
             computeOptions: computeOptions,
@@ -472,7 +481,11 @@ open class WhisperKit {
         let additionalSearchPaths: [URL]
         if let modelFolder {
             // TODO: remove hub path in future version, retained as additional search path for backward compatibility
-            let hubTokenizerFolderFromModel = HubApi(downloadBase: modelFolder).localRepoLocation(
+            let hubTokenizerFolderFromModel = HubApi(
+                downloadBase: modelFolder,
+                hfToken: modelToken,
+                endpoint: modelEndpoint
+            ).localRepoLocation(
                 HubApi.Repo(id: ModelUtilities.tokenizerNameForVariant(modelVariant))
             )
 
@@ -485,6 +498,8 @@ open class WhisperKit {
             for: modelVariant,
             tokenizerFolder: tokenizerFolder,
             additionalSearchPaths: additionalSearchPaths,
+            token: modelToken,
+            endpoint: modelEndpoint,
             useBackgroundSession: useBackgroundDownloadSession
         )
         currentTimings.tokenizerLoadTime = CFAbsoluteTimeGetCurrent() - tokenizerLoadStart
