@@ -1,3 +1,10 @@
+## [0.2.15.94] - 2026-03-21
+
+### Bug Fixes
+- stabilize selection popover anchoring and simplify chrome
+- restore text selection after manual scroll
+
+
 ## [0.2.14.93] - 2026-03-20
 
 ### Other
