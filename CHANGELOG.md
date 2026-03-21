@@ -1,3 +1,27 @@
+## [0.2.15.96] - 2026-03-21
+
+### Chores
+- prepare 0.2.16-95 release and align git-release steps
+
+
+## [0.2.16.95] - 2026-03-21
+
+- No significant changes.
+
+
+## [0.2.15.94] - 2026-03-21
+
+### Bug Fixes
+- stabilize selection popover anchoring and simplify chrome
+- restore text selection after manual scroll
+
+
+## [0.2.14.93] - 2026-03-20
+
+### Other
+- Rescue/pre rebase local (#141)
+
+
 ## [0.2.14.92] - 2026-03-20
 
 ### Bug Fixes

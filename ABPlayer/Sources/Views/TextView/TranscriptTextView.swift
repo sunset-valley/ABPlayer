@@ -16,6 +16,11 @@ import SwiftUI
 ///   auto-scrolling.
 struct TranscriptTextView: NSViewRepresentable {
 
+  struct PopoverAnchors: Equatable {
+    let bottom: CGPoint
+    let top: CGPoint
+  }
+
   // MARK: - Inputs
 
   let cues: [SubtitleCue]
@@ -30,6 +35,7 @@ struct TranscriptTextView: NSViewRepresentable {
   // MARK: - Callbacks
 
   let onSelectionChanged: (CrossCueTextSelection?) -> Void
+  let onPopoverAnchorChanged: (PopoverAnchors?) -> Void
   let onAnnotationTapped: (UUID, AnnotationDisplayData) -> Void
   let onCueTap: (UUID, Double) -> Void
   let onUserScrolled: () -> Void
@@ -102,6 +108,7 @@ struct TranscriptTextView: NSViewRepresentable {
     coordinator.annotationVersion = annotationVersion
     coordinator.annotationsProvider = annotationsProvider
     coordinator.onSelectionChanged = onSelectionChanged
+    coordinator.onPopoverAnchorChanged = onPopoverAnchorChanged
     coordinator.onAnnotationTapped = onAnnotationTapped
     coordinator.onCueTap = onCueTap
     coordinator.onUserScrolled = onUserScrolled
@@ -138,6 +145,7 @@ struct TranscriptTextView: NSViewRepresentable {
       annotationVersion: annotationVersion,
       annotationsProvider: annotationsProvider,
       onSelectionChanged: onSelectionChanged,
+      onPopoverAnchorChanged: onPopoverAnchorChanged,
       onAnnotationTapped: onAnnotationTapped,
       onCueTap: onCueTap,
       onUserScrolled: onUserScrolled,
@@ -162,6 +170,7 @@ struct TranscriptTextView: NSViewRepresentable {
 
     // Callbacks
     var onSelectionChanged: (CrossCueTextSelection?) -> Void
+    var onPopoverAnchorChanged: (PopoverAnchors?) -> Void
     var onAnnotationTapped: (UUID, AnnotationDisplayData) -> Void
     var onCueTap: (UUID, Double) -> Void
     var onUserScrolled: () -> Void
@@ -192,6 +201,7 @@ struct TranscriptTextView: NSViewRepresentable {
       annotationVersion: Int,
       annotationsProvider: @escaping (UUID) -> [AnnotationDisplayData],
       onSelectionChanged: @escaping (CrossCueTextSelection?) -> Void,
+      onPopoverAnchorChanged: @escaping (PopoverAnchors?) -> Void,
       onAnnotationTapped: @escaping (UUID, AnnotationDisplayData) -> Void,
       onCueTap: @escaping (UUID, Double) -> Void,
       onUserScrolled: @escaping () -> Void,
@@ -205,6 +215,7 @@ struct TranscriptTextView: NSViewRepresentable {
       self.annotationVersion = annotationVersion
       self.annotationsProvider = annotationsProvider
       self.onSelectionChanged = onSelectionChanged
+      self.onPopoverAnchorChanged = onPopoverAnchorChanged
       self.onAnnotationTapped = onAnnotationTapped
       self.onCueTap = onCueTap
       self.onUserScrolled = onUserScrolled
@@ -238,9 +249,10 @@ struct TranscriptTextView: NSViewRepresentable {
     /// Reflect the SwiftUI `textSelection` state into the NSTextView highlight.
     func syncSelectionHighlight(in textView: TranscriptNSTextView) {
       switch textSelection {
-      case .none:
+      case .none, .annotationSelected:
         if selectionHighlightRange != nil {
           textView.clearSelectionHighlight(coordinator: self)
+          activeSelectionRange = nil
         }
       case let .selecting(selection):
         let globalRange = selection.globalRange
@@ -248,11 +260,6 @@ struct TranscriptTextView: NSViewRepresentable {
           textView.clearSelectionHighlight(coordinator: self)
           textView.applySelectionHighlight(globalRange, coordinator: self)
           activeSelectionRange = globalRange
-        }
-      case .annotationSelected:
-        // Clear text-selection highlight; annotation is shown in popover
-        if selectionHighlightRange != nil {
-          textView.clearSelectionHighlight(coordinator: self)
         }
       }
     }
@@ -423,7 +430,9 @@ struct TranscriptTextView: NSViewRepresentable {
     }
 
     /// Find an existing annotation at a global character index.
-    func findAnnotation(at charIndex: Int) -> (cueID: UUID, annotation: AnnotationDisplayData)? {
+    func findAnnotation(
+      at charIndex: Int
+    ) -> (cueID: UUID, annotation: AnnotationDisplayData, globalRange: NSRange)? {
       guard let layout = cueLayout(at: charIndex),
         layout.containsTextIndex(charIndex)
       else { return nil }
@@ -432,10 +441,130 @@ struct TranscriptTextView: NSViewRepresentable {
       for annotation in annotationsProvider(layout.cueID) {
         let r = annotation.range
         if localIndex >= r.location && localIndex < r.location + r.length {
-          return (layout.cueID, annotation)
+          return (
+            cueID: layout.cueID,
+            annotation: annotation,
+            globalRange: layout.globalRange(from: annotation.range)
+          )
         }
       }
       return nil
+    }
+
+    func popoverAnchors(for globalRange: NSRange, in textView: NSTextView) -> PopoverAnchors? {
+      guard let textStorage = textView.textStorage,
+        let layoutManager = textView.layoutManager,
+        let textContainer = textView.textContainer,
+        let scrollView = textView.enclosingScrollView
+      else { return nil }
+
+      let strLen = textStorage.length
+      guard globalRange.location >= 0,
+        globalRange.length > 0,
+        globalRange.location + globalRange.length <= strLen
+      else { return nil }
+
+      layoutManager.ensureLayout(for: textContainer)
+      let glyphRange = layoutManager.glyphRange(
+        forCharacterRange: globalRange,
+        actualCharacterRange: nil
+      )
+      guard glyphRange.length > 0 else { return nil }
+
+      let clipView = scrollView.contentView
+      let clipBounds = clipView.bounds
+
+      func distanceFromTop(y: CGFloat) -> CGFloat {
+        if clipView.isFlipped {
+          return y - clipBounds.minY
+        }
+        return clipBounds.maxY - y
+      }
+
+      func rectInClipCoordinates(from textContainerRect: CGRect) -> CGRect {
+        let rectInTextView = textContainerRect.offsetBy(
+          dx: textView.textContainerInset.width,
+          dy: textView.textContainerInset.height
+        )
+        let rectInWindow = textView.convert(rectInTextView, to: nil)
+        return clipView.convert(rectInWindow, from: nil)
+      }
+
+      var bottomLineMidDistance = -CGFloat.greatestFiniteMagnitude
+      var bottomMinX = CGFloat.greatestFiniteMagnitude
+      var bottomMaxX = -CGFloat.greatestFiniteMagnitude
+      var bottomEdgeDistance = -CGFloat.greatestFiniteMagnitude
+
+      var topLineMidDistance = CGFloat.greatestFiniteMagnitude
+      var topMinX = CGFloat.greatestFiniteMagnitude
+      var topMaxX = -CGFloat.greatestFiniteMagnitude
+      var topEdgeDistance = CGFloat.greatestFiniteMagnitude
+
+      for layout in layouts {
+        let textIntersection = NSIntersectionRange(globalRange, layout.textRange)
+        guard textIntersection.length > 0 else { continue }
+
+        let textGlyphRange = layoutManager.glyphRange(
+          forCharacterRange: textIntersection,
+          actualCharacterRange: nil
+        )
+        guard textGlyphRange.length > 0 else { continue }
+
+        layoutManager.enumerateEnclosingRects(
+          forGlyphRange: textGlyphRange,
+          withinSelectedGlyphRange: textGlyphRange,
+          in: textContainer
+        ) { rect, _ in
+          guard rect.width > 0, rect.height > 0 else { return }
+          let rectInClip = rectInClipCoordinates(from: rect)
+
+          let midDistance = distanceFromTop(y: rectInClip.midY)
+          let edgeDistance = clipView.isFlipped
+            ? distanceFromTop(y: rectInClip.maxY)
+            : distanceFromTop(y: rectInClip.minY)
+          let topEdge = clipView.isFlipped
+            ? distanceFromTop(y: rectInClip.minY)
+            : distanceFromTop(y: rectInClip.maxY)
+
+          if midDistance > bottomLineMidDistance + 0.5 {
+            bottomLineMidDistance = midDistance
+            bottomMinX = rectInClip.minX
+            bottomMaxX = rectInClip.maxX
+            bottomEdgeDistance = edgeDistance
+          } else if abs(midDistance - bottomLineMidDistance) <= 0.5 {
+            bottomMinX = min(bottomMinX, rectInClip.minX)
+            bottomMaxX = max(bottomMaxX, rectInClip.maxX)
+            bottomEdgeDistance = max(bottomEdgeDistance, edgeDistance)
+          }
+
+          if midDistance < topLineMidDistance - 0.5 {
+            topLineMidDistance = midDistance
+            topMinX = rectInClip.minX
+            topMaxX = rectInClip.maxX
+            topEdgeDistance = topEdge
+          } else if abs(midDistance - topLineMidDistance) <= 0.5 {
+            topMinX = min(topMinX, rectInClip.minX)
+            topMaxX = max(topMaxX, rectInClip.maxX)
+            topEdgeDistance = min(topEdgeDistance, topEdge)
+          }
+        }
+      }
+
+      guard bottomLineMidDistance > -CGFloat.greatestFiniteMagnitude,
+        bottomMinX < bottomMaxX,
+        topLineMidDistance < CGFloat.greatestFiniteMagnitude,
+        topMinX < topMaxX
+      else { return nil }
+
+      let bottomX = min(max((bottomMinX + bottomMaxX) / 2 - clipBounds.minX, 0), clipBounds.width)
+      let bottomY = min(max(bottomEdgeDistance + 2, 0), clipBounds.height)
+      let topX = min(max((topMinX + topMaxX) / 2 - clipBounds.minX, 0), clipBounds.width)
+      let topY = min(max(topEdgeDistance, 0), clipBounds.height)
+
+      return PopoverAnchors(
+        bottom: CGPoint(x: bottomX, y: bottomY),
+        top: CGPoint(x: topX, y: topY)
+      )
     }
 
     // MARK: - Scroll notification
@@ -499,28 +628,32 @@ final class TranscriptNSTextView: NSTextView {
   // MARK: - Mouse handling
 
   override func mouseDown(with event: NSEvent) {
-    guard let coordinator, !coordinator.isUserScrolling else { return }
+    guard let coordinator else { return }
 
     let point = convert(event.locationInWindow, from: nil)
     let charIndex = characterIndex(at: point)
     guard charIndex >= 0, charIndex < (textStorage?.length ?? 0) else {
+      coordinator.onPopoverAnchorChanged(nil)
       coordinator.onSelectionChanged(nil)
       return
     }
 
     // Tap on an existing annotation → show annotation menu
     if event.clickCount == 1, !event.modifierFlags.contains(.shift) {
-      if let (cueID, annotation) = coordinator.findAnnotation(at: charIndex) {
-        coordinator.onAnnotationTapped(cueID, annotation)
+      if let hit = coordinator.findAnnotation(at: charIndex) {
+        coordinator.onPopoverAnchorChanged(
+          coordinator.popoverAnchors(for: hit.globalRange, in: self)
+        )
+        coordinator.onAnnotationTapped(hit.cueID, hit.annotation)
         return
       }
     }
 
     // Start drag-selection
+    coordinator.onPopoverAnchorChanged(nil)
     coordinator.dragAnchorIndex = charIndex
     coordinator.isDragging = true
     coordinator.activeSelectionRange = nil
-    clearSelectionHighlight(coordinator: coordinator)
   }
 
   override func mouseDragged(with event: NSEvent) {
@@ -551,9 +684,13 @@ final class TranscriptNSTextView: NSTextView {
     if let selectionRange = coordinator.activeSelectionRange, selectionRange.length > 0 {
       // Drag ended — report cross-cue selection
       if let selection = coordinator.buildSelection(from: selectionRange) {
+        coordinator.onPopoverAnchorChanged(
+          coordinator.popoverAnchors(for: selectionRange, in: self)
+        )
         coordinator.onSelectionChanged(selection)
       } else {
         coordinator.activeSelectionRange = nil
+        coordinator.onPopoverAnchorChanged(nil)
         coordinator.onSelectionChanged(nil)
       }
     } else {
@@ -564,6 +701,7 @@ final class TranscriptNSTextView: NSTextView {
         coordinator.onCueTap(layout.cueID, layout.startTime)
       }
       coordinator.activeSelectionRange = nil
+      coordinator.onPopoverAnchorChanged(nil)
       coordinator.onSelectionChanged(nil)
     }
 

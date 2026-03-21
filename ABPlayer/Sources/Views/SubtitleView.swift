@@ -22,6 +22,8 @@ struct SubtitleView: View {
   // Comment-editor sheet state (opened from annotation menu)
   @State private var isShowingCommentEditor = false
   @State private var commentEditingAnnotation: AnnotationDisplayData?
+  @State private var popoverAnchors: TranscriptTextView.PopoverAnchors?
+  @State private var popoverContentSize: CGSize = .zero
 
   private var playbackTrackingID: String {
     let fileID = playerManager.currentFile?.id.uuidString ?? "nil"
@@ -46,14 +48,15 @@ struct SubtitleView: View {
         annotationVersion: annotationService.version,
         annotationsProvider: { annotationService.annotations(for: $0) },
         onSelectionChanged: { selection in
-          Task {
-            viewModel.handleTextSelection(
-              selection: selection,
-              isPlaying: playerManager.isPlaying,
-              onPause: { Task { await playerManager.pause() } },
-              onPlay: { Task { await playerManager.play() } }
-            )
-          }
+          viewModel.handleTextSelection(
+            selection: selection,
+            isPlaying: playerManager.isPlaying,
+            onPause: { Task { await playerManager.pause() } },
+            onPlay: { Task { await playerManager.play() } }
+          )
+        },
+        onPopoverAnchorChanged: { anchors in
+          popoverAnchors = anchors
         },
         onAnnotationTapped: { cueID, annotation in
           viewModel.selectAnnotation(
@@ -69,7 +72,10 @@ struct SubtitleView: View {
           }
         },
         onUserScrolled: {
-          Task { viewModel.handleUserScroll() }
+          Task { @MainActor in
+            viewModel.handleUserScroll()
+            dismissPopoverSelection()
+          }
         },
         onEditSubtitleRequested: { cueID in
           editingCueID = cueID
@@ -77,24 +83,57 @@ struct SubtitleView: View {
         }
       )
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-      // Annotation / selection popover
-      .popover(
-        isPresented: Binding(
-          get: { output.textSelection.isActive },
-          set: { presented in
-            if !presented {
-              viewModel.dismissSelection(onPlay: {
-                guard !transcriptionSettings.pauseOnWordDismiss else { return }
-                Task { await playerManager.play() }
-              })
-              isShowingCommentEditor = false
-              commentEditingAnnotation = nil
+      .overlay(alignment: .topLeading) {
+        GeometryReader { geometry in
+          let layout = resolvedPopoverLayout(in: geometry.size)
+
+          ZStack(alignment: .topLeading) {
+            if output.textSelection.isActive {
+              Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { dismissPopoverSelection() }
             }
+
+            if output.textSelection.isActive,
+              let layout
+            {
+              let frame = layout.frame
+              let panelBackground = Color(nsColor: .windowBackgroundColor).opacity(0.97)
+
+              popoverContent(output: output)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minWidth: 200, maxWidth: 280, alignment: .leading)
+                .background {
+                  GeometryReader { proxy in
+                    Color.clear
+                      .onAppear { popoverContentSize = proxy.size }
+                      .onChange(of: proxy.size) { _, newSize in
+                        popoverContentSize = newSize
+                      }
+                  }
+                }
+                .background(
+                  RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(panelBackground)
+                )
+                .overlay(
+                  RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(.white.opacity(0.16), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.35), radius: 22, x: 0, y: 8)
+                .offset(x: frame.minX, y: frame.minY)
+            }
+
+#if DEBUG
+            if let layout {
+              Circle()
+                .fill(.red.opacity(0.85))
+                .frame(width: 7, height: 7)
+                .position(layout.anchor)
+            }
+#endif
           }
-        ),
-        arrowEdge: .bottom
-      ) {
-        popoverContent(output: output)
+        }
       }
 
       // Follow-playback button
@@ -127,6 +166,12 @@ struct SubtitleView: View {
     .onChange(of: cues) { _, _ in
       Task { viewModel.reset() }
     }
+    .onChange(of: output.textSelection) { _, newSelection in
+      guard !newSelection.isActive else { return }
+      popoverAnchors = nil
+      isShowingCommentEditor = false
+      commentEditingAnnotation = nil
+    }
     // Edit subtitle sheet
     .sheet(isPresented: $isShowingEditSheet) {
       if let cueID = editingCueID,
@@ -148,12 +193,7 @@ struct SubtitleView: View {
         existingComment: annotation.comment,
         onSave: { comment in
           annotationService.updateComment(annotationID: annotation.id, comment: comment)
-          isShowingCommentEditor = false
-          commentEditingAnnotation = nil
-          viewModel.dismissSelection(onPlay: {
-            guard !transcriptionSettings.pauseOnWordDismiss else { return }
-            Task { await playerManager.play() }
-          })
+          dismissPopoverSelection()
         },
         onCancel: {
           isShowingCommentEditor = false
@@ -193,10 +233,7 @@ struct SubtitleView: View {
           NSPasteboard.general.setString(text, forType: .string)
         },
         onDismiss: {
-          viewModel.dismissSelection(onPlay: {
-            guard !transcriptionSettings.pauseOnWordDismiss else { return }
-            Task { await playerManager.play() }
-          })
+          dismissPopoverSelection()
         }
       )
     }
@@ -240,4 +277,75 @@ struct SubtitleView: View {
       )
     }
   }
+
+  private func dismissPopoverSelection() {
+    viewModel.dismissSelection(onPlay: {
+      guard !transcriptionSettings.pauseOnWordDismiss else { return }
+      Task { await playerManager.play() }
+    })
+    popoverAnchors = nil
+    isShowingCommentEditor = false
+    commentEditingAnnotation = nil
+  }
+
+  private func clampedPopoverAnchors(in size: CGSize) -> TranscriptTextView.PopoverAnchors? {
+    guard let anchors = popoverAnchors else { return nil }
+    func clamp(_ point: CGPoint) -> CGPoint {
+      let x = min(max(point.x, 0), max(0, size.width - 1))
+      let y = min(max(point.y, 0), max(0, size.height - 1))
+      return CGPoint(x: x, y: y)
+    }
+    return TranscriptTextView.PopoverAnchors(
+      bottom: clamp(anchors.bottom),
+      top: clamp(anchors.top)
+    )
+  }
+
+  private func resolvedPopoverLayout(in size: CGSize) -> (
+    anchor: CGPoint,
+    frame: (minX: CGFloat, minY: CGFloat, width: CGFloat, flipsAboveAnchor: Bool)
+  )? {
+    guard let anchors = clampedPopoverAnchors(in: size) else { return nil }
+
+    let provisionalFrame = popoverFrame(for: anchors.bottom, in: size)
+    let useTopAnchor = provisionalFrame.flipsAboveAnchor
+    let anchor = useTopAnchor ? anchors.top : anchors.bottom
+    let frame = popoverFrame(for: anchor, in: size, forceAbove: useTopAnchor ? true : nil)
+    return (anchor, frame)
+  }
+
+  private func popoverFrame(
+    for anchor: CGPoint,
+    in containerSize: CGSize,
+    forceAbove: Bool? = nil
+  ) -> (
+    minX: CGFloat, minY: CGFloat, width: CGFloat, flipsAboveAnchor: Bool
+  ) {
+    let margin: CGFloat = 10
+    let gap: CGFloat = 12
+    let maxUsableWidth = max(220, min(360, containerSize.width - margin * 2))
+    let width = min(max(popoverContentSize.width, 220), maxUsableWidth)
+    let height = max(popoverContentSize.height, 180)
+
+    let preferredX = anchor.x - width / 2
+    let minX = min(max(preferredX, margin), max(margin, containerSize.width - width - margin))
+
+    let belowY = anchor.y + gap
+    let aboveY = anchor.y - gap - height
+    let canShowAbove = aboveY >= margin
+    let canShowBelow = belowY + height <= containerSize.height - margin
+    let showAbove: Bool
+    if let forceAbove {
+      showAbove = forceAbove
+    } else {
+      // Prefer below; only flip above when it fits above but not below.
+      showAbove = canShowAbove && !canShowBelow
+    }
+    let minY = showAbove
+      ? max(aboveY, margin)
+      : anchor.y + gap
+
+    return (minX, minY, width, showAbove)
+  }
+
 }

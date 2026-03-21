@@ -2,49 +2,73 @@
 
 ## Description
 
-Prepares a new version for CI deployment: increments build version, updates changelog, and creates a release commit. Triggers the CI pipeline which handles the actual GitHub Release creation.
+Prepares a new version for CI deployment: increments build version, updates changelog, creates a release commit, pushes a release branch, opens a PR with auto-merge, then switches back to the original branch.
 
 ## When
 
 Run this skill when the user says:
 
-- `git release`
-- `/git-release`
+- release X.Y.Z
+- release
+- `发布 X.Y.Z`, `发布X.Y.Z`
+- `发布` (without version — auto-increment build number only)
 
 Do not auto-trigger for general release discussions.
 
 ## Instructions
 
-Run the release preparation script:
+### Step 1: Preflight
 
-`./scripts/release.sh [version]`
+1. Record the current branch: `ORIGINAL_BRANCH=$(git branch --show-current)`.
+2. Check working tree is clean: `git status --porcelain`. If dirty, stop and ask the user.
+3. Check tools: `git --version && gh --version`.
+4. Pull latest: `git pull --ff-only`. If this fails (diverged history), stop and report.
 
-### Arguments
+### Step 2: Run the release script
 
-- `version` (optional): Specify exact version (for example, `1.0.0`). If omitted, increments the build version automatically (for example, `0.2.9-48 -> 0.2.9-49`).
+```bash
+./scripts/release.sh [version]
+```
 
-### Process
+- Pass the user-specified version (e.g., `0.2.15`) as the argument. If the user didn't specify a version, run without arguments to auto-increment the build number.
+- The script updates `Project.swift` (version strings), generates `CHANGELOG.md` entry, updates `.release_state`, and creates a local commit with message `ci(release_sh): <shortVersion>-<build>`.
+- If the script fails, stop and report the error.
 
-1. Run preflight checks:
-   - Capture the current branch as `ORIGINAL_BRANCH`.
-   - Ensure git working tree is clean before continuing.
-   - Ensure required tools are available (`git`, `gh`).
-2. Update codebase with `git pull --ff-only`.
-3. Update `Project.swift` (increment `buildVersionString` or set new `shortVersionString`).
-4. Generate a new `CHANGELOG.md` entry from recent commits.
-5. Run quality gates before creating release commit:
-   - Build succeeds.
-   - Tests succeed (or explicitly report why they were skipped).
-6. Create a local git commit with message format `ci(scope): MESSAGE` without `Ultraworked with` and `Co-authored-by`.
-7. Create a branch name based on current commits and push it.
-8. Create a PR.
-9. Enable auto-merge of the PR using `gh pr merge <CURRENT PR> --auto --merge`.
-   - If it fails due to timing/state, retry with short backoff and clear error output.
-10. Switch branch back to `ORIGINAL_BRANCH`.
-11. Output summary.
+### Step 3: Extract the version from the commit
+
+```bash
+VERSION=$(git log -1 --pretty=%s | sed 's/ci(release_sh): //')
+```
+
+This gives a string like `0.2.15-94`.
+
+### Step 4: Create release branch and push
+
+```bash
+git checkout -b "release/$VERSION"
+git push -u origin "release/$VERSION"
+```
+
+### Step 5: Create PR and enable auto-merge
+
+```bash
+gh pr create --title "ci(release_sh): $VERSION" --body "Release $VERSION"
+gh pr merge --auto --merge
+```
+
+If `gh pr merge --auto` fails, wait 3 seconds and retry once.
+
+### Step 6: Switch back to original branch
+
+```bash
+git checkout "$ORIGINAL_BRANCH"
+```
+
+### Step 7: Output summary
+
+Print: the version released, the PR URL, and confirm the branch is back to `ORIGINAL_BRANCH`.
 
 ### Failure Handling
 
-- On any failure, stop immediately with non-zero exit code.
-- Always attempt to switch back to `ORIGINAL_BRANCH` before exiting.
-- Print a concise failure reason and the failed step.
+- On any failure after Step 1, always attempt `git checkout "$ORIGINAL_BRANCH"` before stopping.
+- Print which step failed and the error message.

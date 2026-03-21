@@ -58,3 +58,4 @@ Every doc should include at minimum:
 - Record decisions with rationale and follow-up actions.
 - Link related docs across directories using relative markdown links (e.g., `[see also](../postmortem/0003_foo.md)`).
 - Avoid duplication; update the existing doc when the topic already exists.
+- **Write for a reader who is not already in your head.** Start with the user-visible behavior or outcome, then explain the mechanism. Do not lead with implementation chains, async internals, or code paths — those go at the end if needed at all. If a non-expert reader cannot understand the first paragraph, rewrite it.
