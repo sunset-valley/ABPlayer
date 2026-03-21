@@ -25,6 +25,11 @@ struct TranscriptionSettingsView: View {
   @State private var ffmpegEndpointTestStatus: EndpointTestStatus = .idle
   @State private var modelDownloadStatus: ModelDownloadStatus = .unknown
 
+  private static let kcodingFFmpegMirror = "https://s3.kcoding.cn/d/aliyun/ffmpeg/ffmpeg-8.1.zip"
+  private static let hfMirror = "https://hf-mirror.com"
+  private static let hfCDNMirror = "https://hf-cdn.sufy.com"
+  private static let customMirrorSentinel = "__custom__"
+
   enum ModelDownloadStatus: Equatable {
     case unknown, checking, downloaded, notDownloaded
   }
@@ -105,8 +110,8 @@ struct TranscriptionSettingsView: View {
       HStack {
         Text("Status")
         Spacer()
-        if case .downloading(let progress, let modelName) = transcriptionManager.state,
-          modelName == settings.modelName
+        if case let .downloading(progress, modelName) = transcriptionManager.state,
+           modelName == settings.modelName
         {
           HStack(spacing: 8) {
             ProgressView(value: progress)
@@ -164,8 +169,8 @@ struct TranscriptionSettingsView: View {
           "\(settings.effectiveDownloadEndpoint)/argmaxinc/whisperkit-coreml/tree/main"
         let modelDir =
           settings.modelDirectoryURL
-          .appendingPathComponent("models/argmaxinc/whisperkit-coreml")
-          .path
+            .appendingPathComponent("models/argmaxinc/whisperkit-coreml")
+            .path
         VStack(alignment: .leading, spacing: 10) {
           Text("1. Open the model repository in your browser:")
           if let url = URL(string: repoURL) {
@@ -231,14 +236,16 @@ struct TranscriptionSettingsView: View {
         isOn: Binding(
           get: { settings.autoTranscribe },
           set: { settings.autoTranscribe = $0 }
-        ))
+        )
+      )
 
       Toggle(
         "Keep paused after looking up a word",
         isOn: Binding(
           get: { settings.pauseOnWordDismiss },
           set: { settings.pauseOnWordDismiss = $0 }
-        ))
+        )
+      )
 
       // FFmpeg Path
       LabeledContent("FFmpeg") {
@@ -310,8 +317,8 @@ struct TranscriptionSettingsView: View {
           Button {
             let url =
               settings.modelDirectory.isEmpty
-              ? TranscriptionSettings.defaultModelDirectory
-              : URL(fileURLWithPath: settings.modelDirectory)
+                ? TranscriptionSettings.defaultModelDirectory
+                : URL(fileURLWithPath: settings.modelDirectory)
             NSWorkspace.shared.open(url)
           } label: {
             Text(
@@ -353,7 +360,7 @@ struct TranscriptionSettingsView: View {
       LabeledContent("Download Mirror") {
         VStack {
           HStack {
-            if mirrorSelection == "__custom__" {
+            if mirrorSelection == Self.customMirrorSentinel {
               TextField(
                 "",
                 text: Binding(
@@ -364,12 +371,12 @@ struct TranscriptionSettingsView: View {
               .textFieldStyle(.roundedBorder)
               .frame(minWidth: 180)
             }
-            
+
             Picker("", selection: $mirrorSelection) {
               Text("HuggingFace (Official)").tag("")
-              Text("HF Mirror (hf-mirror.com)").tag("https://hf-mirror.com")
-              Text("HF Mirror (hf-cdn.sufy.com)").tag("https://hf-cdn.sufy.com")
-              Text("Custom").tag("__custom__")
+              Text("HF Mirror (hf-mirror.com)").tag(Self.hfMirror)
+              Text("HF Mirror (hf-cdn.sufy.com)").tag(Self.hfCDNMirror)
+              Text("Custom").tag(Self.customMirrorSentinel)
             }
             .labelsHidden()
             .fixedSize()
@@ -377,7 +384,7 @@ struct TranscriptionSettingsView: View {
         }
       }
       .onChange(of: mirrorSelection) { _, newValue in
-        if newValue != "__custom__" {
+        if newValue != Self.customMirrorSentinel {
           settings.downloadEndpoint = newValue
         }
         if settings.downloadEndpoint.isEmpty {
@@ -393,11 +400,12 @@ struct TranscriptionSettingsView: View {
         HStack {
           Picker("", selection: $ffmpegMirrorSelection) {
             Text("evermeet.cx (Official)").tag("")
-            Text("Custom").tag("__custom__")
+            Text("kcoding.cn").tag(Self.kcodingFFmpegMirror)
+            Text("Custom").tag(Self.customMirrorSentinel)
           }
           .labelsHidden()
           .fixedSize()
-          if ffmpegMirrorSelection == "__custom__" {
+          if ffmpegMirrorSelection == Self.customMirrorSentinel {
             TextField(
               "",
               text: Binding(
@@ -411,7 +419,7 @@ struct TranscriptionSettingsView: View {
         }
       }
       .onChange(of: ffmpegMirrorSelection) { _, newValue in
-        if newValue != "__custom__" {
+        if newValue != Self.customMirrorSentinel {
           settings.ffmpegMirror = newValue
         }
         if settings.ffmpegMirror.isEmpty {
@@ -430,14 +438,23 @@ struct TranscriptionSettingsView: View {
     }
     .onAppear {
       // Sync HuggingFace mirror state
-      if !settings.downloadEndpoint.isEmpty, settings.downloadEndpoint != "https://hf-mirror.com", settings.downloadEndpoint != "https://hf-cdn.sufy.com" {
-        mirrorSelection = "__custom__"
-      } else {
+      if settings.downloadEndpoint.isEmpty ||
+        settings.downloadEndpoint == Self.hfMirror ||
+        settings.downloadEndpoint == Self.hfCDNMirror
+      {
         mirrorSelection = settings.downloadEndpoint
+      } else {
+        mirrorSelection = Self.customMirrorSentinel
       }
       // Sync ffmpeg mirror state
-      ffmpegMirrorSelection = settings.ffmpegMirror.isEmpty ? "" : "__custom__"
-      
+      if settings.ffmpegMirror.isEmpty ||
+        settings.ffmpegMirror == Self.kcodingFFmpegMirror
+      {
+        ffmpegMirrorSelection = settings.ffmpegMirror
+      } else {
+        ffmpegMirrorSelection = Self.customMirrorSentinel
+      }
+
       // Auto-test endpoints on appear
       modelEndpointTestTask?.cancel()
       modelEndpointTestTask = Task { await testModelEndpoint() }
@@ -474,7 +491,7 @@ struct TranscriptionSettingsView: View {
             Spacer()
 
             if let invalidName = transcriptionManager.invalidModelName,
-              model.name.contains(invalidName)
+               model.name.contains(invalidName)
             {
               Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
@@ -506,7 +523,7 @@ struct TranscriptionSettingsView: View {
   // MARK: - Helpers
 
   private var displayFFmpegPath: String {
-    if !settings.ffmpegPath.isEmpty {
+    if !settings.ffmpegPath.isEmpty, TranscriptionSettings.isFFmpegValid(at: settings.ffmpegPath) {
       return settings.ffmpegPath
     }
     if settings.isFFmpegDownloaded {
@@ -578,7 +595,7 @@ struct TranscriptionSettingsView: View {
 
   private func handleFFmpegPathSelection(_ result: Result<[URL], Error>) {
     switch result {
-    case .success(let urls):
+    case let .success(urls):
       if let url = urls.first {
         settings.ffmpegPath = url.path
         refreshFFmpegStatus()
@@ -613,7 +630,7 @@ struct TranscriptionSettingsView: View {
       try await transcriptionManager.downloadModel(
         modelName: settings.modelName,
         downloadBase: settings.modelDirectoryURL,
-        endpoint: settings.effectiveDownloadEndpoint,
+        endpoint: settings.effectiveDownloadEndpoint
       )
       checkModelStatus()
       refreshModels()
@@ -640,7 +657,7 @@ struct TranscriptionSettingsView: View {
 
   private func handleDirectorySelection(_ result: Result<[URL], Error>) {
     switch result {
-    case .success(let urls):
+    case let .success(urls):
       if let url = urls.first {
         if (try? url.bookmarkData(
           options: [.withSecurityScope],
@@ -650,10 +667,10 @@ struct TranscriptionSettingsView: View {
           let newPath = url.path
           let oldPath =
             previousDirectory.isEmpty
-            ? TranscriptionSettings.defaultModelDirectory.path
-            : previousDirectory
+              ? TranscriptionSettings.defaultModelDirectory.path
+              : previousDirectory
 
-          if !downloadedModels.isEmpty && oldPath != newPath {
+          if !downloadedModels.isEmpty, oldPath != newPath {
             migrateModels(from: oldPath, to: newPath)
           }
 
@@ -700,11 +717,11 @@ struct TranscriptionSettingsView: View {
       }
       .foregroundStyle(.secondary)
       .font(.callout)
-    case .success(let ms):
+    case let .success(ms):
       Label("Connected (\(ms) ms)", systemImage: "checkmark.circle.fill")
         .foregroundStyle(.green)
         .font(.callout)
-    case .failure(let msg):
+    case let .failure(msg):
       Label(msg, systemImage: "xmark.circle.fill")
         .foregroundStyle(.red)
         .font(.callout)
