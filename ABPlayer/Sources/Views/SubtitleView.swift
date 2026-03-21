@@ -47,13 +47,11 @@ struct SubtitleView: View {
         annotationsProvider: { annotationService.annotations(for: $0) },
         onSelectionChanged: { selection in
           Task {
-            await viewModel.perform(
-              action: .handleTextSelection(
-                selection: selection,
-                isPlaying: playerManager.isPlaying,
-                onPause: { Task { await playerManager.pause() } },
-                onPlay: { Task { await playerManager.play() } }
-              )
+            viewModel.handleTextSelection(
+              selection: selection,
+              isPlaying: playerManager.isPlaying,
+              onPause: { Task { await playerManager.pause() } },
+              onPlay: { Task { await playerManager.play() } }
             )
           }
         },
@@ -67,13 +65,11 @@ struct SubtitleView: View {
         },
         onCueTap: { cueID, startTime in
           Task {
-            await viewModel.perform(
-              action: .handleCueTap(cueID: cueID, cueStartTime: startTime)
-            )
+            await viewModel.handleCueTap(cueID: cueID, cueStartTime: startTime)
           }
         },
         onUserScrolled: {
-          Task { await viewModel.perform(action: .handleUserScroll) }
+          Task { viewModel.handleUserScroll() }
         },
         onEditSubtitleRequested: { cueID in
           editingCueID = cueID
@@ -104,7 +100,7 @@ struct SubtitleView: View {
       // Follow-playback button
       if output.scrollState.isUserScrolling {
         Button {
-          Task { await viewModel.perform(action: .cancelScrollResume) }
+          Task { viewModel.cancelScrollResume() }
         } label: {
           Label("跟随播放", systemImage: "arrow.down.circle.fill")
         }
@@ -117,19 +113,19 @@ struct SubtitleView: View {
     .animation(.easeInOut(duration: 0.2), value: output.scrollState.isUserScrolling)
     // Playback tracking
     .task(id: playbackTrackingID) {
-      await viewModel.perform(action: .setPlayerManager(playerManager))
+      viewModel.setPlayerManager(playerManager)
 
       await withTaskCancellationHandler {
-        await viewModel.perform(action: .trackPlayback(cues: cues))
+        await viewModel.trackPlayback(cues: cues)
       } onCancel: {
         Task { @MainActor in
-          await viewModel.perform(action: .stopTrackingPlayback)
+          viewModel.stopTrackingPlayback()
         }
       }
     }
     // Reset when cues change (new file / re-transcription)
     .onChange(of: cues) { _, _ in
-      Task { await viewModel.perform(action: .reset) }
+      Task { viewModel.reset() }
     }
     // Edit subtitle sheet
     .sheet(isPresented: $isShowingEditSheet) {

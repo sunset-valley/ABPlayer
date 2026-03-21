@@ -1,6 +1,5 @@
 import Foundation
 import Observation
-@preconcurrency import WhisperKit
 
 /// Transcription progress and state
 enum TranscriptionState: Equatable {
@@ -19,12 +18,15 @@ enum TranscriptionState: Equatable {
 @MainActor
 @Observable
 final class TranscriptionManager {
-  private var whisperKit: WhisperKit?
-  private var loadedModelName: String?
+  private let engine: TranscriptionEngineProtocol
   private var downloadTask: Task<Void, Error>?
   var state: TranscriptionState = .idle
   /// Name of the most recently failed-to-load model (corrupt/incomplete files), nil if none
   var invalidModelName: String?
+
+  init(engine: TranscriptionEngineProtocol = WhisperKitTranscriptionEngine()) {
+    self.engine = engine
+  }
 
   /// Download model with progress tracking
   func downloadModel(
@@ -41,8 +43,8 @@ final class TranscriptionManager {
     state = .downloading(progress: 0, modelName: modelName)
 
     let task = Task {
-      _ = try await WhisperKit.download(
-        variant: modelName,
+      try await engine.download(
+        modelName: modelName,
         downloadBase: downloadBase,
         endpoint: endpoint,
         progressCallback: { @Sendable [weak self] progress in
@@ -53,7 +55,7 @@ final class TranscriptionManager {
               self.state = .downloading(progress: progress.fractionCompleted, modelName: modelName)
             }
             // Process callback
-            progressCallback?(progress.fractionCompleted)
+            progressCallback?(progress)
           }
         }
       )
@@ -120,8 +122,13 @@ final class TranscriptionManager {
       invalidModelName = nil
       state = .idle
     } catch {
-      if let e = error as? WhisperError, case .modelsUnavailable = e {
-        // Model not downloaded yet — not a corruption issue
+      if let engineError = error as? TranscriptionEngineError {
+        switch engineError {
+        case .modelsUnavailable:
+          break
+        case .modelNotLoaded, .underlying:
+          invalidModelName = modelName
+        }
       } else {
         invalidModelName = modelName
       }
@@ -190,7 +197,7 @@ final class TranscriptionManager {
   ) async throws -> [SubtitleCue] {
     let fileName = audioURL.lastPathComponent
 
-    if whisperKit == nil || loadedModelName != settings.modelName {
+    if !engine.isModelLoaded(settings.modelName) {
       do {
         try await loadModel(
           modelName: settings.modelName,
@@ -203,10 +210,6 @@ final class TranscriptionManager {
       } catch {
         throw error
       }
-    }
-
-    guard let kit = whisperKit else {
-      throw TranscriptionError.modelNotLoaded
     }
 
     state = .transcribing(progress: 0, fileName: fileName)
@@ -227,11 +230,9 @@ final class TranscriptionManager {
 
       let language = settings.language == "auto" ? nil : settings.language
       let audioPath = workingURL.path
-      let options = DecodingOptions(language: language)
-
-      let results: [TranscriptionResult] = try await kit.transcribe(
+      let segments = try await engine.transcribe(
         audioPath: audioPath,
-        decodeOptions: options
+        language: language
       )
 
       audioURL.stopAccessingSecurityScopedResource()
@@ -256,6 +257,12 @@ final class TranscriptionManager {
             text: cleanedText
           )
         }
+
+        return SubtitleCue(
+          startTime: segment.start,
+          endTime: segment.end,
+          text: cleanedText
+        )
       }
 
       state = .completed
