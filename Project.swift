@@ -25,7 +25,7 @@ let project = Project(
         "CFBundleShortVersionString": .string(shortVersionString),
         "NSMainStoryboardFile": "",
         "SUFeedURL":
-          "http://s3.kcoding.cn/d/ABPlayerRelease/appcast.xml",
+          "https://s3.kcoding.cn/d/ABPlayerRelease/appcast.xml",
         "SUEnableAutomaticChecks": true,
         "SUPublicEDKey": "Zw9DuoU9cuGJGt81eRRfWq5OwhCG+udkeOBwScjchU0=",
         "NSAppTransportSecurity": .dictionary([
@@ -33,8 +33,8 @@ let project = Project(
             "s3.kcoding.cn": .dictionary([
               "NSExceptionAllowsInsecureHTTPLoads": true,
               "NSIncludesSubdomains": true,
-            ])
-          ])
+            ]),
+          ]),
         ]),
       ]),
       buildableFolders: [
@@ -61,7 +61,7 @@ let project = Project(
         "CFBundleShortVersionString": .string(shortVersionString),
         "NSMainStoryboardFile": "",
         "SUFeedURL":
-          "http://s3.kcoding.cn/d/ABPlayerRelease/appcast.xml",
+          "https://s3.kcoding.cn/d/ABPlayerRelease/appcast.xml",
         "SUEnableAutomaticChecks": true,
         "SUPublicEDKey": "Zw9DuoU9cuGJGt81eRRfWq5OwhCG+udkeOBwScjchU0=",
         "NSAppTransportSecurity": .dictionary([
@@ -69,8 +69,8 @@ let project = Project(
             "s3.kcoding.cn": .dictionary([
               "NSExceptionAllowsInsecureHTTPLoads": true,
               "NSIncludesSubdomains": true,
-            ])
-          ])
+            ]),
+          ]),
         ]),
       ]),
       buildableFolders: [
