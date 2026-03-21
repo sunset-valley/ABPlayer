@@ -28,18 +28,6 @@ final class AnnotationService {
     return cached.map { AnnotationDisplayData(from: $0) }
   }
 
-  /// Find annotation at a specific character index within a cue
-  func annotation(at characterIndex: Int, in cueID: UUID) -> AnnotationDisplayData? {
-    let cached = annotationsByCue[cueID] ?? []
-    for annotation in cached {
-      let range = annotation.range
-      if characterIndex >= range.location && characterIndex < range.location + range.length {
-        return AnnotationDisplayData(from: annotation)
-      }
-    }
-    return nil
-  }
-
   /// Add a new annotation
   @discardableResult
   func addAnnotation(

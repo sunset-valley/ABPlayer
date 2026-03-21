@@ -6,37 +6,15 @@ import OSLog
 final class SubtitleViewModel {
   private static let logger = Logger(subsystem: "com.abplayer", category: "SubtitleViewModel")
 
-  // MARK: - Input / Output
+  // MARK: - Types
 
-  struct Input {
-    enum Action {
-      case setPlayerManager(PlayerManager)
-      case handleUserScroll
-      case cancelScrollResume
-      case handleTextSelection(
-        selection: CrossCueTextSelection?,
-        isPlaying: Bool,
-        onPause: () -> Void,
-        onPlay: () -> Void
-      )
-      case dismissSelection(onPlay: () -> Void)
-      case handleCueTap(cueID: UUID, cueStartTime: Double)
-      case updateCurrentCue(time: Double, cues: [SubtitleCue])
-      case reset
-      case trackPlayback(cues: [SubtitleCue])
-      case stopTrackingPlayback
-    }
-
-    let action: Action
-  }
+  // MARK: - Output
 
   struct Output: Equatable {
     let currentCueID: UUID?
     let scrollState: ScrollState
     let textSelection: TextSelectionState
   }
-
-  // MARK: - Types
 
   enum ScrollState: Equatable {
     case autoScrolling
@@ -55,36 +33,6 @@ final class SubtitleViewModel {
     case annotationSelected(cueID: UUID, annotationID: UUID)
 
     // MARK: Convenience accessors
-
-    /// Returns the cross-cue selection when in the `.selecting` state.
-    var crossCueSelection: CrossCueTextSelection? {
-      if case let .selecting(selection) = self { return selection }
-      return nil
-    }
-
-    /// Backward-compatible accessor for single-cue selections.
-    ///
-    /// Returns `(cueID, localRange, text)` when the selection is confined to
-    /// one cue; for cross-cue selections the first segment is returned.
-    var selectedRange: (cueID: UUID, range: NSRange, text: String)? {
-      if case let .selecting(selection) = self {
-        if let cueID = selection.singleCueID,
-          let localRange = selection.singleLocalRange
-        {
-          return (cueID, localRange, selection.fullText)
-        }
-        // Cross-cue: return the first segment so callers still get something.
-        if let first = selection.segments.first {
-          return (first.cueID, first.localRange, selection.fullText)
-        }
-      }
-      return nil
-    }
-
-    var annotationCueID: UUID? {
-      if case let .annotationSelected(cueID, _) = self { return cueID }
-      return nil
-    }
 
     var isActive: Bool { self != .none }
   }
@@ -117,49 +65,6 @@ final class SubtitleViewModel {
     self.playerManager = playerManager
   }
 
-  // MARK: - Transform
-
-  @discardableResult
-  func transform(input: Input) async -> Output {
-    await perform(action: input.action)
-    return makeOutput()
-  }
-
-  @discardableResult
-  func transform(_ action: Input.Action) async -> Output {
-    await transform(input: .init(action: action))
-  }
-
-  func perform(action: Input.Action) async {
-    switch action {
-    case let .setPlayerManager(playerManager):
-      setPlayerManager(playerManager)
-    case .handleUserScroll:
-      handleUserScroll()
-    case .cancelScrollResume:
-      cancelScrollResume()
-    case let .handleTextSelection(selection, isPlaying, onPause, onPlay):
-      handleTextSelection(
-        selection: selection,
-        isPlaying: isPlaying,
-        onPause: onPause,
-        onPlay: onPlay
-      )
-    case let .dismissSelection(onPlay):
-      dismissSelection(onPlay: onPlay)
-    case let .handleCueTap(cueID, cueStartTime):
-      await handleCueTap(cueID: cueID, cueStartTime: cueStartTime)
-    case let .updateCurrentCue(time, cues):
-      updateCurrentCue(time: time, cues: cues)
-    case .reset:
-      reset()
-    case let .trackPlayback(cues):
-      await trackPlayback(cues: cues)
-    case .stopTrackingPlayback:
-      stopTrackingPlayback()
-    }
-  }
-
   // MARK: - Public API
 
   func setPlayerManager(_ playerManager: PlayerManager) {
@@ -182,10 +87,7 @@ final class SubtitleViewModel {
     onPlay: () -> Void
   ) {
     if let selection {
-      if textSelection == .none {
-        wasPlayingBeforeSelection = isPlaying
-        if isPlaying { onPause() }
-      }
+      pausePlaybackForSelectionIfNeeded(isPlaying: isPlaying, onPause: onPause)
       textSelection = .selecting(selection: selection)
       Self.logger.debug(
         "Selected '\(selection.fullText.prefix(40))' across \(selection.segments.count) cue(s)")
@@ -195,10 +97,7 @@ final class SubtitleViewModel {
   }
 
   func selectAnnotation(cueID: UUID, annotationID: UUID, isPlaying: Bool, onPause: () -> Void) {
-    if textSelection == .none {
-      wasPlayingBeforeSelection = isPlaying
-      if isPlaying { onPause() }
-    }
+    pausePlaybackForSelectionIfNeeded(isPlaying: isPlaying, onPause: onPause)
     textSelection = .annotationSelected(cueID: cueID, annotationID: annotationID)
   }
 
@@ -290,6 +189,15 @@ final class SubtitleViewModel {
       scrollState: scrollState,
       textSelection: textSelection
     )
+  }
+
+  private func pausePlaybackForSelectionIfNeeded(isPlaying: Bool, onPause: () -> Void) {
+    guard textSelection == .none else { return }
+
+    wasPlayingBeforeSelection = isPlaying
+    if isPlaying {
+      onPause()
+    }
   }
 
   private func trackCurrentCue(at currentTime: Double, in cues: [SubtitleCue], epsilon: Double) {

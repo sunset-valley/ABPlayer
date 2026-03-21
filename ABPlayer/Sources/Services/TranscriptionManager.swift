@@ -38,7 +38,6 @@ final class TranscriptionManager {
     endpoint: String,
     progressCallback: (@Sendable (Double) -> Void)? = nil
   ) async throws {
-    // If already downloading (and correct model), return
     if case let .downloading(_, currentName) = state, currentName == modelName {
       return
     }
@@ -53,12 +52,11 @@ final class TranscriptionManager {
         progressCallback: { @Sendable [weak self] progress in
           Task { @MainActor [weak self] in
             guard let self else { return }
-            // Update state
+            let fractionCompleted = progress.fractionCompleted
             if case let .downloading(_, currentName) = self.state, currentName == modelName {
-              self.state = .downloading(progress: progress.fractionCompleted, modelName: modelName)
+              self.state = .downloading(progress: fractionCompleted, modelName: modelName)
             }
-            // Process callback
-            progressCallback?(progress.fractionCompleted)
+            progressCallback?(fractionCompleted)
           }
         }
       )
@@ -79,7 +77,6 @@ final class TranscriptionManager {
       state = .cancelled
       throw CancellationError()
     } catch let urlError as URLError where urlError.code == .cancelled {
-      // URLSession throws URLError.cancelled instead of CancellationError
       downloadTask = nil
       state = .cancelled
       throw CancellationError()
@@ -108,9 +105,6 @@ final class TranscriptionManager {
 
     state = .loading(modelName: modelName)
     do {
-      // Resolve the on-disk folder so WhisperKit skips the network file-listing call.
-      // Without this, WhisperKit always contacts huggingface.co to list files even when
-      // the model is already downloaded — which fails under restricted networks (e.g. China).
       let localFolder = Self.localModelFolder(modelName: modelName, downloadBase: downloadBase)
       let config = WhisperKitConfig(
         model: modelName,
@@ -124,12 +118,16 @@ final class TranscriptionManager {
       loadedModelName = modelName
       invalidModelName = nil
       state = .idle
-    } catch {
-      if let e = error as? WhisperError, case .modelsUnavailable = e {
-        // Model not downloaded yet — not a corruption issue
+    } catch let whisperError as WhisperError {
+      if case .modelsUnavailable = whisperError {
+        invalidModelName = nil
       } else {
         invalidModelName = modelName
       }
+      state = .failed("Failed to load model: \(whisperError.localizedDescription)")
+      throw whisperError
+    } catch {
+      invalidModelName = modelName
       state = .failed("Failed to load model: \(error.localizedDescription)")
       throw error
     }
@@ -137,10 +135,6 @@ final class TranscriptionManager {
 
   /// Returns the path to an already-downloaded model folder, or nil if not present.
   /// WhisperKit stores models at: <downloadBase>/models/argmaxinc/whisperkit-coreml/<variant>/
-  ///
-  /// Matching uses longest-known-ID-first to prevent overlap: a folder whose name
-  /// contains both "large-v3" and "distil-large-v3" (e.g. distil-whisper_distil-large-v3)
-  /// is attributed only to "distil-large-v3", never to "large-v3".
   private static func localModelFolder(modelName: String, downloadBase: URL) -> String? {
     let whisperKitDir = downloadBase
       .appendingPathComponent("models/argmaxinc/whisperkit-coreml")
@@ -150,18 +144,14 @@ final class TranscriptionManager {
       options: [.skipsHiddenFiles]
     ) else { return nil }
 
-    // Sort known model IDs longest-first so the most specific name wins when
-    // folder names overlap (e.g. "distil-large-v3" beats "large-v3").
     let knownModels = TranscriptionSettings.availableModels.map(\.id)
       .sorted { $0.count > $1.count }
 
     return contents.first { url in
       let folderName = url.lastPathComponent
-      // Find the longest known model ID present in this folder name.
       guard let bestMatch = knownModels.first(where: { folderName.contains($0) }) else {
         return false
       }
-      // Accept this folder only if its most-specific match is the requested model.
       return bestMatch == modelName
     }?.path
   }
@@ -171,7 +161,7 @@ final class TranscriptionManager {
     downloadBase: URL,
     endpoint: String
   ) async throws -> Bool {
-    if whisperKit != nil {
+    if whisperKit != nil, loadedModelName == modelName {
       return true
     }
     do {
@@ -206,11 +196,28 @@ final class TranscriptionManager {
         state = .cancelled
         throw CancellationError()
       } catch {
-        throw error
+        if settings.isModelDownloaded(modelName: settings.modelName) {
+          throw error
+        }
+        do {
+          try await downloadModel(
+            modelName: settings.modelName,
+            downloadBase: settings.modelDirectoryURL,
+            endpoint: settings.effectiveDownloadEndpoint
+          )
+        } catch is CancellationError {
+          state = .cancelled
+          throw CancellationError()
+        }
+        try await loadModel(
+          modelName: settings.modelName,
+          downloadBase: settings.modelDirectoryURL,
+          endpoint: settings.effectiveDownloadEndpoint
+        )
       }
     }
 
-    guard let kit = whisperKit else {
+    guard let whisperKit else {
       throw TranscriptionError.modelNotLoaded
     }
 
@@ -231,11 +238,9 @@ final class TranscriptionManager {
       }
 
       let language = settings.language == "auto" ? nil : settings.language
-      let audioPath = workingURL.path
       let options = DecodingOptions(language: language)
-
-      let results: [TranscriptionResult] = try await kit.transcribe(
-        audioPath: audioPath,
+      let results: [TranscriptionResult] = try await whisperKit.transcribe(
+        audioPath: workingURL.path,
         decodeOptions: options
       )
 
@@ -250,7 +255,7 @@ final class TranscriptionManager {
           let cleanedText = cleanTranscriptionText(segment.text)
 
           guard !cleanedText.isEmpty,
-                segment.end > segment.start
+            segment.end > segment.start
           else {
             return nil
           }
@@ -279,11 +284,6 @@ final class TranscriptionManager {
       state = .failed(error.localizedDescription)
       throw error
     }
-  }
-
-  /// Transcribe audio file with default settings (for backwards compatibility)
-  func transcribe(audioURL: URL) async throws -> [SubtitleCue] {
-    try await transcribe(audioURL: audioURL, settings: TranscriptionSettings())
   }
 
   /// Reset state to idle
@@ -386,7 +386,6 @@ enum TranscriptionError: LocalizedError {
   case modelNotLoaded
   case accessDenied
   case audioExtractionFailed(String)
-  case transcriptionFailed(String)
 
   var errorDescription: String? {
     switch self {
@@ -396,8 +395,6 @@ enum TranscriptionError: LocalizedError {
       return "Cannot access the audio file"
     case let .audioExtractionFailed(reason):
       return "Audio extraction failed: \(reason)"
-    case let .transcriptionFailed(reason):
-      return "Transcription failed: \(reason)"
     }
   }
 }

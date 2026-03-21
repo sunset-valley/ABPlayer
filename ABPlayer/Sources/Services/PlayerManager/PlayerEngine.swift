@@ -16,7 +16,6 @@ actor PlayerEngine: PlayerEngineProtocol {
   private var timeObserverToken: Any?
   private var currentScopedURL: URL?
   private var currentAsset: AVURLAsset?
-  private var lastPersistedTime: Double = 0
   private var lastPlaybackTick: Double?
   private var rateObservation: NSKeyValueObservation?
 
@@ -88,12 +87,9 @@ actor PlayerEngine: PlayerEngineProtocol {
     }
 
     lastPlaybackTick = nil
-    lastPersistedTime = 0
-
     if resumeTime > 0 {
       let target = CMTime(seconds: resumeTime, preferredTimescale: 600)
       await player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
-      lastPersistedTime = resumeTime
     }
 
     addTimeObserver(onTimeUpdate: onTimeUpdate, onLoopCheck: onLoopCheck)
@@ -132,7 +128,6 @@ actor PlayerEngine: PlayerEngineProtocol {
     guard let player else { return }
     let target = CMTime(seconds: time, preferredTimescale: 600)
     player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
-    lastPersistedTime = time
   }
 
   func setVolume(_ volume: Float) async {
@@ -188,7 +183,6 @@ actor PlayerEngine: PlayerEngineProtocol {
     currentScopedURL = nil
     currentAsset = nil
     player = nil
-    lastPersistedTime = 0
     lastPlaybackTick = nil
     Logger.audio.debug("[AudioPlayerEngine] ✅ Teardown complete, player set to nil")
   }

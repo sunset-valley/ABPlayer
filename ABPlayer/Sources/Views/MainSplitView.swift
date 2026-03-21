@@ -73,10 +73,11 @@ public struct MainSplitView: View {
       mainSplitViewModel.updatePlaybackQueueForCurrentFolder()
     }
     .onChange(of: mainSplitViewModel.folderNavigationViewModel?.selectedFile?.isVideo) { _, isVideo in
-      mainSplitViewModel.handleSelectedFileMediaTypeChange(isVideo)
+      guard let isVideo else { return }
+      mainSplitViewModel.switchMediaType(to: isVideo ? .video : .audio)
     }
     .onChange(of: playerManager.currentFile?.id) { _, _ in
-      mainSplitViewModel.syncSelectedFileWithPlayer()
+      mainSplitViewModel.folderNavigationViewModel?.syncSelectedFileWithPlayer()
     }
     #if os(macOS)
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
@@ -86,22 +87,26 @@ public struct MainSplitView: View {
     #endif
     .fileImporter(
       isPresented: Binding(
-        get: { mainSplitViewModel.isImporterPresented },
-        set: { mainSplitViewModel.setImporterPresented($0) }
+        get: { mainSplitViewModel.folderNavigationViewModel?.pendingImportType != nil },
+        set: { presented in
+          if !presented {
+            mainSplitViewModel.folderNavigationViewModel?.pendingImportType = nil
+          }
+        }
       ),
       allowedContentTypes: mainSplitViewModel.folderNavigationViewModel?.importType?.allowedContentTypes ?? [],
       allowsMultipleSelection: false,
       onCompletion: { result in
-        mainSplitViewModel.handleImportResult(result)
+        mainSplitViewModel.folderNavigationViewModel?.handleImportResult(result)
       }
     )
     .alert(
       "Import Failed",
-      isPresented: .constant(mainSplitViewModel.importErrorMessage != nil),
-      presenting: mainSplitViewModel.importErrorMessage
+      isPresented: .constant(mainSplitViewModel.folderNavigationViewModel?.importErrorMessage != nil),
+      presenting: mainSplitViewModel.folderNavigationViewModel?.importErrorMessage
     ) { _ in
       Button("OK", role: .cancel) {
-        mainSplitViewModel.importErrorMessage = nil
+        mainSplitViewModel.folderNavigationViewModel?.importErrorMessage = nil
       }
     } message: { message in
       Text(message)
@@ -116,18 +121,26 @@ public struct MainSplitView: View {
         MainSplitSidebarView(
           viewModel: folderNavigationViewModel,
           isClearingData: mainSplitViewModel.isClearingData,
-          onSelectFile: { file in await mainSplitViewModel.selectFile(file) },
+          onSelectFile: { file in
+            await playerManager.selectFile(file, fromStart: false, debounce: true)
+          },
           onImportFile: {
-            mainSplitViewModel.prepareImport(.file)
+            mainSplitViewModel.folderNavigationViewModel?.importType = .file
+            mainSplitViewModel.folderNavigationViewModel?.pendingImportType = .file
           },
           onImportFolder: {
-            mainSplitViewModel.prepareImport(.folder)
+            mainSplitViewModel.folderNavigationViewModel?.importType = .folder
+            mainSplitViewModel.folderNavigationViewModel?.pendingImportType = .folder
           },
           onRefresh: {
-            await mainSplitViewModel.refreshCurrentFolderAndQueue()
+            await mainSplitViewModel.folderNavigationViewModel?.refreshCurrentFolder()
+            mainSplitViewModel.updatePlaybackQueueForCurrentFolder()
           },
           onClearAllData: {
-            await mainSplitViewModel.clearAllDataAsync()
+            mainSplitViewModel.isClearingData = true
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            await mainSplitViewModel.clearAllData()
+            mainSplitViewModel.isClearingData = false
           }
         )
       }

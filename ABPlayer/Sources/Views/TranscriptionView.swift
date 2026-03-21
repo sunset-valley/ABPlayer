@@ -67,7 +67,6 @@ struct TranscriptionView: View {
         audioFile: audioFile,
         transcriptionManager: transcriptionManager,
         queueManager: queueManager,
-        settings: settings,
         modelContext: modelContext,
         subtitleLoader: subtitleLoader
       )
@@ -191,7 +190,8 @@ struct TranscriptionView: View {
       )
 
       Button("Cancel") {
-        viewModel.cancelDownload(modelName: modelName)
+        transcriptionManager.cancelDownload()
+        settings.deleteDownloadCache(modelName: modelName)
       }
       .buttonStyle(.bordered)
       .controlSize(.small)
@@ -303,7 +303,7 @@ struct TranscriptionView: View {
           loadingCacheView
             .task {
               await viewModel.loadCachedTranscription()
-              viewModel.removeTask(id: task.id)
+              queueManager.removeTask(id: task.id)
             }
         }
 
@@ -311,7 +311,7 @@ struct TranscriptionView: View {
         VStack(spacing: 20) {
           failedView(error: error)
           Button("Remove") {
-            viewModel.removeTask(id: task.id)
+            queueManager.removeTask(id: task.id)
           }
           .buttonStyle(.bordered)
         }
@@ -321,7 +321,7 @@ struct TranscriptionView: View {
           noTranscriptionView
         }
         .task {
-          viewModel.removeTask(id: task.id)
+          queueManager.removeTask(id: task.id)
         }
       }
     }
@@ -329,7 +329,7 @@ struct TranscriptionView: View {
 
   private func cancelButton(taskId: UUID) -> some View {
     Button("Cancel") {
-      viewModel.cancelTask(id: taskId)
+      queueManager.cancelTask(id: taskId)
     }
     .buttonStyle(.bordered)
     .controlSize(.small)

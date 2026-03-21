@@ -6,28 +6,28 @@ import SwiftUI
 @Observable
 final class ProxySettings {
   @ObservationIgnored
-  @AppStorage("proxy_enabled") private var _isEnabled: Bool = false
+  @AppStorage(UserDefaultsKey.proxyEnabled) private var _isEnabled: Bool = false
   var isEnabled: Bool {
     get { access(keyPath: \.isEnabled); return _isEnabled }
     set { withMutation(keyPath: \.isEnabled) { _isEnabled = newValue } }
   }
 
   @ObservationIgnored
-  @AppStorage("proxy_host") private var _host: String = ""
+  @AppStorage(UserDefaultsKey.proxyHost) private var _host: String = ""
   var host: String {
     get { access(keyPath: \.host); return _host }
     set { withMutation(keyPath: \.host) { _host = newValue } }
   }
 
   @ObservationIgnored
-  @AppStorage("proxy_port") private var _port: Int = 8080
+  @AppStorage(UserDefaultsKey.proxyPort) private var _port: Int = 8080
   var port: Int {
     get { access(keyPath: \.port); return _port }
     set { withMutation(keyPath: \.port) { _port = newValue } }
   }
 
   @ObservationIgnored
-  @AppStorage("proxy_type") private var _type: String = "http"
+  @AppStorage(UserDefaultsKey.proxyType) private var _type: String = "http"
   var type: String {
     get { access(keyPath: \.type); return _type }
     set { withMutation(keyPath: \.type) { _type = newValue } }
@@ -39,11 +39,11 @@ final class ProxySettings {
   /// Reads directly from UserDefaults so it can be called from any thread.
   nonisolated func currentProxyDictionary() -> [AnyHashable: Any]? {
     let defaults = UserDefaults.standard
-    guard defaults.bool(forKey: "proxy_enabled") else { return nil }
+    guard defaults.bool(forKey: UserDefaultsKey.proxyEnabled) else { return nil }
 
-    let host = (defaults.string(forKey: "proxy_host") ?? "").trimmingCharacters(in: .whitespaces)
-    let port = defaults.integer(forKey: "proxy_port")
-    let type = defaults.string(forKey: "proxy_type") ?? "http"
+    let host = (defaults.string(forKey: UserDefaultsKey.proxyHost) ?? "").trimmingCharacters(in: .whitespaces)
+    let port = defaults.integer(forKey: UserDefaultsKey.proxyPort)
+    let type = defaults.string(forKey: UserDefaultsKey.proxyType) ?? "http"
 
     guard !host.isEmpty, port > 0 else { return nil }
 

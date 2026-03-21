@@ -30,11 +30,11 @@ final class ABFile {
   @Relationship(inverse: \LoopSegment.audioFile)
   var segments: [LoopSegment]
 
-  /// 播放记录（级联删除）
+  /// Playback record (cascade delete)
   @Relationship(deleteRule: .cascade, inverse: \PlaybackRecord.audioFile)
   var playbackRecord: PlaybackRecord?
 
-  /// 便捷访问：当前播放位置
+  /// Convenience accessor for current playback position
   var currentPlaybackPosition: Double {
     get { playbackRecord?.currentPosition ?? 0 }
     set {
@@ -45,27 +45,27 @@ final class ABFile {
     }
   }
 
-  /// 所属文件夹
+  /// Parent folder
   var folder: Folder?
 
-  /// 相对于根导入目录的路径（包括文件名）
+  /// Path relative to the imported root folder (including file name)
   var relativePath: String = ""
 
-  /// 关联的字幕文件
+  /// Related subtitle file
   @Relationship(inverse: \SubtitleFile.audioFile)
   var subtitleFile: SubtitleFile?
 
-  /// 关联的 PDF 文件 bookmark
+  /// Related PDF bookmark
   @Attribute(.externalStorage)
   var pdfBookmarkData: Data?
 
-  /// 缓存的音频时长（秒），避免每次加载时读取
+  /// Cached media duration in seconds to avoid repeated reads
   var cachedDuration: Double?
 
-  /// 是否有转录记录 (DB Record)
+  /// Whether a transcription record exists in the database
   var hasTranscriptionRecord: Bool = false
 
-  /// 加载错误信息
+  /// Loading error message
   var loadError: String?
 
   init(
@@ -163,12 +163,7 @@ extension ABFile {
     )
   }
 
-  /// 是否曾经播放完成过（completionCount >= 1）
-  var isPlaybackComplete: Bool {
-    playbackRecord?.completionCount ?? 0 >= 1
-  }
-
-  /// 检查 Bookmark 是否有效（文件是否存在）
+  /// Checks whether the bookmark is still valid (file exists)
   var isBookmarkValid: Bool {
     guard let url = resolvedURL() else { return false }
     return FileManager.default.fileExists(atPath: url.path)

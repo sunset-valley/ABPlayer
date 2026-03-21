@@ -25,9 +25,9 @@ final class FolderImporter {
 
   // MARK: - Public API
 
-  /// 同步文件夹（支持首次导入和重新扫描）
-  /// - Parameter url: 根文件夹 URL
-  /// - Returns: 同步后的根 Folder ID
+  /// Syncs a folder (supports first import and rescans)
+  /// - Parameter url: Root folder URL
+  /// - Returns: Root `Folder` ID after sync
   func syncFolder(at url: URL, parentFolder: Folder?) async throws -> PersistentIdentifier? {
     let alreadyInLibrary = librarySettings.isInLibrary(url)
 
@@ -70,13 +70,13 @@ final class FolderImporter {
 
   // MARK: - Directory Processing
 
-  /// 处理目录及其内容（递归）
+  /// Processes a directory recursively
   private func processDirectory(at url: URL, relativePath: String, parent: Folder?) async throws
     -> Folder
   {
     let folder = findOrCreateFolder(at: url, relativePath: relativePath)
 
-    // 设置父子关系（如果需要）
+    // Set parent-child relationship when needed
     if let parent = parent, folder.parent?.id != parent.id {
       folder.parent = parent
       if !parent.subfolders.contains(where: { $0.id == folder.id }) {
@@ -91,7 +91,7 @@ final class FolderImporter {
       options: [.skipsHiddenFiles]
     )
 
-    // 分类文件
+    // Classify files
     var directories: [URL] = []
     var audioFiles: [URL] = []
     var subtitleFiles: [URL] = []
@@ -115,7 +115,7 @@ final class FolderImporter {
       }
     }
 
-    // 处理音频文件（Insert-or-Update）
+    // Process audio files (insert or update)
     for audioURL in audioFiles {
       try await processAudioFile(
         at: audioURL,
@@ -126,7 +126,7 @@ final class FolderImporter {
       )
     }
 
-    // 递归处理子目录
+    // Recursively process subdirectories
     for dirURL in directories {
       let subPath = "\(relativePath)/\(dirURL.lastPathComponent)"
       _ = try await processDirectory(at: dirURL, relativePath: subPath, parent: folder)
@@ -147,7 +147,7 @@ final class FolderImporter {
       return existing
     }
 
-    // 创建新记录
+    // Create a new record
     let folder = Folder(
       id: folderId,
       name: name,
@@ -254,7 +254,7 @@ final class FolderImporter {
 
   // MARK: - File Matching
 
-  /// 查找匹配的文件
+  /// Finds a matching file
   private func findMatchingFile(baseName: String, in files: [URL]) -> URL? {
     return files.first { url in
       url.deletingPathExtension().lastPathComponent.lowercased() == baseName.lowercased()
@@ -263,7 +263,7 @@ final class FolderImporter {
 
   // MARK: - Pairing
 
-  /// 关联字幕文件
+  /// Associates a subtitle file
   private func pairSubtitle(at url: URL, with audioFile: ABFile) async throws {
     let bookmarkData = try url.bookmarkData(
       options: [.withSecurityScope],
@@ -344,14 +344,11 @@ final class FolderImporter {
 
 enum ImportError: LocalizedError {
   case accessDenied
-  case invalidDirectory
 
   var errorDescription: String? {
     switch self {
     case .accessDenied:
       return "Unable to access the selected folder"
-    case .invalidDirectory:
-      return "The selected path is not a valid directory"
     }
   }
 }

@@ -118,7 +118,7 @@ struct AudioPlayerView: View {
         .foregroundStyle(.secondary)
 
         Button {
-          viewModel.resetVolume()
+          viewModel.playerVolume = 1.0
         } label: {
           Image(systemName: "arrow.counterclockwise")
             .font(.caption)

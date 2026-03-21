@@ -67,17 +67,6 @@ final class TranscriptionQueueManager {
     tasks.first { $0.audioFileId == audioFileId }
   }
 
-  /// Check if a file has a pending or active task
-  func hasPendingTask(for audioFileId: UUID) -> Bool {
-    guard let task = getTask(for: audioFileId) else { return false }
-    switch task.status {
-    case .queued, .downloading, .loading, .extractingAudio, .transcribing:
-      return true
-    case .completed, .failed, .cancelled:
-      return false
-    }
-  }
-
   /// Enqueue a new transcription task
   func enqueue(audioFile: ABFile) {
     // Don't add if already in queue
@@ -119,18 +108,6 @@ final class TranscriptionQueueManager {
   /// Remove a task from the list
   func removeTask(id: UUID) {
     tasks.removeAll { $0.id == id }
-  }
-
-  /// Clear completed/failed/cancelled tasks
-  func clearFinishedTasks() {
-    tasks.removeAll { task in
-      switch task.status {
-      case .completed, .failed, .cancelled:
-        return true
-      default:
-        return false
-      }
-    }
   }
 
   // MARK: - Private

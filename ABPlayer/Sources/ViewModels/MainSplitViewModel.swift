@@ -6,25 +6,16 @@ import SwiftUI
 @Observable
 @MainActor
 final class MainSplitViewModel {
-  // MARK: - Media Type
-
-  enum MediaType: String {
-    case audio
-    case video
-  }
-
-  enum Panel {
-    case bottomLeft
-    case right
-  }
+  typealias MediaType = MainSplitPaneAllocationState.MediaType
+  typealias Panel = MainSplitPaneAllocationState.Panel
 
   // MARK: - Layout State
 
   var folderNavigationViewModel: FolderNavigationViewModel?
   var isClearingData: Bool = false
-
-  private(set) var currentMediaType: MediaType = .audio
   private var didAttemptRestoreNavigationPath = false
+
+  private let paneAllocationState = MainSplitPaneAllocationState()
 
   private var modelContext: ModelContext?
   private var playerManager: PlayerManager?
@@ -32,49 +23,47 @@ final class MainSplitViewModel {
   private var librarySettings: LibrarySettings?
 
   var showContentPanel: Bool {
-    didSet {
-      UserDefaults.standard.set(showContentPanel, forKey: userDefaultsKey(for: "ShowContentPanel"))
-    }
+    get { paneAllocationState.showContentPanel }
+    set { paneAllocationState.showContentPanel = newValue }
   }
 
   var showBottomPanel: Bool {
-    didSet {
-      UserDefaults.standard.set(showBottomPanel, forKey: userDefaultsKey(for: "ShowBottomPanel"))
-    }
+    get { paneAllocationState.showBottomPanel }
+    set { paneAllocationState.showBottomPanel = newValue }
   }
 
   var horizontalPersistenceKey: String {
-    userDefaultsKey(for: "PlayerSectionWidth")
+    paneAllocationState.horizontalPersistenceKey
   }
 
   var verticalPersistenceKey: String {
-    userDefaultsKey(for: "TopPanelHeight")
+    paneAllocationState.verticalPersistenceKey
   }
 
   // MARK: - Global Pane Allocation State (Persisted)
 
   var leftTabs: [PaneContent] {
-    didSet {
-      persistTabs(leftTabs, suffix: "LeftTabs")
-    }
+    get { paneAllocationState.leftTabs }
+    set { paneAllocationState.leftTabs = newValue }
   }
 
   var rightTabs: [PaneContent] {
-    didSet {
-      persistTabs(rightTabs, suffix: "RightTabs")
-    }
+    get { paneAllocationState.rightTabs }
+    set { paneAllocationState.rightTabs = newValue }
   }
 
   var leftSelection: PaneContent? {
-    didSet {
-      persistSelection(leftSelection, suffix: "LeftSelection")
-    }
+    get { paneAllocationState.leftSelection }
+    set { paneAllocationState.leftSelection = newValue }
   }
 
   var rightSelection: PaneContent? {
-    didSet {
-      persistSelection(rightSelection, suffix: "RightSelection")
-    }
+    get { paneAllocationState.rightSelection }
+    set { paneAllocationState.rightSelection = newValue }
+  }
+
+  var currentMediaType: MediaType {
+    paneAllocationState.currentMediaType
   }
 
   // MARK: - Constants
@@ -89,39 +78,7 @@ final class MainSplitViewModel {
 
   // MARK: - Initialization
 
-  init() {
-    self.showContentPanel = Self.loadShowContentPanel(for: .audio)
-    self.showBottomPanel = Self.loadShowBottomPanel(for: .audio)
-
-    let loadedLeftTabs = Self.loadTabs(
-      for: .audio,
-      suffix: "LeftTabs",
-      default: [.transcription]
-    )
-    let loadedRightTabs = Self.loadTabs(
-      for: .audio,
-      suffix: "RightTabs",
-      default: [.segments]
-    )
-
-    self.leftTabs = loadedLeftTabs
-    self.rightTabs = loadedRightTabs
-
-    self.leftSelection = Self.loadSelection(
-      for: .audio,
-      suffix: "LeftSelection",
-      tabs: loadedLeftTabs
-    )
-    self.rightSelection = Self.loadSelection(
-      for: .audio,
-      suffix: "RightSelection",
-      tabs: loadedRightTabs
-    )
-
-    sanitizeAllocations()
-    normalizeSelection(for: .bottomLeft)
-    normalizeSelection(for: .right)
-  }
+  init() {}
 
   func configureIfNeeded(
     modelContext: ModelContext,
@@ -159,44 +116,6 @@ final class MainSplitViewModel {
     playerManager.playbackQueue.updateQueue(folderNavigationViewModel.currentAudioFiles())
   }
 
-  func handleSelectedFileMediaTypeChange(_ isVideo: Bool?) {
-    guard let isVideo else { return }
-    switchMediaType(to: isVideo ? .video : .audio)
-  }
-
-  func syncSelectedFileWithPlayer() {
-    folderNavigationViewModel?.syncSelectedFileWithPlayer()
-  }
-
-  func prepareImport(_ type: MainSplitView.ImportType) {
-    folderNavigationViewModel?.importType = type
-    folderNavigationViewModel?.presetnImportType = type
-  }
-
-  func refreshCurrentFolderAndQueue() async {
-    await folderNavigationViewModel?.refreshCurrentFolder()
-    updatePlaybackQueueForCurrentFolder()
-  }
-
-  func handleImportResult(_ result: Result<[URL], Error>) {
-    folderNavigationViewModel?.handleImportResult(result)
-  }
-
-  var importErrorMessage: String? {
-    get { folderNavigationViewModel?.importErrorMessage }
-    set { folderNavigationViewModel?.importErrorMessage = newValue }
-  }
-
-  var isImporterPresented: Bool {
-    folderNavigationViewModel?.presetnImportType != nil
-  }
-
-  func setImporterPresented(_ presented: Bool) {
-    if !presented {
-      folderNavigationViewModel?.presetnImportType = nil
-    }
-  }
-
   func restoreLastSelectionIfNeeded() {
     guard
       let folderNavigationViewModel,
@@ -205,42 +124,7 @@ final class MainSplitViewModel {
       return
     }
 
-    if !didAttemptRestoreNavigationPath {
-      defer { didAttemptRestoreNavigationPath = true }
-
-      if folderNavigationViewModel.currentFolder == nil,
-         folderNavigationViewModel.navigationPath.isEmpty,
-         let lastFolderID = folderNavigationViewModel.lastFolderID,
-         let folderUUID = UUID(uuidString: lastFolderID),
-         let folder = fetchFolder(withID: folderUUID)
-      {
-        var path: [Folder] = []
-        var currentFolder: Folder? = folder
-        while let unwrappedFolder = currentFolder {
-          path.insert(unwrappedFolder, at: 0)
-          currentFolder = unwrappedFolder.parent
-        }
-        folderNavigationViewModel.navigationPath = path
-        folderNavigationViewModel.currentFolder = folder
-      }
-    }
-
-    guard folderNavigationViewModel.selectedFile == nil else {
-      if let currentFile = playerManager.currentFile,
-         let matchedFile = fetchAudioFile(withID: currentFile.id)
-      {
-        folderNavigationViewModel.selectedFile = matchedFile
-        playerManager.currentFile = matchedFile
-        return
-      }
-
-      if let selectedFile = folderNavigationViewModel.selectedFile,
-         playerManager.currentFile?.id != selectedFile.id
-      {
-        Task { await selectFile(selectedFile) }
-      }
-      return
-    }
+    restoreNavigationPathIfNeeded(folderNavigationViewModel: folderNavigationViewModel)
 
     if let currentFile = playerManager.currentFile,
        let matchedFile = fetchAudioFile(withID: currentFile.id)
@@ -250,243 +134,61 @@ final class MainSplitViewModel {
       return
     }
 
+    if let selectedFile = folderNavigationViewModel.selectedFile {
+      if playerManager.currentFile?.id != selectedFile.id {
+        Task { await playerManager.selectFile(selectedFile, fromStart: false, debounce: true) }
+      }
+      return
+    }
+
     if let lastSelectedAudioFileID = folderNavigationViewModel.lastSelectedAudioFileID,
        let lastID = UUID(uuidString: lastSelectedAudioFileID),
        let file = fetchAudioFile(withID: lastID)
     {
-      Task { await selectFile(file) }
+      Task { await playerManager.selectFile(file, fromStart: false, debounce: true) }
     }
   }
 
-  func clearAllDataAsync() async {
-    isClearingData = true
-    try? await Task.sleep(nanoseconds: 200_000_000)
-    await clearAllData()
-    isClearingData = false
+  private func restoreNavigationPathIfNeeded(folderNavigationViewModel: FolderNavigationViewModel) {
+    guard !didAttemptRestoreNavigationPath else { return }
+    defer { didAttemptRestoreNavigationPath = true }
+
+    guard folderNavigationViewModel.currentFolder == nil,
+      folderNavigationViewModel.navigationPath.isEmpty,
+      let lastFolderID = folderNavigationViewModel.lastFolderID,
+      let folderUUID = UUID(uuidString: lastFolderID),
+      let folder = fetchFolder(withID: folderUUID)
+    else {
+      return
+    }
+
+    var path: [Folder] = []
+    var currentFolder: Folder? = folder
+    while let unwrappedFolder = currentFolder {
+      path.insert(unwrappedFolder, at: 0)
+      currentFolder = unwrappedFolder.parent
+    }
+
+    folderNavigationViewModel.navigationPath = path
+    folderNavigationViewModel.currentFolder = folder
   }
 
   func availableContents(for panel: Panel) -> [PaneContent] {
-    let currentTabs = tabs(for: panel)
-    return PaneContent.allocatableCases.filter { !currentTabs.contains($0) }
+    paneAllocationState.availableContents(for: panel)
   }
 
   func move(content: PaneContent, to panel: Panel) {
-    switch panel {
-    case .bottomLeft:
-      remove(content: content, from: .right)
-      if !leftTabs.contains(content) {
-        leftTabs.append(content)
-      }
-      leftSelection = content
-    case .right:
-      remove(content: content, from: .bottomLeft)
-      if !rightTabs.contains(content) {
-        rightTabs.append(content)
-      }
-      rightSelection = content
-    }
+    paneAllocationState.move(content: content, to: panel)
   }
 
   func remove(content: PaneContent, from panel: Panel) {
-    switch panel {
-    case .bottomLeft:
-      leftTabs.removeAll { $0 == content }
-      if leftSelection == content {
-        leftSelection = nil
-      }
-    case .right:
-      rightTabs.removeAll { $0 == content }
-      if rightSelection == content {
-        rightSelection = nil
-      }
-    }
-    
-    normalizeSelection(for: panel)
+    paneAllocationState.remove(content: content, from: panel)
   }
 
   // MARK: - Media Type Switching
 
   func switchMediaType(to mediaType: MediaType) {
-    guard currentMediaType != mediaType else { return }
-
-    currentMediaType = mediaType
-
-    showContentPanel = Self.loadShowContentPanel(for: mediaType)
-    showBottomPanel = Self.loadShowBottomPanel(for: mediaType)
-
-    let loadedLeftTabs = Self.loadTabs(
-      for: mediaType,
-      suffix: "LeftTabs",
-      default: [.transcription]
-    )
-    let loadedRightTabs = Self.loadTabs(
-      for: mediaType,
-      suffix: "RightTabs",
-      default: [.segments]
-    )
-
-    leftTabs = loadedLeftTabs
-    rightTabs = loadedRightTabs
-
-    leftSelection = Self.loadSelection(
-      for: mediaType,
-      suffix: "LeftSelection",
-      tabs: loadedLeftTabs
-    )
-    rightSelection = Self.loadSelection(
-      for: mediaType,
-      suffix: "RightSelection",
-      tabs: loadedRightTabs
-    )
-
-    sanitizeAllocations()
-    normalizeSelection(for: .bottomLeft)
-    normalizeSelection(for: .right)
-  }
-
-  // MARK: - Private Helpers (Allocation)
-
-  private func tabs(for panel: Panel) -> [PaneContent] {
-    switch panel {
-    case .bottomLeft: return leftTabs
-    case .right: return rightTabs
-    }
-  }
-
-  private func normalizeSelection(for panel: Panel) {
-    switch panel {
-    case .bottomLeft:
-      guard !leftTabs.isEmpty else {
-        leftSelection = nil
-        return
-      }
-      if let leftSelection, leftTabs.contains(leftSelection) {
-        return
-      }
-      leftSelection = leftTabs.first
-
-    case .right:
-      guard !rightTabs.isEmpty else {
-        rightSelection = nil
-        return
-      }
-      if let rightSelection, rightTabs.contains(rightSelection) {
-        return
-      }
-      rightSelection = rightTabs.first
-    }
-  }
-
-  private func sanitizeAllocations() {
-    // Ensure no duplicates within a panel.
-    leftTabs = Self.deduped(leftTabs)
-    rightTabs = Self.deduped(rightTabs)
-
-    // Enforce global uniqueness: if overlap exists, right loses.
-    let overlap = Set(leftTabs).intersection(Set(rightTabs))
-    if !overlap.isEmpty {
-      rightTabs.removeAll { overlap.contains($0) }
-      if let rightSelection, overlap.contains(rightSelection) {
-        self.rightSelection = nil
-      }
-    }
-  }
-
-  // MARK: - Persistence
-
-  private func userDefaultsKey(for suffix: String) -> String {
-    "mainSplit\(currentMediaType.rawValue.capitalized)\(suffix)"
-  }
-
-  private static func userDefaultsKey(for suffix: String, mediaType: MediaType) -> String {
-    "mainSplit\(mediaType.rawValue.capitalized)\(suffix)"
-  }
-
-  private func persistTabs(_ tabs: [PaneContent], suffix: String) {
-    let values = tabs.filter(\.isAllocatable).map(\.rawValue)
-    UserDefaults.standard.set(values, forKey: userDefaultsKey(for: suffix))
-  }
-
-  private func persistSelection(_ selection: PaneContent?, suffix: String) {
-    let key = userDefaultsKey(for: suffix)
-    if let selection, selection.isAllocatable {
-      UserDefaults.standard.set(selection.rawValue, forKey: key)
-    } else {
-      UserDefaults.standard.removeObject(forKey: key)
-    }
-  }
-
-  private static func loadShowContentPanel(for mediaType: MediaType) -> Bool {
-    let key = userDefaultsKey(for: "ShowContentPanel", mediaType: mediaType)
-    if UserDefaults.standard.object(forKey: key) == nil {
-      return true
-    }
-    return UserDefaults.standard.bool(forKey: key)
-  }
-
-  private static func loadShowBottomPanel(for mediaType: MediaType) -> Bool {
-    let key = userDefaultsKey(for: "ShowBottomPanel", mediaType: mediaType)
-    if UserDefaults.standard.object(forKey: key) == nil {
-      return true
-    }
-    return UserDefaults.standard.bool(forKey: key)
-  }
-
-  private static func loadTabs(
-    for mediaType: MediaType,
-    suffix: String,
-    default defaultValue: [PaneContent]
-  ) -> [PaneContent] {
-    let key = userDefaultsKey(for: suffix, mediaType: mediaType)
-    let rawValues = UserDefaults.standard.stringArray(forKey: key) ?? defaultValue.map(\.rawValue)
-
-    let mapped = rawValues.compactMap(PaneContent.init(rawValue:)).filter(\.isAllocatable)
-    let dedupedTabs = deduped(mapped)
-
-    // If persisted array is empty/invalid, fall back to default.
-    if dedupedTabs.isEmpty {
-      return deduped(defaultValue.filter(\.isAllocatable))
-    }
-    return dedupedTabs
-  }
-
-  private static func loadSelection(
-    for mediaType: MediaType,
-    suffix: String,
-    tabs: [PaneContent]
-  ) -> PaneContent? {
-    guard !tabs.isEmpty else { return nil }
-
-    let key = userDefaultsKey(for: suffix, mediaType: mediaType)
-    guard
-      let rawValue = UserDefaults.standard.string(forKey: key),
-      let value = PaneContent(rawValue: rawValue),
-      value.isAllocatable,
-      tabs.contains(value)
-    else {
-      return tabs.first
-    }
-
-    return value
-  }
-
-  private static func deduped(_ values: [PaneContent]) -> [PaneContent] {
-    var seen = Set<PaneContent>()
-    var result: [PaneContent] = []
-    for value in values where value.isAllocatable {
-      if seen.insert(value).inserted {
-        result.append(value)
-      }
-    }
-    return result
-  }
-
-  func selectFile(_ file: ABFile, fromStart: Bool = false, debounce: Bool = true) async {
-    await playerManager?.selectFile(file, fromStart: fromStart, debounce: debounce)
-  }
-
-  private func playFile(_ file: ABFile, fromStart: Bool = false) async {
-    await playerManager?.playFile(file, fromStart: fromStart)
+    paneAllocationState.switchMediaType(to: mediaType)
   }
 
   private func fetchAudioFile(withID id: UUID) -> ABFile? {
@@ -519,12 +221,12 @@ final class MainSplitViewModel {
       guard let nextFile = playerManager.playbackQueue.playNext() else { return }
 
       Task { @MainActor in
-        await self.playFile(nextFile, fromStart: true)
+        await playerManager.playFile(nextFile, fromStart: true)
       }
     }
   }
 
-  private func clearAllData() async {
+  func clearAllData() async {
     guard
       let modelContext,
       let playerManager,
@@ -537,32 +239,30 @@ final class MainSplitViewModel {
       if playerManager.isPlaying {
         await playerManager.togglePlayPause()
       }
-
-      folderNavigationViewModel?.selectedFile = nil
-      folderNavigationViewModel?.currentFolder = nil
-      folderNavigationViewModel?.navigationPath = []
-      playerManager.currentFile = nil
-
-      let audioFiles = try modelContext.fetch(FetchDescriptor<ABFile>())
-      for audioFile in audioFiles {
-        modelContext.delete(audioFile)
-      }
-
-      let folders = try modelContext.fetch(FetchDescriptor<Folder>())
-      for folder in folders {
-        modelContext.delete(folder)
-      }
+      resetNavigationAndPlayerState(playerManager: playerManager)
+      try deleteAllEntities(of: ABFile.self, in: modelContext)
+      try deleteAllEntities(of: Folder.self, in: modelContext)
 
       sessionTracker.endSessionIfIdle()
 
-      let sessions = try modelContext.fetch(FetchDescriptor<ListeningSession>())
-      for session in sessions {
-        modelContext.delete(session)
-      }
-
+      try deleteAllEntities(of: ListeningSession.self, in: modelContext)
       try modelContext.save()
     } catch {
       folderNavigationViewModel?.importErrorMessage = "Failed to clear data: \(error.localizedDescription)"
+    }
+  }
+
+  private func resetNavigationAndPlayerState(playerManager: PlayerManager) {
+    folderNavigationViewModel?.selectedFile = nil
+    folderNavigationViewModel?.currentFolder = nil
+    folderNavigationViewModel?.navigationPath = []
+    playerManager.currentFile = nil
+  }
+
+  private func deleteAllEntities<T: PersistentModel>(of type: T.Type, in modelContext: ModelContext) throws {
+    let entities = try modelContext.fetch(FetchDescriptor<T>())
+    for entity in entities {
+      modelContext.delete(entity)
     }
   }
 }

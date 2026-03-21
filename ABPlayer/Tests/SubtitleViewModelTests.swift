@@ -201,23 +201,6 @@ struct SubtitleViewModelTests {
 
   @Test
   @MainActor
-  func testTextSelectionStateSelectedRange() {
-    let cueID = UUID()
-    let selection = makeSelection(cueID: cueID, location: 5, length: 10, text: "some words")
-    let state = SubtitleViewModel.TextSelectionState.selecting(selection: selection)
-
-    let selected = state.selectedRange
-    #expect(selected?.cueID == cueID)
-    #expect(selected?.range.location == 5)
-    #expect(selected?.range.length == 10)
-    #expect(selected?.text == "some words")
-
-    let noneState = SubtitleViewModel.TextSelectionState.none
-    #expect(noneState.selectedRange == nil)
-  }
-
-  @Test
-  @MainActor
   func testCrossCueSelectionState() {
     let cue1ID = UUID()
     let cue2ID = UUID()
@@ -225,10 +208,6 @@ struct SubtitleViewModelTests {
     let state = SubtitleViewModel.TextSelectionState.selecting(selection: selection)
 
     #expect(state.isActive)
-    // Cross-cue: selectedRange falls back to first segment
-    let selected = state.selectedRange
-    #expect(selected?.cueID == cue1ID)
-    #expect(selected?.text == "Hello wo")
 
     guard case let .selecting(sel) = state else {
       Issue.record("Expected selecting state"); return
@@ -363,22 +342,6 @@ struct SubtitleViewModelTests {
 
     #expect(playCalled)
     #expect(viewModel.textSelection == .none)
-  }
-
-  @Test
-  @MainActor
-  func testCrossCueSelectionAnnotationCueID() {
-    let cue1ID = UUID()
-    let cue2ID = UUID()
-    let selection = makeCrossSelection(cue1ID: cue1ID, cue2ID: cue2ID)
-    let state = SubtitleViewModel.TextSelectionState.selecting(selection: selection)
-
-    // annotationCueID is only set for `.annotationSelected`
-    #expect(state.annotationCueID == nil)
-
-    let annotState = SubtitleViewModel.TextSelectionState.annotationSelected(
-      cueID: cue1ID, annotationID: UUID())
-    #expect(annotState.annotationCueID == cue1ID)
   }
 
   @Test

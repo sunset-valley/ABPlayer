@@ -6,8 +6,4 @@ import SwiftUI
 @MainActor
 final class AudioPlayerViewModel: BasePlayerViewModel {
   var showVolumePopover: Bool = false
-
-  func resetVolume() {
-    playerVolume = 1.0
-  }
 }

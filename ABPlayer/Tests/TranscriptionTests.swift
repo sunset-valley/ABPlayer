@@ -241,9 +241,4 @@ struct TranscriptionManagerTests {
     #expect(manager.state == .idle)
   }
 
-  @Test
-  func testIsModelLoadedReturnsFalseInitially() {
-    let manager = TranscriptionManager()
-    #expect(!manager.isModelLoaded)
-  }
 }

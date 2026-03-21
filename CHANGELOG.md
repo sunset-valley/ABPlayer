@@ -5,10 +5,15 @@
 - vendor WhisperKit dependencies and disable fallback downloads
 - skip download when model already exists on disk
 
+### Improvements
+- remove unused declaration-only APIs
+
 ### Chores
 - point Sparkle feed to S3 and validate appcast URL (#137)
 
 ### Other
+- add TextView
+- create a doc rule
 - fix tests (#138)
 
 
