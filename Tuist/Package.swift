@@ -25,8 +25,8 @@ let package = Package(
     // .package(url: "https://github.com/Alamofire/Alamofire", from: "5.0.0"),
     // You can read more about dependencies here: https://docs.tuist.io/documentation/tuist/dependencies
     .package(url: "https://github.com/getsentry/sentry-cocoa", from: "9.1.0"),
-    .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.15.0"),
-    .package(url: "https://github.com/sunset-valley/swift-transformers", revision: "87b06ba64ebaeceb2652a0a3a9aa72163eda1294"),
+    .package(path: "../Vendor/WhisperKit"),
+    .package(path: "../Vendor/swift-transformers"),
     .package(url: "https://github.com/iHugo-Tang/KeyboardShortcuts", branch: "main"),
     .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
     .package(url: "https://github.com/TelemetryDeck/SwiftSDK", from: "2.11.0"),
