@@ -139,6 +139,10 @@ struct ABPlayerApp: App {
       )
       .appendingPathComponent("ABPlayer.sqlite")
 
+      if Self.shouldResetPersistentStoreForCurrentVersion() {
+        try Self.deletePersistentStoreIfNeeded(at: storeURL)
+      }
+
       let modelConfiguration = ModelConfiguration(url: storeURL)
       modelContainer = try ModelContainer(for: schema, configurations: modelConfiguration)
       modelContainer.mainContext.autosaveEnabled = true
@@ -228,6 +232,32 @@ struct ABPlayerApp: App {
     } catch {
       fatalError("Failed to create model container: \(error)")
     }
+  }
+
+  private static func deletePersistentStoreIfNeeded(at storeURL: URL) throws {
+    let fileManager = FileManager.default
+    let storeDirectoryURL = storeURL.deletingLastPathComponent()
+    try fileManager.createDirectory(
+      at: storeDirectoryURL,
+      withIntermediateDirectories: true
+    )
+
+    let storeFiles = ["", "-wal", "-shm"]
+    for suffix in storeFiles {
+      let fileURL = URL(fileURLWithPath: storeURL.path + suffix)
+      guard fileManager.fileExists(atPath: fileURL.path) else { continue }
+      try fileManager.removeItem(at: fileURL)
+      Logger.data.notice("Removed persistent store file: \(fileURL.lastPathComponent, privacy: .public)")
+    }
+  }
+
+  private static func shouldResetPersistentStoreForCurrentVersion() -> Bool {
+    let targetVersion = "0.2.17"
+    let currentVersion =
+      (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
+      ?? "0.0.0"
+
+    return currentVersion.compare(targetVersion, options: .numeric) != .orderedDescending
   }
 
   var body: some Scene {
