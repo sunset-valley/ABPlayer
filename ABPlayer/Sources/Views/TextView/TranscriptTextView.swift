@@ -36,7 +36,7 @@ struct TranscriptTextView: NSViewRepresentable {
 
   let onSelectionChanged: (CrossCueTextSelection?) -> Void
   let onPopoverAnchorChanged: (PopoverAnchors?) -> Void
-  let onAnnotationTapped: (UUID, AnnotationDisplayData) -> Void
+  let onAnnotationTapped: (UUID, CrossCueTextSelection, AnnotationDisplayData) -> Void
   let onCueTap: (UUID, Double) -> Void
   let onUserScrolled: () -> Void
   let onEditSubtitleRequested: (UUID) -> Void
@@ -171,7 +171,7 @@ struct TranscriptTextView: NSViewRepresentable {
     // Callbacks
     var onSelectionChanged: (CrossCueTextSelection?) -> Void
     var onPopoverAnchorChanged: (PopoverAnchors?) -> Void
-    var onAnnotationTapped: (UUID, AnnotationDisplayData) -> Void
+    var onAnnotationTapped: (UUID, CrossCueTextSelection, AnnotationDisplayData) -> Void
     var onCueTap: (UUID, Double) -> Void
     var onUserScrolled: () -> Void
     var onEditSubtitleRequested: (UUID) -> Void
@@ -202,7 +202,7 @@ struct TranscriptTextView: NSViewRepresentable {
       annotationsProvider: @escaping (UUID) -> [AnnotationDisplayData],
       onSelectionChanged: @escaping (CrossCueTextSelection?) -> Void,
       onPopoverAnchorChanged: @escaping (PopoverAnchors?) -> Void,
-      onAnnotationTapped: @escaping (UUID, AnnotationDisplayData) -> Void,
+      onAnnotationTapped: @escaping (UUID, CrossCueTextSelection, AnnotationDisplayData) -> Void,
       onCueTap: @escaping (UUID, Double) -> Void,
       onUserScrolled: @escaping () -> Void,
       onEditSubtitleRequested: @escaping (UUID) -> Void
@@ -249,12 +249,12 @@ struct TranscriptTextView: NSViewRepresentable {
     /// Reflect the SwiftUI `textSelection` state into the NSTextView highlight.
     func syncSelectionHighlight(in textView: TranscriptNSTextView) {
       switch textSelection {
-      case .none, .annotationSelected:
+      case .none:
         if selectionHighlightRange != nil {
           textView.clearSelectionHighlight(coordinator: self)
           activeSelectionRange = nil
         }
-      case let .selecting(selection):
+      case let .selecting(selection), let .annotationSelected(_, selection):
         let globalRange = selection.globalRange
         if activeSelectionRange != globalRange {
           textView.clearSelectionHighlight(coordinator: self)
@@ -430,9 +430,15 @@ struct TranscriptTextView: NSViewRepresentable {
     }
 
     /// Find an existing annotation at a global character index.
-    func findAnnotation(
+    struct AnnotationHit {
+      let annotation: AnnotationDisplayData
+      let selection: CrossCueTextSelection
+      let globalRange: NSRange
+    }
+
+    func findAnnotationHit(
       at charIndex: Int
-    ) -> (cueID: UUID, annotation: AnnotationDisplayData, globalRange: NSRange)? {
+    ) -> AnnotationHit? {
       guard let layout = cueLayout(at: charIndex),
         layout.containsTextIndex(charIndex)
       else { return nil }
@@ -441,14 +447,92 @@ struct TranscriptTextView: NSViewRepresentable {
       for annotation in annotationsProvider(layout.cueID) {
         let r = annotation.range
         if localIndex >= r.location && localIndex < r.location + r.length {
-          return (
-            cueID: layout.cueID,
-            annotation: annotation,
-            globalRange: layout.globalRange(from: annotation.range)
+          return buildAnnotationHit(
+            for: annotation,
+            fallbackLayout: layout
           )
         }
       }
       return nil
+    }
+
+    private func buildAnnotationHit(
+      for tappedAnnotation: AnnotationDisplayData,
+      fallbackLayout: CueLayout
+    ) -> AnnotationHit? {
+      var ranges: [(layout: CueLayout, annotation: AnnotationDisplayData)] = []
+
+      for layout in layouts {
+        for annotation in annotationsProvider(layout.cueID) where annotation.groupID == tappedAnnotation.groupID {
+          ranges.append((layout, annotation))
+        }
+      }
+
+      guard !ranges.isEmpty else {
+        let fallbackRange = fallbackLayout.globalRange(from: tappedAnnotation.range)
+        let fallbackSelection = CrossCueTextSelection(
+          segments: [
+            .init(
+              cueID: fallbackLayout.cueID,
+              localRange: tappedAnnotation.range,
+              text: tappedAnnotation.selectedText
+            )
+          ],
+          fullText: tappedAnnotation.selectedText,
+          globalRange: fallbackRange
+        )
+        return AnnotationHit(
+          annotation: tappedAnnotation,
+          selection: fallbackSelection,
+          globalRange: fallbackRange
+        )
+      }
+
+      ranges.sort {
+        if $0.layout.textRange.location == $1.layout.textRange.location {
+          return $0.annotation.range.location < $1.annotation.range.location
+        }
+        return $0.layout.textRange.location < $1.layout.textRange.location
+      }
+
+      var segments: [CrossCueTextSelection.CueSegment] = []
+      var minStart = Int.max
+      var maxEnd = Int.min
+
+      for (layout, annotation) in ranges {
+        let localRange = annotation.range
+        let globalRange = layout.globalRange(from: localRange)
+        minStart = min(minStart, globalRange.location)
+        maxEnd = max(maxEnd, globalRange.location + globalRange.length)
+
+        let cueNSString = layout.cueText as NSString
+        guard localRange.location >= 0,
+          localRange.location + localRange.length <= cueNSString.length
+        else { continue }
+
+        let text = cueNSString.substring(with: localRange)
+        segments.append(
+          .init(cueID: layout.cueID, localRange: localRange, text: text)
+        )
+      }
+
+      guard !segments.isEmpty,
+        minStart <= maxEnd
+      else { return nil }
+
+      let mergedRange = NSRange(location: minStart, length: maxEnd - minStart)
+      let fullText = segments.map(\.text).joined(separator: "\n")
+      let selection = CrossCueTextSelection(
+        segments: segments,
+        fullText: fullText,
+        globalRange: mergedRange
+      )
+
+      return AnnotationHit(
+        annotation: tappedAnnotation,
+        selection: selection,
+        globalRange: mergedRange
+      )
     }
 
     func popoverAnchors(for globalRange: NSRange, in textView: NSTextView) -> PopoverAnchors? {
@@ -640,11 +724,11 @@ final class TranscriptNSTextView: NSTextView {
 
     // Tap on an existing annotation → show annotation menu
     if event.clickCount == 1, !event.modifierFlags.contains(.shift) {
-      if let hit = coordinator.findAnnotation(at: charIndex) {
+      if let hit = coordinator.findAnnotationHit(at: charIndex) {
         coordinator.onPopoverAnchorChanged(
           coordinator.popoverAnchors(for: hit.globalRange, in: self)
         )
-        coordinator.onAnnotationTapped(hit.cueID, hit.annotation)
+        coordinator.onAnnotationTapped(hit.annotation.groupID, hit.selection, hit.annotation)
         return
       }
     }

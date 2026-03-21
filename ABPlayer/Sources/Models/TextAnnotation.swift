@@ -15,6 +15,7 @@ enum AnnotationType: String, Codable, CaseIterable, Sendable {
 @Model
 final class TextAnnotation {
   var id: UUID
+  var groupID: UUID
 
   /// The subtitle cue ID this annotation belongs to
   var cueID: UUID
@@ -50,6 +51,7 @@ final class TextAnnotation {
 
   init(
     id: UUID = UUID(),
+    groupID: UUID? = nil,
     cueID: UUID,
     rangeLocation: Int,
     rangeLength: Int,
@@ -60,6 +62,7 @@ final class TextAnnotation {
     updatedAt: Date = Date()
   ) {
     self.id = id
+    self.groupID = groupID ?? id
     self.cueID = cueID
     self.rangeLocation = rangeLocation
     self.rangeLength = rangeLength

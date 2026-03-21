@@ -32,11 +32,13 @@ final class AnnotationService {
   @discardableResult
   func addAnnotation(
     cueID: UUID,
+    groupID: UUID? = nil,
     range: NSRange,
     selectedText: String,
     type: AnnotationType
   ) -> AnnotationDisplayData {
     let annotation = TextAnnotation(
+      groupID: groupID,
       cueID: cueID,
       rangeLocation: range.location,
       rangeLength: range.length,
@@ -54,30 +56,70 @@ final class AnnotationService {
     return AnnotationDisplayData(from: annotation)
   }
 
+  func annotations(inGroup groupID: UUID) -> [AnnotationDisplayData] {
+    annotationsByCue.values
+      .flatMap { $0 }
+      .filter { $0.groupID == groupID }
+      .sorted {
+        if $0.cueID == $1.cueID {
+          return $0.rangeLocation < $1.rangeLocation
+        }
+        return $0.createdAt < $1.createdAt
+      }
+      .map { AnnotationDisplayData(from: $0) }
+  }
+
   /// Update the comment on an annotation
   func updateComment(annotationID: UUID, comment: String?) {
     guard let annotation = findAnnotation(by: annotationID) else { return }
-    annotation.comment = comment
-    annotation.updatedAt = Date()
+    updateComment(groupID: annotation.groupID, comment: comment)
+  }
+
+  func updateComment(groupID: UUID, comment: String?) {
+    let annotations = findAnnotations(groupID: groupID)
+    guard !annotations.isEmpty else { return }
+    let now = Date()
+    for annotation in annotations {
+      annotation.comment = comment
+      annotation.updatedAt = now
+    }
     version += 1
   }
 
   /// Change the type of an annotation
   func updateType(annotationID: UUID, type: AnnotationType) {
     guard let annotation = findAnnotation(by: annotationID) else { return }
-    annotation.type = type
-    annotation.updatedAt = Date()
+    updateType(groupID: annotation.groupID, type: type)
+  }
+
+  func updateType(groupID: UUID, type: AnnotationType) {
+    let annotations = findAnnotations(groupID: groupID)
+    guard !annotations.isEmpty else { return }
+    let now = Date()
+    for annotation in annotations {
+      annotation.type = type
+      annotation.updatedAt = now
+    }
     version += 1
   }
 
   /// Remove an annotation
   func removeAnnotation(id: UUID) {
     guard let annotation = findAnnotation(by: id) else { return }
-    let cueID = annotation.cueID
-    modelContext.delete(annotation)
-    annotationsByCue[cueID]?.removeAll { $0.id == id }
-    if annotationsByCue[cueID]?.isEmpty == true {
-      annotationsByCue.removeValue(forKey: cueID)
+    removeAnnotationGroup(groupID: annotation.groupID)
+  }
+
+  func removeAnnotationGroup(groupID: UUID) {
+    let annotations = findAnnotations(groupID: groupID)
+    guard !annotations.isEmpty else { return }
+
+    for annotation in annotations {
+      modelContext.delete(annotation)
+      let cueID = annotation.cueID
+      annotationsByCue[cueID]?.removeAll { $0.id == annotation.id }
+      if annotationsByCue[cueID]?.isEmpty == true {
+        annotationsByCue.removeValue(forKey: cueID)
+      }
     }
     version += 1
   }
@@ -100,5 +142,11 @@ final class AnnotationService {
       }
     }
     return nil
+  }
+
+  private func findAnnotations(groupID: UUID) -> [TextAnnotation] {
+    annotationsByCue.values
+      .flatMap { $0 }
+      .filter { $0.groupID == groupID }
   }
 }

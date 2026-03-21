@@ -96,6 +96,36 @@ struct AnnotationServiceTests {
   }
 
   @Test @MainActor
+  func testUpdateCommentByGroupAffectsAllSegments() throws {
+    let context = try makeContext()
+    let service = context.service
+    let cue1 = UUID()
+    let cue2 = UUID()
+    let groupID = UUID()
+
+    _ = service.addAnnotation(
+      cueID: cue1,
+      groupID: groupID,
+      range: NSRange(location: 0, length: 5),
+      selectedText: "hello",
+      type: .vocabulary
+    )
+    _ = service.addAnnotation(
+      cueID: cue2,
+      groupID: groupID,
+      range: NSRange(location: 0, length: 5),
+      selectedText: "world",
+      type: .vocabulary
+    )
+
+    service.updateComment(groupID: groupID, comment: "shared note")
+
+    let grouped = service.annotations(inGroup: groupID)
+    #expect(grouped.count == 2)
+    #expect(grouped.allSatisfy { $0.comment == "shared note" })
+  }
+
+  @Test @MainActor
   func testUpdateType() throws {
     let context = try makeContext()
     let service = context.service
@@ -115,6 +145,36 @@ struct AnnotationServiceTests {
   }
 
   @Test @MainActor
+  func testUpdateTypeByGroupAffectsAllSegments() throws {
+    let context = try makeContext()
+    let service = context.service
+    let cue1 = UUID()
+    let cue2 = UUID()
+    let groupID = UUID()
+
+    _ = service.addAnnotation(
+      cueID: cue1,
+      groupID: groupID,
+      range: NSRange(location: 0, length: 5),
+      selectedText: "hello",
+      type: .vocabulary
+    )
+    _ = service.addAnnotation(
+      cueID: cue2,
+      groupID: groupID,
+      range: NSRange(location: 0, length: 5),
+      selectedText: "world",
+      type: .vocabulary
+    )
+
+    service.updateType(groupID: groupID, type: .goodSentence)
+
+    let grouped = service.annotations(inGroup: groupID)
+    #expect(grouped.count == 2)
+    #expect(grouped.allSatisfy { $0.type == .goodSentence })
+  }
+
+  @Test @MainActor
   func testRemoveAnnotation() throws {
     let context = try makeContext()
     let service = context.service
@@ -130,6 +190,36 @@ struct AnnotationServiceTests {
     service.removeAnnotation(id: display.id)
 
     #expect(service.annotations(for: cueID).isEmpty)
+  }
+
+  @Test @MainActor
+  func testRemoveAnnotationGroupRemovesAllSegments() throws {
+    let context = try makeContext()
+    let service = context.service
+    let cue1 = UUID()
+    let cue2 = UUID()
+    let groupID = UUID()
+
+    _ = service.addAnnotation(
+      cueID: cue1,
+      groupID: groupID,
+      range: NSRange(location: 0, length: 5),
+      selectedText: "hello",
+      type: .vocabulary
+    )
+    _ = service.addAnnotation(
+      cueID: cue2,
+      groupID: groupID,
+      range: NSRange(location: 0, length: 5),
+      selectedText: "world",
+      type: .collocation
+    )
+
+    service.removeAnnotationGroup(groupID: groupID)
+
+    #expect(service.annotations(for: cue1).isEmpty)
+    #expect(service.annotations(for: cue2).isEmpty)
+    #expect(service.annotations(inGroup: groupID).isEmpty)
   }
 
   @Test @MainActor

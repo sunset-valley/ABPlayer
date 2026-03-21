@@ -166,21 +166,21 @@ struct SubtitleViewModelTests {
   @MainActor
   func testSelectAnnotation() {
     let viewModel = SubtitleViewModel()
-    let cueID = UUID()
-    let annotationID = UUID()
+    let groupID = UUID()
+    let selection = makeCrossSelection()
     var pauseCalled = false
 
     viewModel.selectAnnotation(
-      cueID: cueID,
-      annotationID: annotationID,
+      groupID: groupID,
+      selection: selection,
       isPlaying: true,
       onPause: { pauseCalled = true }
     )
 
     #expect(pauseCalled)
-    if case let .annotationSelected(selectedCueID, selectedAnnotationID) = viewModel.textSelection {
-      #expect(selectedCueID == cueID)
-      #expect(selectedAnnotationID == annotationID)
+    if case let .annotationSelected(selectedGroupID, selectedSelection) = viewModel.textSelection {
+      #expect(selectedGroupID == groupID)
+      #expect(selectedSelection == selection)
     } else {
       Issue.record("Expected annotationSelected state")
     }
