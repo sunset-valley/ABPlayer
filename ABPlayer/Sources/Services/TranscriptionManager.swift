@@ -35,7 +35,7 @@ final class TranscriptionManager {
   func downloadModel(
     modelName: String,
     downloadBase: URL,
-    endpoint: String = "https://huggingface.co",
+    endpoint: String,
     progressCallback: (@Sendable (Double) -> Void)? = nil
   ) async throws {
     // If already downloading (and correct model), return
@@ -114,7 +114,8 @@ final class TranscriptionManager {
       let config = WhisperKitConfig(
         model: modelName,
         downloadBase: downloadBase,
-        modelFolder: localFolder  // nil when not yet downloaded → falls back to original behaviour
+        modelFolder: localFolder,
+        download: false
       )
 
       whisperKit = try await WhisperKit(config)
@@ -196,24 +197,7 @@ final class TranscriptionManager {
         state = .cancelled
         throw CancellationError()
       } catch {
-        // Only download if the model is genuinely absent; re-throw if it exists but failed to load
-        guard !settings.isModelDownloaded(modelName: settings.modelName) else {
-          throw error
-        }
-        do {
-          try await downloadModel(
-            modelName: settings.modelName,
-            downloadBase: settings.modelDirectoryURL,
-            endpoint: settings.effectiveDownloadEndpoint
-          )
-        } catch is CancellationError {
-          state = .cancelled
-          throw CancellationError()
-        }
-        try await loadModel(
-          modelName: settings.modelName,
-          downloadBase: settings.modelDirectoryURL
-        )
+        throw error
       }
     }
 
