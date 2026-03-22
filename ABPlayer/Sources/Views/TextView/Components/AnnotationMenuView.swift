@@ -3,26 +3,18 @@ import SwiftUI
 
 /// Menu shown when user selects text or taps an existing annotation.
 struct AnnotationMenuView: View {
+  @Environment(\.openWindow) private var openWindow
+
   let selectedText: String
   let existingAnnotation: AnnotationRenderData?
   let styles: [AnnotationStyleDisplayData]
-  let styleUsageCount: (UUID) -> Int
   let onAnnotate: (UUID) -> Void
   let onEditComment: () -> Void
   let onChangeStyle: (UUID) -> Void
-  let onAddStyle: () -> Void
-  let onUpdateStyleName: (UUID, String) -> Void
-  let onUpdateStyleKind: (UUID, AnnotationStyleKind) -> Void
-  let onUpdateUnderlineColor: (UUID, NSColor) -> Void
-  let onUpdateBackgroundColor: (UUID, NSColor) -> Void
-  let onDeleteStyle: (UUID) -> Bool
   let onDelete: () -> Void
   let onLookup: () -> Void
   let onCopy: () -> Void
   let onDismiss: () -> Void
-
-  @State private var styleDeleteAlertMessage: String?
-  @State private var draftStyleNames: [UUID: String] = [:]
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -34,21 +26,6 @@ struct AnnotationMenuView: View {
     }
     .padding(12)
     .frame(minWidth: 280, maxWidth: 340, alignment: .leading)
-    .alert(
-      "Cannot Delete Style",
-      isPresented: Binding(
-        get: { styleDeleteAlertMessage != nil },
-        set: { newValue in
-          if !newValue {
-            styleDeleteAlertMessage = nil
-          }
-        }
-      )
-    ) {
-      Button("OK", role: .cancel) { styleDeleteAlertMessage = nil }
-    } message: {
-      Text(styleDeleteAlertMessage ?? "")
-    }
   }
 
   // MARK: - Menus
@@ -58,9 +35,13 @@ struct AnnotationMenuView: View {
       actionSection
 
       VStack(alignment: .leading, spacing: 8) {
-        sectionTitle("Styles")
-        styleRows(isChangingExisting: false, selectedStyleID: nil)
-        addStyleButton
+        HStack {
+          sectionTitle("MARK AS")
+          Spacer(minLength: 8)
+          manageStylesButton
+        }
+
+        styleCards
       }
     }
   }
@@ -84,6 +65,7 @@ struct AnnotationMenuView: View {
       ) {
         onEditComment()
       }
+      .accessibilityIdentifier("annotation-edit-comment")
 
       VStack(alignment: .leading, spacing: 8) {
         sectionTitle("Switch Style")
@@ -94,135 +76,138 @@ struct AnnotationMenuView: View {
         onDelete()
         onDismiss()
       }
+      .accessibilityIdentifier("annotation-remove")
     }
   }
 
   private var actionSection: some View {
-    VStack(alignment: .leading, spacing: 4) {
+    HStack(spacing: 4) {
       menuButton("Copy", systemImage: "doc.on.doc") {
         onCopy()
         onDismiss()
       }
+      .accessibilityIdentifier("menu-copy")
 
       menuButton("Look Up", systemImage: "book") {
         onLookup()
       }
+      .accessibilityIdentifier("menu-lookup")
     }
   }
 
-  // MARK: - Style rows
+  // MARK: - Style selection
 
-  @ViewBuilder
+  private var styleCards: some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: 8) {
+        ForEach(Array(styles.enumerated()), id: \.element.id) { index, style in
+          styleCard(style, index: index)
+        }
+      }
+      .padding(.vertical, 2)
+    }
+  }
+
+  private func styleCard(_ style: AnnotationStyleDisplayData, index: Int) -> some View {
+    Button {
+      applyStyle(style.id, isChangingExisting: false)
+    } label: {
+      VStack(spacing: 8) {
+        styleTokenPreview(style)
+          .frame(width: 56, height: 18)
+
+        Text(style.name)
+          .font(.caption)
+          .fontWeight(.semibold)
+          .lineLimit(1)
+          .truncationMode(.tail)
+          .frame(maxWidth: .infinity)
+      }
+      .padding(.horizontal, 8)
+      .padding(.vertical, 10)
+      .frame(width: 98)
+      .background(
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+          .fill(Color(nsColor: .controlBackgroundColor).opacity(0.72))
+      )
+      .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+    .buttonStyle(.plain)
+    .accessibilityIdentifier("style-row-action-\(index)")
+  }
+
   private func styleRows(isChangingExisting: Bool, selectedStyleID: UUID?) -> some View {
-    ForEach(styles) { style in
-      styleRow(style, isChangingExisting: isChangingExisting, selectedStyleID: selectedStyleID)
+    ForEach(Array(styles.enumerated()), id: \.element.id) { index, style in
+      Button {
+        applyStyle(style.id, isChangingExisting: isChangingExisting)
+      } label: {
+        HStack(spacing: 8) {
+          Image(systemName: selectedStyleID == style.id ? "checkmark.circle.fill" : "circle")
+            .foregroundStyle(selectedStyleID == style.id ? Color.accentColor : Color.secondary)
+          Text(style.name)
+            .font(.subheadline)
+            .lineLimit(1)
+            .truncationMode(.tail)
+          Spacer(minLength: 0)
+          stylePreview(style)
+            .frame(maxWidth: 80)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+          RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(Color(nsColor: .controlBackgroundColor).opacity(0.55))
+        )
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityIdentifier("style-list-action-\(index)")
     }
   }
 
-  private func styleRow(
-    _ style: AnnotationStyleDisplayData,
-    isChangingExisting: Bool,
-    selectedStyleID: UUID?
-  ) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack(spacing: 8) {
-        Button {
-          if isChangingExisting {
-            onChangeStyle(style.id)
-          } else {
-            onAnnotate(style.id)
-          }
-          onDismiss()
-        } label: {
-          HStack(spacing: 8) {
-            Image(systemName: selectedStyleID == style.id ? "checkmark.circle.fill" : "circle")
-              .foregroundStyle(selectedStyleID == style.id ? Color.accentColor : Color.secondary)
-            Text(style.name)
-              .font(.subheadline)
-              .lineLimit(1)
-              .truncationMode(.tail)
-            Spacer(minLength: 0)
-          }
-          .contentShape(Rectangle())
+  // MARK: - Style management
+
+  private var manageStylesButton: some View {
+    Button {
+      openWindow(id: "annotation-style-manager")
+      onDismiss()
+    } label: {
+      Label("Manage", systemImage: "slider.horizontal.3")
+        .font(.caption)
+        .fontWeight(.semibold)
+    }
+    .buttonStyle(.plain)
+    .padding(.horizontal, 8)
+    .padding(.vertical, 5)
+    .background(
+      Capsule(style: .continuous)
+        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.8))
+    )
+    .accessibilityIdentifier("style-manage-toggle")
+  }
+
+  private func styleTokenPreview(_ style: AnnotationStyleDisplayData) -> some View {
+    Group {
+      switch style.kind {
+      case .underline:
+        RoundedRectangle(cornerRadius: 2, style: .continuous)
+          .fill(Color(nsColor: style.underlineColor))
+          .frame(height: 2)
+      case .background:
+        RoundedRectangle(cornerRadius: 3, style: .continuous)
+          .fill(Color(nsColor: style.backgroundColor).opacity(0.45))
+          .frame(height: 10)
+      case .underlineAndBackground:
+        VStack(spacing: 4) {
+          RoundedRectangle(cornerRadius: 3, style: .continuous)
+            .fill(Color(nsColor: style.backgroundColor).opacity(0.45))
+            .frame(height: 8)
+          RoundedRectangle(cornerRadius: 2, style: .continuous)
+            .fill(Color(nsColor: style.underlineColor))
+            .frame(height: 2)
         }
-        .buttonStyle(.plain)
-
-        Button {
-          let usage = styleUsageCount(style.id)
-          guard usage == 0 else {
-            styleDeleteAlertMessage =
-              "This style is still in use. Switch affected annotations to another style before deleting it."
-            return
-          }
-          let deleted = onDeleteStyle(style.id)
-          if !deleted {
-            styleDeleteAlertMessage =
-              "Unable to delete this style right now. Please try again after switching affected annotations."
-          }
-        } label: {
-          Image(systemName: "trash")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-        .buttonStyle(.plain)
-        .help("Delete style")
-      }
-
-      HStack(spacing: 8) {
-        TextField(
-          "Style name",
-          text: Binding(
-            get: { draftStyleNames[style.id] ?? style.name },
-            set: { draftStyleNames[style.id] = $0 }
-          )
-        )
-        .textFieldStyle(.roundedBorder)
-        .onSubmit {
-          onUpdateStyleName(style.id, draftStyleNames[style.id] ?? style.name)
-        }
-        .onAppear {
-          if draftStyleNames[style.id] == nil {
-            draftStyleNames[style.id] = style.name
-          }
-        }
-
-        Picker(
-          "Kind",
-          selection: Binding(
-            get: { style.kind },
-            set: { onUpdateStyleKind(style.id, $0) }
-          )
-        ) {
-          Text("Underline").tag(AnnotationStyleKind.underline)
-          Text("Background").tag(AnnotationStyleKind.background)
-          Text("Underline + BG").tag(AnnotationStyleKind.underlineAndBackground)
-        }
-        .labelsHidden()
-        .pickerStyle(.menu)
-        .frame(width: 130)
-      }
-
-      HStack(spacing: 8) {
-        colorPicker(
-          title: "Underline",
-          color: style.underlineColor,
-          onChange: { onUpdateUnderlineColor(style.id, $0) }
-        )
-
-        colorPicker(
-          title: "Background",
-          color: style.backgroundColor,
-          onChange: { onUpdateBackgroundColor(style.id, $0) }
-        )
-
-        stylePreview(style)
       }
     }
-    .padding(10)
-    .background(
-      RoundedRectangle(cornerRadius: 10, style: .continuous)
-        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.75))
-    )
   }
 
   private func stylePreview(_ style: AnnotationStyleDisplayData) -> some View {
@@ -256,41 +241,16 @@ struct AnnotationMenuView: View {
     .frame(maxWidth: .infinity, alignment: .trailing)
   }
 
-  private func colorPicker(
-    title: String,
-    color: NSColor,
-    onChange: @escaping (NSColor) -> Void
-  ) -> some View {
-    ColorPicker(
-      title,
-      selection: Binding(
-        get: { Color(nsColor: color) },
-        set: { onChange(NSColor($0)) }
-      ),
-      supportsOpacity: false
-    )
-    .labelsHidden()
-    .frame(width: 28)
-    .help(title)
-  }
-
-  private var addStyleButton: some View {
-    Button {
-      onAddStyle()
-    } label: {
-      Label("Add Style", systemImage: "plus")
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    .buttonStyle(.plain)
-    .padding(.horizontal, 8)
-    .padding(.vertical, 6)
-    .background(
-      RoundedRectangle(cornerRadius: 8, style: .continuous)
-        .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
-    )
-  }
-
   // MARK: - Small helpers
+
+  private func applyStyle(_ styleID: UUID, isChangingExisting: Bool) {
+    if isChangingExisting {
+      onChangeStyle(styleID)
+    } else {
+      onAnnotate(styleID)
+    }
+    onDismiss()
+  }
 
   private func sectionTitle(_ title: String) -> some View {
     Text(title)

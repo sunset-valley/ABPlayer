@@ -98,5 +98,17 @@ let project = Project(
       ],
       dependencies: [.target(name: "ABPlayer")]
     ),
+    .target(
+      name: "ABPlayerUITests",
+      destinations: .macOS,
+      product: .uiTests,
+      bundleId: "cc.ihugo.app.ABPlayerUITests",
+      deploymentTargets: .macOS("26.0"),
+      infoPlist: .default,
+      buildableFolders: [
+        "ABPlayer/UITests",
+      ],
+      dependencies: [.target(name: "ABPlayer")]
+    ),
   ]
 )

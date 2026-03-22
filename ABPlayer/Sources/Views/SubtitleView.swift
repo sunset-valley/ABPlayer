@@ -208,9 +208,6 @@ struct SubtitleView: View {
         selectedText: selectedText,
         existingAnnotation: existingAnnotation,
         styles: annotationStyleService.allStyles(),
-        styleUsageCount: { styleID in
-          annotationService.styleUsageCount(stylePresetID: styleID)
-        },
         onAnnotate: { styleID in
           createAnnotation(from: output.textSelection, stylePresetID: styleID)
         },
@@ -224,32 +221,6 @@ struct SubtitleView: View {
           if let annotation = existingAnnotation {
             annotationService.updateStyle(groupID: annotation.groupID, stylePresetID: styleID)
           }
-        },
-        onAddStyle: {
-          _ = annotationStyleService.addStyle(
-            name: "Style",
-            kind: .underlineAndBackground,
-            underlineColor: .systemBlue,
-            backgroundColor: .systemBlue
-          )
-        },
-        onUpdateStyleName: { styleID, name in
-          annotationStyleService.updateStyleName(styleID: styleID, name: name)
-        },
-        onUpdateStyleKind: { styleID, kind in
-          annotationStyleService.updateStyleKind(styleID: styleID, kind: kind)
-        },
-        onUpdateUnderlineColor: { styleID, color in
-          annotationStyleService.updateUnderlineColor(styleID: styleID, color: color)
-        },
-        onUpdateBackgroundColor: { styleID, color in
-          annotationStyleService.updateBackgroundColor(styleID: styleID, color: color)
-        },
-        onDeleteStyle: { styleID in
-          annotationStyleService.deleteStyle(
-            styleID: styleID,
-            usageCount: annotationService.styleUsageCount(stylePresetID: styleID)
-          )
         },
         onDelete: {
           if let annotation = existingAnnotation {
