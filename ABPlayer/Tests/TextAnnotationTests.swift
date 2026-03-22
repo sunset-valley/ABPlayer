@@ -4,139 +4,61 @@ import Testing
 
 @testable import ABPlayer
 
-struct AnnotationTypeTests {
+struct AnnotationStyleKindTests {
 
   @Test
   func testRawValues() {
-    #expect(AnnotationType.vocabulary.rawValue == "vocabulary")
-    #expect(AnnotationType.collocation.rawValue == "collocation")
-    #expect(AnnotationType.goodSentence.rawValue == "goodSentence")
-  }
-
-  @Test
-  func testAllCases() {
-    #expect(AnnotationType.allCases.count == 3)
-    #expect(AnnotationType.allCases.contains(.vocabulary))
-    #expect(AnnotationType.allCases.contains(.collocation))
-    #expect(AnnotationType.allCases.contains(.goodSentence))
+    #expect(AnnotationStyleKind.underline.rawValue == "underline")
+    #expect(AnnotationStyleKind.background.rawValue == "background")
+    #expect(AnnotationStyleKind.underlineAndBackground.rawValue == "underlineAndBackground")
   }
 
   @Test
   func testCodableRoundTrip() throws {
-    let original = AnnotationType.goodSentence
+    let original = AnnotationStyleKind.underlineAndBackground
     let data = try JSONEncoder().encode(original)
-    let decoded = try JSONDecoder().decode(AnnotationType.self, from: data)
+    let decoded = try JSONDecoder().decode(AnnotationStyleKind.self, from: data)
     #expect(decoded == original)
   }
+}
+
+struct NSColorHexTests {
 
   @Test
-  func testDisplayName() {
-    #expect(AnnotationType.vocabulary.displayName == "Vocabulary")
-    #expect(AnnotationType.collocation.displayName == "Collocation")
-    #expect(AnnotationType.goodSentence.displayName == "Good Sentence")
+  func testHexRoundTrip() {
+    let color = NSColor.systemBlue
+    let hex = color.abHexString
+    let parsed = NSColor(abHex: hex)
+    #expect(parsed != nil)
+  }
+
+  @Test
+  func testInvalidHexReturnsNil() {
+    #expect(NSColor(abHex: "#XYZXYZ") == nil)
+    #expect(NSColor(abHex: "#1234") == nil)
   }
 }
 
-struct AnnotationColorConfigTests {
+struct AnnotationRenderDataTests {
 
   @Test
-  func testDefaultColors() {
-    let config = AnnotationColorConfig.default
-    #expect(config.vocabulary == .systemRed)
-    #expect(config.collocation == .systemBlue)
-    #expect(config.goodSentence == .systemYellow)
-  }
-
-  @Test
-  func testColorForType() {
-    let config = AnnotationColorConfig.default
-    #expect(config.color(for: .vocabulary) == .systemRed)
-    #expect(config.color(for: .collocation) == .systemBlue)
-    #expect(config.color(for: .goodSentence) == .systemYellow)
-  }
-
-  @Test
-  func testCustomColors() {
-    let config = AnnotationColorConfig(
-      vocabulary: .systemOrange,
-      collocation: .systemGreen,
-      goodSentence: .systemPurple
-    )
-    #expect(config.color(for: .vocabulary) == .systemOrange)
-    #expect(config.color(for: .collocation) == .systemGreen)
-    #expect(config.color(for: .goodSentence) == .systemPurple)
-  }
-
-  @Test
-  func testEquality() {
-    let a = AnnotationColorConfig.default
-    let b = AnnotationColorConfig.default
-    #expect(a == b)
-
-    let c = AnnotationColorConfig(
-      vocabulary: .systemOrange,
-      collocation: .systemBlue,
-      goodSentence: .systemYellow
-    )
-    #expect(a != c)
-  }
-}
-
-struct AnnotationDisplayDataTests {
-
-  @Test
-  func testEquality() {
-    let id = UUID()
-    let groupID = UUID()
-    let range = NSRange(location: 0, length: 5)
-    let a = AnnotationDisplayData(id: id, groupID: groupID, type: .vocabulary, range: range, selectedText: "hello", comment: nil)
-    let b = AnnotationDisplayData(id: id, groupID: groupID, type: .vocabulary, range: range, selectedText: "hello", comment: nil)
-    #expect(a == b)
-  }
-
-  @Test
-  func testInequalityDifferentType() {
-    let id = UUID()
-    let groupID = UUID()
-    let range = NSRange(location: 0, length: 5)
-    let a = AnnotationDisplayData(id: id, groupID: groupID, type: .vocabulary, range: range, selectedText: "hello", comment: nil)
-    let b = AnnotationDisplayData(id: id, groupID: groupID, type: .collocation, range: range, selectedText: "hello", comment: nil)
-    #expect(a != b)
-  }
-
-  @Test
-  func testFromTextAnnotation() {
-    let cueID = UUID()
-    let annotation = TextAnnotation(
-      cueID: cueID,
-      rangeLocation: 5,
-      rangeLength: 10,
-      type: .goodSentence,
-      selectedText: "test phrase",
-      comment: "nice!"
+  func testResolvedStyleFromDisplayData() {
+    let styleID = UUID()
+    let data = AnnotationRenderData(
+      id: UUID(),
+      groupID: UUID(),
+      stylePresetID: styleID,
+      styleName: "Underline",
+      styleKind: .underline,
+      underlineColorHex: "#FF0000",
+      backgroundColorHex: "#00FF00",
+      range: NSRange(location: 0, length: 5),
+      selectedText: "hello",
+      comment: nil
     )
 
-    let display = AnnotationDisplayData(from: annotation)
-    #expect(display.id == annotation.id)
-    #expect(display.groupID == annotation.groupID)
-    #expect(display.type == .goodSentence)
-    #expect(display.range.location == 5)
-    #expect(display.range.length == 10)
-    #expect(display.selectedText == "test phrase")
-    #expect(display.comment == "nice!")
-  }
-
-  @Test
-  func testTextAnnotationDefaultGroupIDMatchesID() {
-    let annotation = TextAnnotation(
-      cueID: UUID(),
-      rangeLocation: 0,
-      rangeLength: 4,
-      type: .vocabulary,
-      selectedText: "test"
-    )
-
-    #expect(annotation.groupID == annotation.id)
+    #expect(data.styleDisplay.id == styleID)
+    #expect(data.resolvedStyle.kind == .underline)
   }
 }
 

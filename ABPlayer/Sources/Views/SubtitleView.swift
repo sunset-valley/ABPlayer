@@ -7,6 +7,7 @@ import SwiftUI
 struct SubtitleView: View {
   @Environment(PlayerManager.self) private var playerManager
   @Environment(AnnotationService.self) private var annotationService
+  @Environment(AnnotationStyleService.self) private var annotationStyleService
   @Environment(TranscriptionSettings.self) private var transcriptionSettings
 
   let cues: [SubtitleCue]
@@ -21,7 +22,7 @@ struct SubtitleView: View {
 
   // Comment-editor sheet state (opened from annotation menu)
   @State private var isShowingCommentEditor = false
-  @State private var commentEditingAnnotation: AnnotationDisplayData?
+  @State private var commentEditingAnnotation: AnnotationRenderData?
   @State private var popoverAnchors: TranscriptTextView.PopoverAnchors?
   @State private var popoverContentSize: CGSize = .zero
 
@@ -44,8 +45,7 @@ struct SubtitleView: View {
         activeCueID: output.currentCueID,
         isUserScrolling: output.scrollState.isUserScrolling,
         textSelection: output.textSelection,
-        colorConfig: .default,
-        annotationVersion: annotationService.version,
+        annotationVersion: annotationService.version + annotationStyleService.version,
         annotationsProvider: { annotationService.annotations(for: $0) },
         onSelectionChanged: { selection in
           viewModel.handleTextSelection(
@@ -207,8 +207,12 @@ struct SubtitleView: View {
       AnnotationMenuView(
         selectedText: selectedText,
         existingAnnotation: existingAnnotation,
-        onAnnotate: { type in
-          createAnnotation(from: output.textSelection, type: type)
+        styles: annotationStyleService.allStyles(),
+        styleUsageCount: { styleID in
+          annotationService.styleUsageCount(stylePresetID: styleID)
+        },
+        onAnnotate: { styleID in
+          createAnnotation(from: output.textSelection, stylePresetID: styleID)
         },
         onEditComment: {
           if let annotation = existingAnnotation {
@@ -216,10 +220,36 @@ struct SubtitleView: View {
             isShowingCommentEditor = true
           }
         },
-        onChangeType: { type in
+        onChangeStyle: { styleID in
           if let annotation = existingAnnotation {
-            annotationService.updateType(groupID: annotation.groupID, type: type)
+            annotationService.updateStyle(groupID: annotation.groupID, stylePresetID: styleID)
           }
+        },
+        onAddStyle: {
+          _ = annotationStyleService.addStyle(
+            name: "Style",
+            kind: .underlineAndBackground,
+            underlineColor: .systemBlue,
+            backgroundColor: .systemBlue
+          )
+        },
+        onUpdateStyleName: { styleID, name in
+          annotationStyleService.updateStyleName(styleID: styleID, name: name)
+        },
+        onUpdateStyleKind: { styleID, kind in
+          annotationStyleService.updateStyleKind(styleID: styleID, kind: kind)
+        },
+        onUpdateUnderlineColor: { styleID, color in
+          annotationStyleService.updateUnderlineColor(styleID: styleID, color: color)
+        },
+        onUpdateBackgroundColor: { styleID, color in
+          annotationStyleService.updateBackgroundColor(styleID: styleID, color: color)
+        },
+        onDeleteStyle: { styleID in
+          annotationStyleService.deleteStyle(
+            styleID: styleID,
+            usageCount: annotationService.styleUsageCount(stylePresetID: styleID)
+          )
         },
         onDelete: {
           if let annotation = existingAnnotation {
@@ -254,7 +284,7 @@ struct SubtitleView: View {
 
   private func existingAnnotationForPopover(
     output: SubtitleViewModel.Output
-  ) -> AnnotationDisplayData? {
+  ) -> AnnotationRenderData? {
     if case let .annotationSelected(groupID, _) = output.textSelection {
       return annotationService.annotations(inGroup: groupID).first
     }
@@ -264,19 +294,10 @@ struct SubtitleView: View {
   /// Create one annotation per cue segment (supports cross-cue selections).
   private func createAnnotation(
     from state: SubtitleViewModel.TextSelectionState,
-    type: AnnotationType
+    stylePresetID: UUID
   ) {
     guard case let .selecting(selection) = state else { return }
-    let groupID = UUID()
-    for segment in selection.segments {
-      annotationService.addAnnotation(
-        cueID: segment.cueID,
-        groupID: groupID,
-        range: segment.localRange,
-        selectedText: segment.text,
-        type: type
-      )
-    }
+    _ = annotationService.addAnnotation(selection: selection, stylePresetID: stylePresetID)
   }
 
   private func dismissPopoverSelection() {

@@ -28,15 +28,14 @@ struct TranscriptTextView: NSViewRepresentable {
   let activeCueID: UUID?
   let isUserScrolling: Bool
   let textSelection: SubtitleViewModel.TextSelectionState
-  let colorConfig: AnnotationColorConfig
   let annotationVersion: Int
-  let annotationsProvider: (UUID) -> [AnnotationDisplayData]
+  let annotationsProvider: (UUID) -> [AnnotationRenderData]
 
   // MARK: - Callbacks
 
   let onSelectionChanged: (CrossCueTextSelection?) -> Void
   let onPopoverAnchorChanged: (PopoverAnchors?) -> Void
-  let onAnnotationTapped: (UUID, CrossCueTextSelection, AnnotationDisplayData) -> Void
+  let onAnnotationTapped: (UUID, CrossCueTextSelection, AnnotationRenderData) -> Void
   let onCueTap: (UUID, Double) -> Void
   let onUserScrolled: () -> Void
   let onEditSubtitleRequested: (UUID) -> Void
@@ -104,7 +103,6 @@ struct TranscriptTextView: NSViewRepresentable {
     coordinator.activeCueID = activeCueID
     coordinator.isUserScrolling = isUserScrolling
     coordinator.textSelection = textSelection
-    coordinator.colorConfig = colorConfig
     coordinator.annotationVersion = annotationVersion
     coordinator.annotationsProvider = annotationsProvider
     coordinator.onSelectionChanged = onSelectionChanged
@@ -141,7 +139,6 @@ struct TranscriptTextView: NSViewRepresentable {
       cues: cues,
       fontSize: fontSize,
       activeCueID: activeCueID,
-      colorConfig: colorConfig,
       annotationVersion: annotationVersion,
       annotationsProvider: annotationsProvider,
       onSelectionChanged: onSelectionChanged,
@@ -164,14 +161,13 @@ struct TranscriptTextView: NSViewRepresentable {
     var activeCueID: UUID?
     var isUserScrolling = false
     var textSelection: SubtitleViewModel.TextSelectionState = .none
-    var colorConfig: AnnotationColorConfig
     var annotationVersion: Int
-    var annotationsProvider: (UUID) -> [AnnotationDisplayData]
+    var annotationsProvider: (UUID) -> [AnnotationRenderData]
 
     // Callbacks
     var onSelectionChanged: (CrossCueTextSelection?) -> Void
     var onPopoverAnchorChanged: (PopoverAnchors?) -> Void
-    var onAnnotationTapped: (UUID, CrossCueTextSelection, AnnotationDisplayData) -> Void
+    var onAnnotationTapped: (UUID, CrossCueTextSelection, AnnotationRenderData) -> Void
     var onCueTap: (UUID, Double) -> Void
     var onUserScrolled: () -> Void
     var onEditSubtitleRequested: (UUID) -> Void
@@ -197,12 +193,11 @@ struct TranscriptTextView: NSViewRepresentable {
       cues: [SubtitleCue],
       fontSize: Double,
       activeCueID: UUID?,
-      colorConfig: AnnotationColorConfig,
       annotationVersion: Int,
-      annotationsProvider: @escaping (UUID) -> [AnnotationDisplayData],
+      annotationsProvider: @escaping (UUID) -> [AnnotationRenderData],
       onSelectionChanged: @escaping (CrossCueTextSelection?) -> Void,
       onPopoverAnchorChanged: @escaping (PopoverAnchors?) -> Void,
-      onAnnotationTapped: @escaping (UUID, CrossCueTextSelection, AnnotationDisplayData) -> Void,
+      onAnnotationTapped: @escaping (UUID, CrossCueTextSelection, AnnotationRenderData) -> Void,
       onCueTap: @escaping (UUID, Double) -> Void,
       onUserScrolled: @escaping () -> Void,
       onEditSubtitleRequested: @escaping (UUID) -> Void
@@ -211,7 +206,6 @@ struct TranscriptTextView: NSViewRepresentable {
       self.cueIDs = cues.map(\.id)
       self.fontSize = fontSize
       self.activeCueID = activeCueID
-      self.colorConfig = colorConfig
       self.annotationVersion = annotationVersion
       self.annotationsProvider = annotationsProvider
       self.onSelectionChanged = onSelectionChanged
@@ -229,8 +223,7 @@ struct TranscriptTextView: NSViewRepresentable {
         cues: cues,
         fontSize: fontSize,
         activeCueID: activeCueID,
-        annotationsProvider: annotationsProvider,
-        colorConfig: colorConfig
+        annotationsProvider: annotationsProvider
       )
       let result = builder.build()
       cachedAttributedString = result.attributedString
@@ -325,14 +318,12 @@ struct TranscriptTextView: NSViewRepresentable {
           globalRange.location + globalRange.length <= strLen
         else { continue }
 
-        let color = colorConfig.color(for: annotation.type)
-        textStorage.addAttribute(.foregroundColor, value: color, range: globalRange)
-        textStorage.addAttribute(
-          .backgroundColor, value: color.withAlphaComponent(0.15), range: globalRange)
-        textStorage.addAttribute(
-          .underlineStyle, value: NSUnderlineStyle.single.rawValue, range: globalRange)
-        textStorage.addAttribute(
-          .underlineColor, value: color.withAlphaComponent(0.6), range: globalRange)
+        let style = AnnotationStyleResolver.resolve(annotation)
+        AnnotationAttributeApplicator.apply(
+          style: style,
+          to: textStorage,
+          range: globalRange
+        )
       }
     }
 
@@ -431,7 +422,7 @@ struct TranscriptTextView: NSViewRepresentable {
 
     /// Find an existing annotation at a global character index.
     struct AnnotationHit {
-      let annotation: AnnotationDisplayData
+      let annotation: AnnotationRenderData
       let selection: CrossCueTextSelection
       let globalRange: NSRange
     }
@@ -457,10 +448,10 @@ struct TranscriptTextView: NSViewRepresentable {
     }
 
     private func buildAnnotationHit(
-      for tappedAnnotation: AnnotationDisplayData,
+      for tappedAnnotation: AnnotationRenderData,
       fallbackLayout: CueLayout
     ) -> AnnotationHit? {
-      var ranges: [(layout: CueLayout, annotation: AnnotationDisplayData)] = []
+      var ranges: [(layout: CueLayout, annotation: AnnotationRenderData)] = []
 
       for layout in layouts {
         for annotation in annotationsProvider(layout.cueID) where annotation.groupID == tappedAnnotation.groupID {
@@ -924,10 +915,10 @@ final class TranscriptNSTextView: NSTextView {
         let intersection = NSIntersectionRange(range, globalAnnotRange)
         guard intersection.length > 0 else { continue }
 
-        let color = coordinator.colorConfig.color(for: annotation.type)
-        textStorage.addAttribute(
-          .backgroundColor,
-          value: color.withAlphaComponent(0.15),
+        let style = AnnotationStyleResolver.resolve(annotation)
+        AnnotationAttributeApplicator.reapplyBackgroundOnly(
+          style: style,
+          to: textStorage,
           range: intersection
         )
       }

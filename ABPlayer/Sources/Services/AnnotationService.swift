@@ -8,56 +8,67 @@ import SwiftData
 @MainActor
 final class AnnotationService {
   private let modelContext: ModelContext
+  private let styleService: AnnotationStyleService
 
-  /// Internal cache mapping cueID to annotations
-  private var annotationsByCue: [UUID: [TextAnnotation]] = [:]
+  /// Internal cache mapping cueID to annotation spans
+  private var spansByCue: [UUID: [TextAnnotationSpan]] = [:]
+  private var groupsByID: [UUID: TextAnnotationGroup] = [:]
 
   /// Version counter for cache invalidation - incremented on mutations
   private(set) var version = 0
 
-  init(modelContext: ModelContext) {
+  init(modelContext: ModelContext, styleService: AnnotationStyleService) {
     self.modelContext = modelContext
+    self.styleService = styleService
     refreshCache()
   }
 
   // MARK: - Public API
 
   /// Get display data for all annotations in a cue
-  func annotations(for cueID: UUID) -> [AnnotationDisplayData] {
-    let cached = annotationsByCue[cueID] ?? []
-    return cached.map { AnnotationDisplayData(from: $0) }
+  func annotations(for cueID: UUID) -> [AnnotationRenderData] {
+    let spans = spansByCue[cueID] ?? []
+    return spans
+      .sorted { $0.rangeLocation < $1.rangeLocation }
+      .compactMap(displayData(from:))
   }
 
-  /// Add a new annotation
+  /// Add one logical annotation group and one span per touched cue segment.
   @discardableResult
   func addAnnotation(
-    cueID: UUID,
-    groupID: UUID? = nil,
-    range: NSRange,
-    selectedText: String,
-    type: AnnotationType
-  ) -> AnnotationDisplayData {
-    let annotation = TextAnnotation(
-      groupID: groupID,
-      cueID: cueID,
-      rangeLocation: range.location,
-      rangeLength: range.length,
-      type: type,
-      selectedText: selectedText
+    selection: CrossCueTextSelection,
+    stylePresetID: UUID
+  ) -> [AnnotationRenderData] {
+    let now = Date()
+    let group = TextAnnotationGroup(
+      stylePresetID: stylePresetID,
+      selectedTextSnapshot: selection.fullText,
+      createdAt: now,
+      updatedAt: now
     )
-    modelContext.insert(annotation)
+    modelContext.insert(group)
+    groupsByID[group.id] = group
 
-    if annotationsByCue[cueID] == nil {
-      annotationsByCue[cueID] = []
+    for (index, segment) in selection.segments.enumerated() {
+      let span = TextAnnotationSpan(
+        groupID: group.id,
+        cueID: segment.cueID,
+        rangeLocation: segment.localRange.location,
+        rangeLength: segment.localRange.length,
+        segmentOrder: index,
+        createdAt: now,
+        updatedAt: now
+      )
+      modelContext.insert(span)
+      spansByCue[segment.cueID, default: []].append(span)
     }
-    annotationsByCue[cueID]?.append(annotation)
-    version += 1
 
-    return AnnotationDisplayData(from: annotation)
+    version += 1
+    return annotations(inGroup: group.id)
   }
 
-  func annotations(inGroup groupID: UUID) -> [AnnotationDisplayData] {
-    annotationsByCue.values
+  func annotations(inGroup groupID: UUID) -> [AnnotationRenderData] {
+    spansByCue.values
       .flatMap { $0 }
       .filter { $0.groupID == groupID }
       .sorted {
@@ -66,87 +77,99 @@ final class AnnotationService {
         }
         return $0.createdAt < $1.createdAt
       }
-      .map { AnnotationDisplayData(from: $0) }
+      .compactMap(displayData(from:))
   }
 
   /// Update the comment on an annotation
-  func updateComment(annotationID: UUID, comment: String?) {
-    guard let annotation = findAnnotation(by: annotationID) else { return }
-    updateComment(groupID: annotation.groupID, comment: comment)
-  }
-
   func updateComment(groupID: UUID, comment: String?) {
-    let annotations = findAnnotations(groupID: groupID)
-    guard !annotations.isEmpty else { return }
-    let now = Date()
-    for annotation in annotations {
-      annotation.comment = comment
-      annotation.updatedAt = now
-    }
+    guard let group = groupsByID[groupID] else { return }
+    group.comment = comment
+    group.updatedAt = Date()
     version += 1
   }
 
-  /// Change the type of an annotation
-  func updateType(annotationID: UUID, type: AnnotationType) {
-    guard let annotation = findAnnotation(by: annotationID) else { return }
-    updateType(groupID: annotation.groupID, type: type)
+  func updateStyle(groupID: UUID, stylePresetID: UUID) {
+    guard let group = groupsByID[groupID] else { return }
+    group.stylePresetID = stylePresetID
+    group.updatedAt = Date()
+    version += 1
   }
 
-  func updateType(groupID: UUID, type: AnnotationType) {
-    let annotations = findAnnotations(groupID: groupID)
-    guard !annotations.isEmpty else { return }
-    let now = Date()
-    for annotation in annotations {
-      annotation.type = type
-      annotation.updatedAt = now
-    }
-    version += 1
+  func styleUsageCount(stylePresetID: UUID) -> Int {
+    groupsByID.values.filter { $0.stylePresetID == stylePresetID }.count
   }
 
   /// Remove an annotation
   func removeAnnotation(id: UUID) {
-    guard let annotation = findAnnotation(by: id) else { return }
-    removeAnnotationGroup(groupID: annotation.groupID)
+    guard let span = findSpan(by: id) else { return }
+    removeAnnotationGroup(groupID: span.groupID)
   }
 
   func removeAnnotationGroup(groupID: UUID) {
-    let annotations = findAnnotations(groupID: groupID)
-    guard !annotations.isEmpty else { return }
+    let spans = findSpans(groupID: groupID)
+    guard !spans.isEmpty else { return }
 
-    for annotation in annotations {
-      modelContext.delete(annotation)
-      let cueID = annotation.cueID
-      annotationsByCue[cueID]?.removeAll { $0.id == annotation.id }
-      if annotationsByCue[cueID]?.isEmpty == true {
-        annotationsByCue.removeValue(forKey: cueID)
+    for span in spans {
+      modelContext.delete(span)
+      let cueID = span.cueID
+      spansByCue[cueID]?.removeAll { $0.id == span.id }
+      if spansByCue[cueID]?.isEmpty == true {
+        spansByCue.removeValue(forKey: cueID)
       }
     }
+
+    if let group = groupsByID[groupID] {
+      modelContext.delete(group)
+      groupsByID.removeValue(forKey: groupID)
+    }
+
     version += 1
   }
 
   /// Refresh the cache from ModelContext
   func refreshCache() {
-    let descriptor = FetchDescriptor<TextAnnotation>()
-    let annotations = (try? modelContext.fetch(descriptor)) ?? []
+    let groupDescriptor = FetchDescriptor<TextAnnotationGroup>()
+    let spanDescriptor = FetchDescriptor<TextAnnotationSpan>()
+    let groups = (try? modelContext.fetch(groupDescriptor)) ?? []
+    let spans = (try? modelContext.fetch(spanDescriptor)) ?? []
 
-    annotationsByCue = Dictionary(grouping: annotations, by: \.cueID)
+    groupsByID = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0) })
+    spansByCue = Dictionary(grouping: spans, by: \.cueID)
     version += 1
   }
 
   // MARK: - Private
 
-  private func findAnnotation(by id: UUID) -> TextAnnotation? {
-    for annotations in annotationsByCue.values {
-      if let annotation = annotations.first(where: { $0.id == id }) {
-        return annotation
+  private func findSpan(by id: UUID) -> TextAnnotationSpan? {
+    for spans in spansByCue.values {
+      if let span = spans.first(where: { $0.id == id }) {
+        return span
       }
     }
     return nil
   }
 
-  private func findAnnotations(groupID: UUID) -> [TextAnnotation] {
-    annotationsByCue.values
+  private func findSpans(groupID: UUID) -> [TextAnnotationSpan] {
+    spansByCue.values
       .flatMap { $0 }
       .filter { $0.groupID == groupID }
+  }
+
+  private func displayData(from span: TextAnnotationSpan) -> AnnotationRenderData? {
+    guard let group = groupsByID[span.groupID] else { return nil }
+    let style = styleService.style(id: group.stylePresetID) ?? styleService.defaultStyle()
+
+    return AnnotationRenderData(
+      id: span.id,
+      groupID: span.groupID,
+      stylePresetID: style.id,
+      styleName: style.name,
+      styleKind: style.kind,
+      underlineColorHex: style.underlineColorHex,
+      backgroundColorHex: style.backgroundColorHex,
+      range: span.range,
+      selectedText: group.selectedTextSnapshot,
+      comment: group.comment
+    )
   }
 }

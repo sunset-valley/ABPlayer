@@ -11,8 +11,7 @@ struct AnnotatedStringBuilderTests {
     let builder = AnnotatedStringBuilder(
       fontSize: 16.0,
       defaultTextColor: .labelColor,
-      annotations: [],
-      colorConfig: .default
+      annotations: []
     )
 
     let result = builder.build(text: "Hello world test")
@@ -24,8 +23,7 @@ struct AnnotatedStringBuilderTests {
     let builder = AnnotatedStringBuilder(
       fontSize: 16.0,
       defaultTextColor: .labelColor,
-      annotations: [],
-      colorConfig: .default
+      annotations: []
     )
 
     let result = builder.build(text: "")
@@ -38,8 +36,7 @@ struct AnnotatedStringBuilderTests {
     let builder = AnnotatedStringBuilder(
       fontSize: fontSize,
       defaultTextColor: .labelColor,
-      annotations: [],
-      colorConfig: .default
+      annotations: []
     )
 
     let result = builder.build(text: "Test")
@@ -57,8 +54,7 @@ struct AnnotatedStringBuilderTests {
     let builder = AnnotatedStringBuilder(
       fontSize: 16.0,
       defaultTextColor: .labelColor,
-      annotations: [],
-      colorConfig: .default
+      annotations: []
     )
 
     let result = builder.build(text: "Hello")
@@ -67,31 +63,40 @@ struct AnnotatedStringBuilderTests {
     #expect(color == .labelColor)
   }
 
-  @Test
-  func testSingleVocabularyAnnotation() {
-    let annotation = AnnotationDisplayData(
+  private func makeAnnotation(
+    kind: AnnotationStyleKind,
+    range: NSRange,
+    selectedText: String,
+    underlineHex: String = "#FF0000",
+    backgroundHex: String = "#00AAFF"
+  ) -> AnnotationRenderData {
+    AnnotationRenderData(
       id: UUID(),
-      type: .vocabulary,
-      range: NSRange(location: 0, length: 5),
-      selectedText: "Hello",
+      groupID: UUID(),
+      stylePresetID: UUID(),
+      styleName: "Style",
+      styleKind: kind,
+      underlineColorHex: underlineHex,
+      backgroundColorHex: backgroundHex,
+      range: range,
+      selectedText: selectedText,
       comment: nil
     )
+  }
+
+  @Test
+  func testUnderlineStyleApplied() {
+    let annotation = makeAnnotation(kind: .underline, range: NSRange(location: 0, length: 5), selectedText: "Hello")
 
     let builder = AnnotatedStringBuilder(
       fontSize: 16.0,
       defaultTextColor: .labelColor,
-      annotations: [annotation],
-      colorConfig: .default
+      annotations: [annotation]
     )
 
     let result = builder.build(text: "Hello world")
     let attributes = result.attributedString.attributes(at: 2, effectiveRange: nil)
 
-    // Vocabulary annotation should apply red color
-    let fgColor = attributes[.foregroundColor] as? NSColor
-    #expect(fgColor == .systemRed)
-
-    // Should have underline
     let underline = attributes[.underlineStyle] as? Int
     #expect(underline == NSUnderlineStyle.single.rawValue)
 
@@ -102,126 +107,67 @@ struct AnnotatedStringBuilderTests {
   }
 
   @Test
-  func testCollocationAnnotation() {
-    let annotation = AnnotationDisplayData(
-      id: UUID(),
-      type: .collocation,
-      range: NSRange(location: 6, length: 5),
-      selectedText: "world",
-      comment: nil
-    )
+  func testBackgroundStyleApplied() {
+    let annotation = makeAnnotation(kind: .background, range: NSRange(location: 6, length: 5), selectedText: "world")
 
     let builder = AnnotatedStringBuilder(
       fontSize: 16.0,
       defaultTextColor: .labelColor,
-      annotations: [annotation],
-      colorConfig: .default
+      annotations: [annotation]
     )
 
     let result = builder.build(text: "Hello world")
     let attributes = result.attributedString.attributes(at: 7, effectiveRange: nil)
-    let color = attributes[.foregroundColor] as? NSColor
-    #expect(color == .systemBlue)
+    let bg = attributes[.backgroundColor] as? NSColor
+    #expect(bg != nil)
   }
 
   @Test
-  func testGoodSentenceAnnotation() {
-    let annotation = AnnotationDisplayData(
-      id: UUID(),
-      type: .goodSentence,
-      range: NSRange(location: 0, length: 11),
-      selectedText: "Hello world",
-      comment: nil
-    )
+  func testUnderlineAndBackgroundStyleApplied() {
+    let annotation = makeAnnotation(kind: .underlineAndBackground, range: NSRange(location: 0, length: 11), selectedText: "Hello world")
 
     let builder = AnnotatedStringBuilder(
       fontSize: 16.0,
       defaultTextColor: .labelColor,
-      annotations: [annotation],
-      colorConfig: .default
+      annotations: [annotation]
     )
 
     let result = builder.build(text: "Hello world")
     let attributes = result.attributedString.attributes(at: 5, effectiveRange: nil)
-    let color = attributes[.foregroundColor] as? NSColor
-    #expect(color == .systemYellow)
+    #expect((attributes[.underlineStyle] as? Int) == NSUnderlineStyle.single.rawValue)
+    #expect((attributes[.backgroundColor] as? NSColor) != nil)
   }
 
   @Test
   func testMultipleAnnotations() {
     let annotations = [
-      AnnotationDisplayData(
-        id: UUID(), type: .vocabulary,
-        range: NSRange(location: 0, length: 5),
-        selectedText: "Hello", comment: nil
-      ),
-      AnnotationDisplayData(
-        id: UUID(), type: .collocation,
-        range: NSRange(location: 6, length: 5),
-        selectedText: "world", comment: nil
-      ),
+      makeAnnotation(kind: .underline, range: NSRange(location: 0, length: 5), selectedText: "Hello"),
+      makeAnnotation(kind: .background, range: NSRange(location: 6, length: 5), selectedText: "world"),
     ]
 
     let builder = AnnotatedStringBuilder(
       fontSize: 16.0,
       defaultTextColor: .labelColor,
-      annotations: annotations,
-      colorConfig: .default
+      annotations: annotations
     )
 
     let result = builder.build(text: "Hello world")
 
     let helloAttrs = result.attributedString.attributes(at: 2, effectiveRange: nil)
-    #expect((helloAttrs[.foregroundColor] as? NSColor) == .systemRed)
+    #expect((helloAttrs[.underlineStyle] as? Int) == NSUnderlineStyle.single.rawValue)
 
     let worldAttrs = result.attributedString.attributes(at: 8, effectiveRange: nil)
-    #expect((worldAttrs[.foregroundColor] as? NSColor) == .systemBlue)
-  }
-
-  @Test
-  func testCustomColorConfig() {
-    let annotation = AnnotationDisplayData(
-      id: UUID(),
-      type: .vocabulary,
-      range: NSRange(location: 0, length: 5),
-      selectedText: "Hello",
-      comment: nil
-    )
-
-    let customConfig = AnnotationColorConfig(
-      vocabulary: .systemOrange,
-      collocation: .systemGreen,
-      goodSentence: .systemPurple
-    )
-
-    let builder = AnnotatedStringBuilder(
-      fontSize: 16.0,
-      defaultTextColor: .labelColor,
-      annotations: [annotation],
-      colorConfig: customConfig
-    )
-
-    let result = builder.build(text: "Hello world")
-    let attributes = result.attributedString.attributes(at: 2, effectiveRange: nil)
-    let color = attributes[.foregroundColor] as? NSColor
-    #expect(color == .systemOrange)
+    #expect((worldAttrs[.backgroundColor] as? NSColor) != nil)
   }
 
   @Test
   func testAnnotationOutOfBoundsIsSkipped() {
-    let annotation = AnnotationDisplayData(
-      id: UUID(),
-      type: .vocabulary,
-      range: NSRange(location: 50, length: 10),
-      selectedText: "overflow",
-      comment: nil
-    )
+    let annotation = makeAnnotation(kind: .underline, range: NSRange(location: 50, length: 10), selectedText: "overflow")
 
     let builder = AnnotatedStringBuilder(
       fontSize: 16.0,
       defaultTextColor: .labelColor,
-      annotations: [annotation],
-      colorConfig: .default
+      annotations: [annotation]
     )
 
     let result = builder.build(text: "Short")

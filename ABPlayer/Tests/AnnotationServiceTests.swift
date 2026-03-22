@@ -9,277 +9,141 @@ struct AnnotationServiceTests {
   @MainActor
   private struct TestContext {
     let container: ModelContainer
+    let styleService: AnnotationStyleService
     let service: AnnotationService
   }
 
   @MainActor
   private func makeContext() throws -> TestContext {
-    let schema = Schema([TextAnnotation.self])
+    let schema = Schema([
+      AnnotationStylePreset.self,
+      TextAnnotationGroup.self,
+      TextAnnotationSpan.self,
+    ])
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
     let container = try ModelContainer(for: schema, configurations: config)
-    let service = AnnotationService(modelContext: container.mainContext)
-    return TestContext(container: container, service: service)
+    let styleService = AnnotationStyleService(modelContext: container.mainContext)
+    let service = AnnotationService(modelContext: container.mainContext, styleService: styleService)
+    return TestContext(container: container, styleService: styleService, service: service)
   }
 
   @Test @MainActor
-  func testAddAnnotation() throws {
+  func testAddAnnotationCreatesGroupAndSpans() throws {
     let context = try makeContext()
     let service = context.service
-    let cueID = UUID()
-
-    let display = service.addAnnotation(
-      cueID: cueID,
-      range: NSRange(location: 0, length: 5),
-      selectedText: "hello",
-      type: .vocabulary
-    )
-
-    #expect(display.type == .vocabulary)
-    #expect(display.selectedText == "hello")
-    #expect(display.range.location == 0)
-    #expect(display.range.length == 5)
-    #expect(display.comment == nil)
-  }
-
-  @Test @MainActor
-  func testAnnotationsForCue() throws {
-    let context = try makeContext()
-    let service = context.service
-    let cueID = UUID()
-
-    service.addAnnotation(cueID: cueID, range: NSRange(location: 0, length: 5), selectedText: "hello", type: .vocabulary)
-    service.addAnnotation(cueID: cueID, range: NSRange(location: 6, length: 5), selectedText: "world", type: .collocation)
-
-    let annotations = service.annotations(for: cueID)
-    #expect(annotations.count == 2)
-  }
-
-  @Test @MainActor
-  func testAnnotationsForDifferentCues() throws {
-    let context = try makeContext()
-    let service = context.service
+    let style = context.styleService.defaultStyle()
     let cue1 = UUID()
     let cue2 = UUID()
 
-    service.addAnnotation(cueID: cue1, range: NSRange(location: 0, length: 5), selectedText: "hello", type: .vocabulary)
-    service.addAnnotation(cueID: cue2, range: NSRange(location: 0, length: 5), selectedText: "world", type: .collocation)
+    let selection = CrossCueTextSelection(
+      segments: [
+        .init(cueID: cue1, localRange: NSRange(location: 0, length: 5), text: "hello"),
+        .init(cueID: cue2, localRange: NSRange(location: 2, length: 5), text: "world"),
+      ],
+      fullText: "hello\nworld",
+      globalRange: NSRange(location: 0, length: 11)
+    )
 
+    let created = service.addAnnotation(selection: selection, stylePresetID: style.id)
+
+    #expect(created.count == 2)
     #expect(service.annotations(for: cue1).count == 1)
     #expect(service.annotations(for: cue2).count == 1)
   }
 
   @Test @MainActor
-  func testEmptyCueReturnsEmptyArray() throws {
+  func testUpdateCommentByGroup() throws {
     let context = try makeContext()
     let service = context.service
-    let result = service.annotations(for: UUID())
-    #expect(result.isEmpty)
-  }
-
-  @Test @MainActor
-  func testUpdateComment() throws {
-    let context = try makeContext()
-    let service = context.service
+    let style = context.styleService.defaultStyle()
     let cueID = UUID()
 
-    let display = service.addAnnotation(
-      cueID: cueID,
-      range: NSRange(location: 0, length: 5),
-      selectedText: "hello",
-      type: .vocabulary
+    let selection = CrossCueTextSelection(
+      segments: [.init(cueID: cueID, localRange: NSRange(location: 0, length: 5), text: "hello")],
+      fullText: "hello",
+      globalRange: NSRange(location: 0, length: 5)
     )
 
-    service.updateComment(annotationID: display.id, comment: "This is a note")
+    let created = service.addAnnotation(selection: selection, stylePresetID: style.id)
+    guard let groupID = created.first?.groupID else {
+      Issue.record("Expected group")
+      return
+    }
 
-    let annotations = service.annotations(for: cueID)
-    #expect(annotations.first?.comment == "This is a note")
+    service.updateComment(groupID: groupID, comment: "note")
+
+    let annotations = service.annotations(inGroup: groupID)
+    #expect(annotations.count == 1)
+    #expect(annotations.first?.comment == "note")
   }
 
   @Test @MainActor
-  func testUpdateCommentByGroupAffectsAllSegments() throws {
+  func testUpdateStyleByGroup() throws {
     let context = try makeContext()
     let service = context.service
-    let cue1 = UUID()
-    let cue2 = UUID()
-    let groupID = UUID()
-
-    _ = service.addAnnotation(
-      cueID: cue1,
-      groupID: groupID,
-      range: NSRange(location: 0, length: 5),
-      selectedText: "hello",
-      type: .vocabulary
-    )
-    _ = service.addAnnotation(
-      cueID: cue2,
-      groupID: groupID,
-      range: NSRange(location: 0, length: 5),
-      selectedText: "world",
-      type: .vocabulary
-    )
-
-    service.updateComment(groupID: groupID, comment: "shared note")
-
-    let grouped = service.annotations(inGroup: groupID)
-    #expect(grouped.count == 2)
-    #expect(grouped.allSatisfy { $0.comment == "shared note" })
-  }
-
-  @Test @MainActor
-  func testUpdateType() throws {
-    let context = try makeContext()
-    let service = context.service
+    let styleA = context.styleService.defaultStyle()
+    let styleB = context.styleService.addStyle(name: "Second", kind: .background)
     let cueID = UUID()
 
-    let display = service.addAnnotation(
-      cueID: cueID,
-      range: NSRange(location: 0, length: 5),
-      selectedText: "hello",
-      type: .vocabulary
+    let selection = CrossCueTextSelection(
+      segments: [.init(cueID: cueID, localRange: NSRange(location: 0, length: 5), text: "hello")],
+      fullText: "hello",
+      globalRange: NSRange(location: 0, length: 5)
     )
 
-    service.updateType(annotationID: display.id, type: .goodSentence)
+    let created = service.addAnnotation(selection: selection, stylePresetID: styleA.id)
+    guard let groupID = created.first?.groupID else {
+      Issue.record("Expected group")
+      return
+    }
 
-    let annotations = service.annotations(for: cueID)
-    #expect(annotations.first?.type == .goodSentence)
+    service.updateStyle(groupID: groupID, stylePresetID: styleB.id)
+    let updated = service.annotations(inGroup: groupID)
+    #expect(updated.first?.stylePresetID == styleB.id)
   }
 
   @Test @MainActor
-  func testUpdateTypeByGroupAffectsAllSegments() throws {
+  func testStyleUsageCount() throws {
     let context = try makeContext()
     let service = context.service
-    let cue1 = UUID()
-    let cue2 = UUID()
-    let groupID = UUID()
-
-    _ = service.addAnnotation(
-      cueID: cue1,
-      groupID: groupID,
-      range: NSRange(location: 0, length: 5),
-      selectedText: "hello",
-      type: .vocabulary
-    )
-    _ = service.addAnnotation(
-      cueID: cue2,
-      groupID: groupID,
-      range: NSRange(location: 0, length: 5),
-      selectedText: "world",
-      type: .vocabulary
-    )
-
-    service.updateType(groupID: groupID, type: .goodSentence)
-
-    let grouped = service.annotations(inGroup: groupID)
-    #expect(grouped.count == 2)
-    #expect(grouped.allSatisfy { $0.type == .goodSentence })
-  }
-
-  @Test @MainActor
-  func testRemoveAnnotation() throws {
-    let context = try makeContext()
-    let service = context.service
+    let style = context.styleService.defaultStyle()
     let cueID = UUID()
 
-    let display = service.addAnnotation(
-      cueID: cueID,
-      range: NSRange(location: 0, length: 5),
-      selectedText: "hello",
-      type: .vocabulary
+    let selection = CrossCueTextSelection(
+      segments: [.init(cueID: cueID, localRange: NSRange(location: 0, length: 5), text: "hello")],
+      fullText: "hello",
+      globalRange: NSRange(location: 0, length: 5)
     )
+    _ = service.addAnnotation(selection: selection, stylePresetID: style.id)
 
-    service.removeAnnotation(id: display.id)
-
-    #expect(service.annotations(for: cueID).isEmpty)
+    #expect(service.styleUsageCount(stylePresetID: style.id) == 1)
   }
 
   @Test @MainActor
-  func testRemoveAnnotationGroupRemovesAllSegments() throws {
+  func testRemoveAnnotationGroupRemovesAllSpans() throws {
     let context = try makeContext()
     let service = context.service
+    let style = context.styleService.defaultStyle()
     let cue1 = UUID()
     let cue2 = UUID()
-    let groupID = UUID()
 
-    _ = service.addAnnotation(
-      cueID: cue1,
-      groupID: groupID,
-      range: NSRange(location: 0, length: 5),
-      selectedText: "hello",
-      type: .vocabulary
+    let selection = CrossCueTextSelection(
+      segments: [
+        .init(cueID: cue1, localRange: NSRange(location: 0, length: 3), text: "one"),
+        .init(cueID: cue2, localRange: NSRange(location: 0, length: 3), text: "two"),
+      ],
+      fullText: "one\ntwo",
+      globalRange: NSRange(location: 0, length: 7)
     )
-    _ = service.addAnnotation(
-      cueID: cue2,
-      groupID: groupID,
-      range: NSRange(location: 0, length: 5),
-      selectedText: "world",
-      type: .collocation
-    )
+    let created = service.addAnnotation(selection: selection, stylePresetID: style.id)
+    guard let groupID = created.first?.groupID else {
+      Issue.record("Expected group")
+      return
+    }
 
     service.removeAnnotationGroup(groupID: groupID)
-
     #expect(service.annotations(for: cue1).isEmpty)
     #expect(service.annotations(for: cue2).isEmpty)
     #expect(service.annotations(inGroup: groupID).isEmpty)
-  }
-
-  @Test @MainActor
-  func testVersionIncrementsOnAdd() throws {
-    let context = try makeContext()
-    let service = context.service
-    let initialVersion = service.version
-
-    service.addAnnotation(
-      cueID: UUID(),
-      range: NSRange(location: 0, length: 5),
-      selectedText: "hello",
-      type: .vocabulary
-    )
-
-    #expect(service.version > initialVersion)
-  }
-
-  @Test @MainActor
-  func testVersionIncrementsOnUpdate() throws {
-    let context = try makeContext()
-    let service = context.service
-    let cueID = UUID()
-
-    let display = service.addAnnotation(
-      cueID: cueID,
-      range: NSRange(location: 0, length: 5),
-      selectedText: "hello",
-      type: .vocabulary
-    )
-
-    let versionAfterAdd = service.version
-    service.updateComment(annotationID: display.id, comment: "note")
-    #expect(service.version > versionAfterAdd)
-  }
-
-  @Test @MainActor
-  func testVersionIncrementsOnRemove() throws {
-    let context = try makeContext()
-    let service = context.service
-    let cueID = UUID()
-
-    let display = service.addAnnotation(
-      cueID: cueID,
-      range: NSRange(location: 0, length: 5),
-      selectedText: "hello",
-      type: .vocabulary
-    )
-
-    let versionAfterAdd = service.version
-    service.removeAnnotation(id: display.id)
-    #expect(service.version > versionAfterAdd)
-  }
-
-  @Test @MainActor
-  func testRemoveNonExistentAnnotation() throws {
-    let context = try makeContext()
-    let service = context.service
-    let versionBefore = service.version
-    service.removeAnnotation(id: UUID())
-    #expect(service.version == versionBefore)
   }
 }

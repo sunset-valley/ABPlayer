@@ -27,8 +27,7 @@ struct UnifiedStringBuilder {
   let cues: [SubtitleCue]
   let fontSize: Double
   let activeCueID: UUID?
-  let annotationsProvider: (UUID) -> [AnnotationDisplayData]
-  let colorConfig: AnnotationColorConfig
+  let annotationsProvider: (UUID) -> [AnnotationRenderData]
 
   // MARK: - Result
 
@@ -133,15 +132,8 @@ struct UnifiedStringBuilder {
       let r = annotation.range
       guard r.location >= 0, r.location + r.length <= textLen else { continue }
 
-      let color = colorConfig.color(for: annotation.type)
-      textStr.addAttribute(
-        .backgroundColor, value: color.withAlphaComponent(0.15), range: r)
-      textStr.addAttribute(
-        .underlineStyle, value: NSUnderlineStyle.single.rawValue, range: r)
-      textStr.addAttribute(
-        .underlineColor, value: color.withAlphaComponent(0.6), range: r)
-      textStr.addAttribute(
-        .foregroundColor, value: color, range: r)
+      let style = AnnotationStyleResolver.resolve(annotation)
+      AnnotationAttributeApplicator.apply(style: style, to: textStr, range: r)
     }
 
     // MARK: Append to result

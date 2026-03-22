@@ -86,6 +86,7 @@ struct ABPlayerApp: App {
   private let librarySettings = LibrarySettings()
   private let playerSettings = PlayerSettings()
   private let proxySettings = ProxySettings()
+  private let annotationStyleService: AnnotationStyleService
   private let annotationService: AnnotationService
   private let subtitleLoader = SubtitleLoader()
 
@@ -116,7 +117,9 @@ struct ABPlayerApp: App {
         SubtitleFile.self,
         Transcription.self,
         Vocabulary.self,
-        TextAnnotation.self,
+        AnnotationStylePreset.self,
+        TextAnnotationGroup.self,
+        TextAnnotationSpan.self,
       ])
 
       guard let appSupportDir = FileManager.default.urls(
@@ -142,7 +145,11 @@ struct ABPlayerApp: App {
       modelContainer.mainContext.autosaveEnabled = true
 
       sessionTracker = SessionTracker(modelContainer: modelContainer)
-      annotationService = AnnotationService(modelContext: modelContainer.mainContext)
+      annotationStyleService = AnnotationStyleService(modelContext: modelContainer.mainContext)
+      annotationService = AnnotationService(
+        modelContext: modelContainer.mainContext,
+        styleService: annotationStyleService
+      )
 
       queueManager = TranscriptionQueueManager(
         transcriptionManager: transcriptionManager,
@@ -246,7 +253,7 @@ struct ABPlayerApp: App {
   }
 
   private static func shouldResetPersistentStoreForCurrentVersion() -> Bool {
-    let targetVersion = "0.2.17"
+    let targetVersion = "0.2.19"
     let currentVersion =
       (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
         ?? "0.0.0"
@@ -269,6 +276,7 @@ struct ABPlayerApp: App {
         .environment(playerSettings)
         .environment(proxySettings)
         .environment(queueManager)
+        .environment(annotationStyleService)
         .environment(annotationService)
         .environment(subtitleLoader)
     }
@@ -305,6 +313,7 @@ struct ABPlayerApp: App {
           .environment(librarySettings)
           .environment(playerSettings)
           .environment(proxySettings)
+          .environment(annotationStyleService)
           .environment(transcriptionManager)
           .environment(updater)
       }
