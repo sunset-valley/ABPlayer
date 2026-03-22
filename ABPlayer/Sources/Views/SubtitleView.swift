@@ -102,7 +102,7 @@ struct SubtitleView: View {
 
               popoverContent(output: output)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(minWidth: 200, maxWidth: 280, alignment: .leading)
+                .frame(minWidth: 320, maxWidth: 420, alignment: .leading)
                 .background {
                   GeometryReader { proxy in
                     Color.clear
@@ -316,8 +316,8 @@ struct SubtitleView: View {
   ) {
     let margin: CGFloat = 10
     let gap: CGFloat = 12
-    let maxUsableWidth = max(220, min(360, containerSize.width - margin * 2))
-    let width = min(max(popoverContentSize.width, 220), maxUsableWidth)
+    let maxUsableWidth = max(260, min(440, containerSize.width - margin * 2))
+    let width = min(max(popoverContentSize.width, 320), maxUsableWidth)
     let height = max(popoverContentSize.height, 180)
 
     let preferredX = anchor.x - width / 2

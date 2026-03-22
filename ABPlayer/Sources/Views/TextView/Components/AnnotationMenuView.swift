@@ -25,7 +25,7 @@ struct AnnotationMenuView: View {
       }
     }
     .padding(12)
-    .frame(minWidth: 280, maxWidth: 340, alignment: .leading)
+    .frame(minWidth: 320, maxWidth: 420, alignment: .leading)
   }
 
   // MARK: - Menus
@@ -52,17 +52,7 @@ struct AnnotationMenuView: View {
     includeExistingActions: Bool
   ) -> some View {
     VStack(alignment: .leading, spacing: 12) {
-      actionSection
-
-      if includeExistingActions, let annotation = existingAnnotation {
-        menuButton(
-          annotation.comment != nil ? "Edit Comment" : "Add Comment",
-          systemImage: "text.bubble"
-        ) {
-          onEditComment()
-        }
-        .accessibilityIdentifier("annotation-edit-comment")
-      }
+      actionSection(includeExistingActions: includeExistingActions, annotation: existingAnnotation)
 
       VStack(alignment: .leading, spacing: 8) {
         HStack {
@@ -76,30 +66,45 @@ struct AnnotationMenuView: View {
           selectedStyleID: selectedStyleID
         )
       }
-
-      if includeExistingActions {
-        menuButton("Remove Annotation", systemImage: "trash", role: .destructive) {
-          onDelete()
-          onDismiss()
-        }
-        .accessibilityIdentifier("annotation-remove")
-      }
     }
   }
 
-  private var actionSection: some View {
-    HStack(spacing: 4) {
-      menuButton("Copy", systemImage: "doc.on.doc") {
-        onCopy()
-        onDismiss()
-      }
-      .accessibilityIdentifier("menu-copy")
+  private func actionSection(
+    includeExistingActions: Bool,
+    annotation: AnnotationRenderData?
+  ) -> some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: 8) {
+        actionPill("Copy", systemImage: "doc.on.doc") {
+          onCopy()
+          onDismiss()
+        }
+        .accessibilityIdentifier("menu-copy")
 
-      menuButton("Look Up", systemImage: "book") {
-        onLookup()
+        actionPill("Look Up", systemImage: "book") {
+          onLookup()
+        }
+        .accessibilityIdentifier("menu-lookup")
+
+        if includeExistingActions, let annotation {
+          actionPill(
+            annotation.comment != nil ? "Edit Comment" : "Add Comment",
+            systemImage: "text.bubble"
+          ) {
+            onEditComment()
+          }
+          .accessibilityIdentifier("annotation-edit-comment")
+
+          actionPill("Remove Annotation", systemImage: "trash", role: .destructive) {
+            onDelete()
+            onDismiss()
+          }
+          .accessibilityIdentifier("annotation-remove")
+        }
       }
-      .accessibilityIdentifier("menu-lookup")
+      .padding(.vertical, 1)
     }
+    .scrollIndicators(.hidden)
   }
 
   // MARK: - Style selection
@@ -231,7 +236,7 @@ struct AnnotationMenuView: View {
       .foregroundStyle(.secondary)
   }
 
-  private func menuButton(
+  private func actionPill(
     _ title: String,
     systemImage: String,
     role: ButtonRole? = nil,
@@ -239,11 +244,22 @@ struct AnnotationMenuView: View {
   ) -> some View {
     Button(role: role, action: action) {
       Label(title, systemImage: systemImage)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .font(.caption)
+        .fontWeight(.semibold)
+        .lineLimit(1)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .foregroundStyle(role == .destructive ? Color.red : Color.primary)
+        .background(
+          Capsule(style: .continuous)
+            .fill(
+              role == .destructive
+                ? Color.red.opacity(0.13)
+                : Color(nsColor: .controlBackgroundColor).opacity(0.82)
+            )
+        )
     }
     .buttonStyle(.plain)
-    .padding(.horizontal, 8)
-    .padding(.vertical, 5)
-    .contentShape(Rectangle())
+    .contentShape(Capsule(style: .continuous))
   }
 }
