@@ -116,6 +116,13 @@ struct ABPlayerApp: App {
     let isUITesting =
       Self.hasLaunchArgument("--ui-testing")
         || Self.hasLaunchEnvironment("ABP_UI_TESTING")
+    let isSubtitleEditUITesting =
+      Self.hasLaunchArgument("--ui-testing-subtitle-edit")
+        || Self.hasLaunchEnvironment("ABP_UI_TESTING_SUBTITLE_EDIT")
+
+    if isSubtitleEditUITesting {
+      _ = KeyboardInputSourceManager.selectEnglishInputSource()
+    }
 
     URLSessionProxyInjector.install(settings: proxySettings)
 

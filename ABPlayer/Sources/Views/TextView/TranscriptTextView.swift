@@ -52,7 +52,14 @@ struct TranscriptTextView: NSViewRepresentable {
     scrollView.drawsBackground = false
     scrollView.setAccessibilityIdentifier("subtitle-transcript-scroll-view")
 
-    let textView = TranscriptNSTextView()
+    let layoutManager = TranscriptLayoutManager()
+    let textContainer = NSTextContainer()
+    layoutManager.addTextContainer(textContainer)
+
+    let textStorage = NSTextStorage()
+    textStorage.addLayoutManager(layoutManager)
+
+    let textView = TranscriptNSTextView(frame: .zero, textContainer: textContainer)
     textView.isEditable = false
     textView.isSelectable = false      // We manage selection manually
     textView.backgroundColor = .clear
@@ -104,6 +111,9 @@ struct TranscriptTextView: NSViewRepresentable {
     coordinator.fontSize = fontSize
     coordinator.activeCueID = activeCueID
     coordinator.isUserScrolling = isUserScrolling
+    if !isUserScrolling {
+      coordinator.didNotifyUserScroll = false
+    }
     coordinator.textSelection = textSelection
     coordinator.annotationVersion = annotationVersion
     coordinator.annotationsProvider = annotationsProvider
@@ -188,6 +198,7 @@ struct TranscriptTextView: NSViewRepresentable {
 
     // Scroll deduplication
     var lastScrolledCueID: UUID?
+    var didNotifyUserScroll = false
 
     // MARK: Init
 
@@ -647,6 +658,8 @@ struct TranscriptTextView: NSViewRepresentable {
     // MARK: - Scroll notification
 
     @objc func handleLiveScroll(_ notification: Notification) {
+      guard !didNotifyUserScroll else { return }
+      didNotifyUserScroll = true
       onUserScrolled()
     }
   }
@@ -654,10 +667,128 @@ struct TranscriptTextView: NSViewRepresentable {
 
 // MARK: - TranscriptNSTextView
 
+final class TranscriptLayoutManager: NSLayoutManager {
+  private func underlineOffset(forGlyphRange glyphRange: NSRange, in textStorage: NSTextStorage) -> CGFloat {
+    guard glyphRange.length > 0 else { return 0 }
+
+    let charRange = characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+    guard charRange.length > 0 else { return 0 }
+
+    let end = charRange.location + charRange.length
+    var index = charRange.location
+
+    while index < end {
+      var effectiveRange = NSRange(location: 0, length: 0)
+      let value = textStorage.attribute(
+        AnnotationAttributeApplicator.underlineDrawYOffsetAttribute,
+        at: index,
+        effectiveRange: &effectiveRange
+      ) as? NSNumber
+
+      if let value {
+        let offset = CGFloat(truncating: value)
+        if offset != 0 {
+          return offset
+        }
+      }
+
+      let next = effectiveRange.location + effectiveRange.length
+      index = next > index ? next : index + 1
+    }
+
+    return 0
+  }
+
+  private func underlineColor(forGlyphRange glyphRange: NSRange, in textStorage: NSTextStorage) -> NSColor {
+    guard glyphRange.length > 0 else { return .systemRed }
+
+    let charRange = characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+    guard charRange.length > 0 else { return .systemRed }
+
+    let end = charRange.location + charRange.length
+    var index = charRange.location
+
+    while index < end {
+      var effectiveRange = NSRange(location: 0, length: 0)
+      let value = textStorage.attribute(
+        .underlineColor,
+        at: index,
+        effectiveRange: &effectiveRange
+      ) as? NSColor
+
+      if let value {
+        return value
+      }
+
+      let next = effectiveRange.location + effectiveRange.length
+      index = next > index ? next : index + 1
+    }
+
+    return .systemRed
+  }
+
+  override func drawUnderline(
+    forGlyphRange glyphRange: NSRange,
+    underlineType underlineVal: NSUnderlineStyle,
+    baselineOffset: CGFloat,
+    lineFragmentRect lineRect: NSRect,
+    lineFragmentGlyphRange lineGlyphRange: NSRange,
+    containerOrigin: NSPoint
+  ) {
+    let extraOffset: CGFloat
+    if let textStorage {
+      extraOffset = underlineOffset(forGlyphRange: glyphRange, in: textStorage)
+    } else {
+      extraOffset = 0
+    }
+
+    guard extraOffset != 0,
+      let cgContext = NSGraphicsContext.current?.cgContext,
+      let textStorage,
+      let textContainer = textContainers.first
+    else {
+      super.drawUnderline(
+        forGlyphRange: glyphRange,
+        underlineType: underlineVal,
+        baselineOffset: baselineOffset,
+        lineFragmentRect: lineRect,
+        lineFragmentGlyphRange: lineGlyphRange,
+        containerOrigin: containerOrigin
+      )
+      return
+    }
+
+    let underlineColor = underlineColor(forGlyphRange: glyphRange, in: textStorage)
+    let glyphRect = boundingRect(forGlyphRange: glyphRange, in: textContainer)
+    let startX = glyphRect.minX + containerOrigin.x
+    let endX = glyphRect.maxX + containerOrigin.x
+    let y = lineRect.maxY + containerOrigin.y + extraOffset
+
+    guard endX > startX else { return }
+
+    cgContext.saveGState()
+    cgContext.setStrokeColor(underlineColor.cgColor)
+    cgContext.setLineWidth(1.5)
+    cgContext.setLineCap(.round)
+    cgContext.move(to: CGPoint(x: startX, y: y))
+    cgContext.addLine(to: CGPoint(x: endX, y: y))
+    cgContext.strokePath()
+    cgContext.restoreGState()
+  }
+}
+
 final class TranscriptNSTextView: NSTextView {
+
+  private enum CursorKind {
+    case arrow
+    case iBeam
+  }
 
   weak var coordinator: TranscriptTextView.Coordinator?
   private var trackingArea: NSTrackingArea?
+  private var currentCursorKind: CursorKind?
+  private var pendingSelectionRange: NSRange?
+  private var isSelectionApplyScheduled = false
 
   // MARK: - Tracking area
 
@@ -684,22 +815,36 @@ final class TranscriptNSTextView: NSTextView {
   }
 
   override func mouseExited(with event: NSEvent) {
-    NSCursor.arrow.set()
+    setCursor(.arrow)
   }
 
   private func updateCursor(for point: NSPoint) {
     let charIndex = characterIndex(at: point)
     let strLen = textStorage?.length ?? 0
     guard charIndex >= 0, charIndex < strLen, let coordinator else {
-      NSCursor.arrow.set()
+      setCursor(.arrow)
       return
     }
     // Show arrow over timestamp prefix, IBeam over cue text
-    let isInPrefix = coordinator.layouts.contains {
-      charIndex >= $0.prefixRange.location
-        && charIndex < $0.prefixRange.location + $0.prefixRange.length
+    let isInPrefix: Bool
+    if let layout = coordinator.cueLayout(at: charIndex) {
+      isInPrefix = charIndex >= layout.prefixRange.location
+        && charIndex < layout.prefixRange.location + layout.prefixRange.length
+    } else {
+      isInPrefix = false
     }
-    (isInPrefix ? NSCursor.arrow : NSCursor.iBeam).set()
+    setCursor(isInPrefix ? .arrow : .iBeam)
+  }
+
+  private func setCursor(_ kind: CursorKind) {
+    guard currentCursorKind != kind else { return }
+    currentCursorKind = kind
+    switch kind {
+    case .arrow:
+      NSCursor.arrow.set()
+    case .iBeam:
+      NSCursor.iBeam.set()
+    }
   }
 
   // MARK: - Mouse handling
@@ -731,6 +876,8 @@ final class TranscriptNSTextView: NSTextView {
     coordinator.dragAnchorIndex = charIndex
     coordinator.isDragging = true
     coordinator.activeSelectionRange = nil
+    pendingSelectionRange = nil
+    isSelectionApplyScheduled = false
   }
 
   override func mouseDragged(with event: NSEvent) {
@@ -750,13 +897,18 @@ final class TranscriptNSTextView: NSTextView {
     guard end > start else { return }
 
     let range = NSRange(location: start, length: end - start)
+    if coordinator.selectionHighlightRange == range {
+      coordinator.activeSelectionRange = range
+      return
+    }
     coordinator.activeSelectionRange = range
-    applySelectionHighlight(range, coordinator: coordinator)
+    scheduleSelectionHighlightUpdate(range)
   }
 
   override func mouseUp(with event: NSEvent) {
     guard let coordinator, coordinator.isDragging else { return }
     coordinator.isDragging = false
+    flushPendingSelectionHighlightIfNeeded()
 
     if let selectionRange = coordinator.activeSelectionRange, selectionRange.length > 0 {
       // Drag ended — report cross-cue selection
@@ -825,6 +977,8 @@ final class TranscriptNSTextView: NSTextView {
   /// when two separate attribute mutations trigger two redraws per drag event.
   func applySelectionHighlight(_ range: NSRange, coordinator: TranscriptTextView.Coordinator) {
     guard let textStorage else { return }
+    if coordinator.selectionHighlightRange == range { return }
+
     textStorage.beginEditing()
     defer { textStorage.endEditing() }
 
@@ -872,6 +1026,8 @@ final class TranscriptNSTextView: NSTextView {
     reapplyActiveCueBackground(in: prev, coordinator: coordinator)
 
     coordinator.selectionHighlightRange = nil
+    pendingSelectionRange = nil
+    isSelectionApplyScheduled = false
   }
 
   // MARK: - Private
@@ -889,17 +1045,34 @@ final class TranscriptNSTextView: NSTextView {
     )
   }
 
+  private func scheduleSelectionHighlightUpdate(_ range: NSRange) {
+    pendingSelectionRange = range
+    guard !isSelectionApplyScheduled else { return }
+    isSelectionApplyScheduled = true
+
+    DispatchQueue.main.async { [weak self] in
+      self?.isSelectionApplyScheduled = false
+      self?.flushPendingSelectionHighlightIfNeeded()
+    }
+  }
+
+  private func flushPendingSelectionHighlightIfNeeded() {
+    guard let coordinator,
+      let pendingSelectionRange
+    else { return }
+    self.pendingSelectionRange = nil
+    applySelectionHighlight(pendingSelectionRange, coordinator: coordinator)
+  }
+
   /// Clamp `end` so it never lands inside a newline or prefix segment, keeping
   /// the selection within actual cue text.
   private func clampedEnd(_ end: Int) -> Int {
     guard let coordinator else { return end }
-    // If end is inside a prefix range, clamp to the previous text range end
-    for layout in coordinator.layouts {
-      if end >= layout.prefixRange.location
-        && end < layout.prefixRange.location + layout.prefixRange.length
-      {
-        return layout.prefixRange.location
-      }
+    guard let layout = coordinator.cueLayout(at: end) else { return end }
+    if end >= layout.prefixRange.location
+      && end < layout.prefixRange.location + layout.prefixRange.length
+    {
+      return layout.prefixRange.location
     }
     return end
   }
@@ -944,4 +1117,5 @@ final class TranscriptNSTextView: NSTextView {
       range: intersection
     )
   }
+
 }

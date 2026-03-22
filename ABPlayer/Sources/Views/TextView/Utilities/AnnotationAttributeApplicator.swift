@@ -2,6 +2,9 @@ import AppKit
 import Foundation
 
 enum AnnotationAttributeApplicator {
+  static let underlineDrawYOffsetAttribute = NSAttributedString.Key("abUnderlineDrawYOffset")
+  static let underlineDrawYOffset: CGFloat = 1.0
+
   static func apply(
     style: ResolvedAnnotationStyle,
     to textStorage: NSMutableAttributedString,
@@ -19,6 +22,11 @@ enum AnnotationAttributeApplicator {
         value: style.underlineColor,
         range: range
       )
+      textStorage.addAttribute(
+        underlineDrawYOffsetAttribute,
+        value: underlineDrawYOffset,
+        range: range
+      )
     case .background:
       textStorage.addAttribute(
         .backgroundColor,
@@ -34,6 +42,11 @@ enum AnnotationAttributeApplicator {
       textStorage.addAttribute(
         .underlineColor,
         value: style.underlineColor,
+        range: range
+      )
+      textStorage.addAttribute(
+        underlineDrawYOffsetAttribute,
+        value: underlineDrawYOffset,
         range: range
       )
       textStorage.addAttribute(
