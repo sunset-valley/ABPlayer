@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import Testing
 
-@testable import ABPlayer
+@testable import ABPlayerDev
 
 // MARK: - Helpers
 

@@ -96,7 +96,7 @@ let project = Project(
       buildableFolders: [
         "ABPlayer/Tests",
       ],
-      dependencies: [.target(name: "ABPlayer")]
+      dependencies: [.target(name: "ABPlayerDev")]
     ),
     .target(
       name: "ABPlayerUITests",
@@ -108,7 +108,17 @@ let project = Project(
       buildableFolders: [
         "ABPlayer/UITests",
       ],
-      dependencies: [.target(name: "ABPlayer")]
+      dependencies: [.target(name: "ABPlayerDev")]
     ),
+  ],
+  schemes: [
+    .scheme(
+      name: "ABPlayerDev",
+      shared: true,
+      buildAction: .buildAction(targets: ["ABPlayerDev"]),
+      testAction: .targets(["ABPlayerTests", "ABPlayerUITests"]),
+      runAction: .runAction(executable: "ABPlayerDev"),
+      archiveAction: .archiveAction(configuration: .release)
+    )
   ]
 )

@@ -8,6 +8,7 @@ struct AnnotationMenuDemoView: View {
 
   @State private var didSeedUsedStyle = false
   @State private var styles: [AnnotationStyleDisplayData] = []
+  @State private var existingAnnotation: AnnotationRenderData?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -26,13 +27,15 @@ struct AnnotationMenuDemoView: View {
 
       AnnotationMenuView(
         selectedText: "demo",
-        existingAnnotation: nil,
+        existingAnnotation: existingAnnotation,
         styles: styles,
         onAnnotate: { styleID in
           addDemoAnnotation(stylePresetID: styleID)
         },
         onEditComment: {},
-        onChangeStyle: { _ in },
+        onChangeStyle: { styleID in
+          updateDemoSelectedStyle(stylePresetID: styleID)
+        },
         onDelete: {},
         onLookup: {},
         onCopy: {},
@@ -56,6 +59,7 @@ struct AnnotationMenuDemoView: View {
 
   private func reloadStyles() {
     styles = annotationStyleService.allStyles()
+    syncExistingAnnotationWithCurrentStyles()
   }
 
   private func seedUsedStyleIfNeeded(styles: [AnnotationStyleDisplayData]) {
@@ -80,5 +84,47 @@ struct AnnotationMenuDemoView: View {
       globalRange: NSRange(location: 0, length: 4)
     )
     _ = annotationService.addAnnotation(selection: selection, stylePresetID: stylePresetID)
+
+    if existingAnnotation == nil {
+      updateDemoSelectedStyle(stylePresetID: stylePresetID)
+    }
+  }
+
+  private func updateDemoSelectedStyle(stylePresetID: UUID) {
+    guard let style = styles.first(where: { $0.id == stylePresetID }) else { return }
+
+    existingAnnotation = AnnotationRenderData(
+      id: UUID(),
+      groupID: UUID(),
+      stylePresetID: style.id,
+      styleName: style.name,
+      styleKind: style.kind,
+      underlineColorHex: style.underlineColorHex,
+      backgroundColorHex: style.backgroundColorHex,
+      range: NSRange(location: 0, length: 4),
+      selectedText: "demo",
+      comment: nil
+    )
+  }
+
+  private func syncExistingAnnotationWithCurrentStyles() {
+    guard let annotation = existingAnnotation else { return }
+    guard let style = styles.first(where: { $0.id == annotation.stylePresetID }) else {
+      existingAnnotation = nil
+      return
+    }
+
+    existingAnnotation = AnnotationRenderData(
+      id: annotation.id,
+      groupID: annotation.groupID,
+      stylePresetID: style.id,
+      styleName: style.name,
+      styleKind: style.kind,
+      underlineColorHex: style.underlineColorHex,
+      backgroundColorHex: style.backgroundColorHex,
+      range: annotation.range,
+      selectedText: annotation.selectedText,
+      comment: annotation.comment
+    )
   }
 }

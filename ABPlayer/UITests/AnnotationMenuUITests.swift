@@ -83,9 +83,37 @@ final class AnnotationMenuUITests: XCTestCase {
   }
 
   @MainActor
+  func testExistingAnnotationStyleSelectionState() {
+    let app = launchApp()
+    let firstStyle = app.buttons["style-row-action-0"]
+    let secondStyle = app.buttons["style-row-action-1"]
+
+    XCTAssertTrue(firstStyle.waitForExistence(timeout: 4), "First style card not found")
+    XCTAssertTrue(secondStyle.waitForExistence(timeout: 4), "Second style card not found")
+
+    XCTAssertEqual(styleSelectionValue(for: firstStyle), "selected")
+    XCTAssertEqual(styleSelectionValue(for: secondStyle), "unselected")
+
+    secondStyle.click()
+
+    XCTAssertTrue(
+      waitForCondition(timeout: 2) {
+        self.styleSelectionValue(for: firstStyle) == "unselected"
+          && self.styleSelectionValue(for: secondStyle) == "selected"
+      },
+      "Style selection state did not switch after tapping second style"
+    )
+  }
+
+  @MainActor
   private func styleCount(in app: XCUIApplication) -> Int {
     let scope = styleManagementScope(in: app)
     return scope.textFields.matching(styleNamePredicate).count
+  }
+
+  @MainActor
+  private func styleSelectionValue(for styleButton: XCUIElement) -> String? {
+    styleButton.value as? String
   }
 
   @MainActor

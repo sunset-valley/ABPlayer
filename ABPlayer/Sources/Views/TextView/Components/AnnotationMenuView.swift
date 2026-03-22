@@ -31,8 +31,38 @@ struct AnnotationMenuView: View {
   // MARK: - Menus
 
   private var newSelectionMenu: some View {
+    menuContent(
+      isChangingExisting: false,
+      selectedStyleID: nil,
+      includeExistingActions: false
+    )
+  }
+
+  private func existingAnnotationMenu(_ annotation: AnnotationRenderData) -> some View {
+    menuContent(
+      isChangingExisting: true,
+      selectedStyleID: annotation.stylePresetID,
+      includeExistingActions: true
+    )
+  }
+
+  private func menuContent(
+    isChangingExisting: Bool,
+    selectedStyleID: UUID?,
+    includeExistingActions: Bool
+  ) -> some View {
     VStack(alignment: .leading, spacing: 12) {
       actionSection
+
+      if includeExistingActions, let annotation = existingAnnotation {
+        menuButton(
+          annotation.comment != nil ? "Edit Comment" : "Add Comment",
+          systemImage: "text.bubble"
+        ) {
+          onEditComment()
+        }
+        .accessibilityIdentifier("annotation-edit-comment")
+      }
 
       VStack(alignment: .leading, spacing: 8) {
         HStack {
@@ -41,42 +71,19 @@ struct AnnotationMenuView: View {
           manageStylesButton
         }
 
-        styleCards
-      }
-    }
-  }
-
-  private func existingAnnotationMenu(_ annotation: AnnotationRenderData) -> some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack(spacing: 6) {
-        Circle()
-          .fill(Color(nsColor: annotation.styleDisplay.underlineColor))
-          .frame(width: 8, height: 8)
-        Text(annotation.styleName)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+        styleCards(
+          isChangingExisting: isChangingExisting,
+          selectedStyleID: selectedStyleID
+        )
       }
 
-      actionSection
-
-      menuButton(
-        annotation.comment != nil ? "Edit Comment" : "Add Comment",
-        systemImage: "text.bubble"
-      ) {
-        onEditComment()
+      if includeExistingActions {
+        menuButton("Remove Annotation", systemImage: "trash", role: .destructive) {
+          onDelete()
+          onDismiss()
+        }
+        .accessibilityIdentifier("annotation-remove")
       }
-      .accessibilityIdentifier("annotation-edit-comment")
-
-      VStack(alignment: .leading, spacing: 8) {
-        sectionTitle("Switch Style")
-        styleRows(isChangingExisting: true, selectedStyleID: annotation.stylePresetID)
-      }
-
-      menuButton("Remove Annotation", systemImage: "trash", role: .destructive) {
-        onDelete()
-        onDismiss()
-      }
-      .accessibilityIdentifier("annotation-remove")
     }
   }
 
@@ -97,20 +104,33 @@ struct AnnotationMenuView: View {
 
   // MARK: - Style selection
 
-  private var styleCards: some View {
+  private func styleCards(
+    isChangingExisting: Bool,
+    selectedStyleID: UUID?
+  ) -> some View {
     ScrollView(.horizontal, showsIndicators: false) {
       HStack(spacing: 8) {
         ForEach(Array(styles.enumerated()), id: \.element.id) { index, style in
-          styleCard(style, index: index)
+          styleCard(
+            style,
+            index: index,
+            isChangingExisting: isChangingExisting,
+            isSelected: selectedStyleID == style.id
+          )
         }
       }
       .padding(.vertical, 2)
     }
   }
 
-  private func styleCard(_ style: AnnotationStyleDisplayData, index: Int) -> some View {
+  private func styleCard(
+    _ style: AnnotationStyleDisplayData,
+    index: Int,
+    isChangingExisting: Bool,
+    isSelected: Bool
+  ) -> some View {
     Button {
-      applyStyle(style.id, isChangingExisting: false)
+      applyStyle(style.id, isChangingExisting: isChangingExisting)
     } label: {
       VStack(spacing: 8) {
         styleTokenPreview(style)
@@ -128,41 +148,25 @@ struct AnnotationMenuView: View {
       .frame(width: 98)
       .background(
         RoundedRectangle(cornerRadius: 10, style: .continuous)
-          .fill(Color(nsColor: .controlBackgroundColor).opacity(0.72))
+          .fill(
+            isSelected && isChangingExisting
+              ? Color.accentColor.opacity(0.16)
+              : Color(nsColor: .controlBackgroundColor).opacity(0.72)
+          )
       )
+      .overlay {
+        if isSelected && isChangingExisting {
+          RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .stroke(Color.accentColor.opacity(0.5), lineWidth: 1)
+        }
+      }
       .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
     .buttonStyle(.plain)
     .accessibilityIdentifier("style-row-action-\(index)")
-  }
-
-  private func styleRows(isChangingExisting: Bool, selectedStyleID: UUID?) -> some View {
-    ForEach(Array(styles.enumerated()), id: \.element.id) { index, style in
-      Button {
-        applyStyle(style.id, isChangingExisting: isChangingExisting)
-      } label: {
-        HStack(spacing: 8) {
-          Image(systemName: selectedStyleID == style.id ? "checkmark.circle.fill" : "circle")
-            .foregroundStyle(selectedStyleID == style.id ? Color.accentColor : Color.secondary)
-          Text(style.name)
-            .font(.subheadline)
-            .lineLimit(1)
-            .truncationMode(.tail)
-          Spacer(minLength: 0)
-          stylePreview(style)
-            .frame(maxWidth: 80)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(
-          RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(Color(nsColor: .controlBackgroundColor).opacity(0.55))
-        )
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .accessibilityIdentifier("style-list-action-\(index)")
-    }
+    .accessibilityValue(
+      Text(isChangingExisting && isSelected ? "selected" : "unselected")
+    )
   }
 
   // MARK: - Style management
@@ -208,37 +212,6 @@ struct AnnotationMenuView: View {
         }
       }
     }
-  }
-
-  private func stylePreview(_ style: AnnotationStyleDisplayData) -> some View {
-    let text = Text("Preview")
-      .font(.caption)
-
-    return Group {
-      switch style.kind {
-      case .underline:
-        text
-          .underline(true, color: Color(nsColor: style.underlineColor))
-      case .background:
-        text
-          .padding(.horizontal, 6)
-          .padding(.vertical, 2)
-          .background(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
-              .fill(Color(nsColor: style.backgroundColor).opacity(0.3))
-          )
-      case .underlineAndBackground:
-        text
-          .underline(true, color: Color(nsColor: style.underlineColor))
-          .padding(.horizontal, 6)
-          .padding(.vertical, 2)
-          .background(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
-              .fill(Color(nsColor: style.backgroundColor).opacity(0.3))
-          )
-      }
-    }
-    .frame(maxWidth: .infinity, alignment: .trailing)
   }
 
   // MARK: - Small helpers
