@@ -399,6 +399,8 @@ struct TranscriptTextView: NSViewRepresentable {
         segments.append(
           CrossCueTextSelection.CueSegment(
             cueID: layout.cueID,
+            cueStartTime: layout.startTime,
+            cueEndTime: layout.endTime,
             localRange: localRange,
             text: segText
           )
@@ -478,6 +480,8 @@ struct TranscriptTextView: NSViewRepresentable {
           segments: [
             .init(
               cueID: fallbackLayout.cueID,
+              cueStartTime: fallbackLayout.startTime,
+              cueEndTime: fallbackLayout.endTime,
               localRange: tappedAnnotation.range,
               text: tappedAnnotation.selectedText
             )
@@ -516,7 +520,13 @@ struct TranscriptTextView: NSViewRepresentable {
 
         let text = cueNSString.substring(with: localRange)
         segments.append(
-          .init(cueID: layout.cueID, localRange: localRange, text: text)
+          .init(
+            cueID: layout.cueID,
+            cueStartTime: layout.startTime,
+            cueEndTime: layout.endTime,
+            localRange: localRange,
+            text: text
+          )
         )
       }
 

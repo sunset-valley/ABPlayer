@@ -154,6 +154,8 @@ struct ABPlayerApp: App {
         AnnotationStylePreset.self,
         TextAnnotationGroup.self,
         TextAnnotationSpan.self,
+        TextAnnotationGroupV2.self,
+        TextAnnotationSpanV2.self,
       ])
 
       guard let appSupportDir = FileManager.default.urls(

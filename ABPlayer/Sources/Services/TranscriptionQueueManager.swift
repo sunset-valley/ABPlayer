@@ -142,6 +142,7 @@ final class TranscriptionQueueManager {
 
       // Perform transcription
       let cues = try await transcriptionManager.transcribe(
+        audioFileID: task.audioFileId,
         audioURL: url,
         settings: settings
       )

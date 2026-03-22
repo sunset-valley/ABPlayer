@@ -11,8 +11,8 @@ final class AnnotationService {
   private let styleService: AnnotationStyleService
 
   /// Internal cache mapping cueID to annotation spans
-  private var spansByCue: [UUID: [TextAnnotationSpan]] = [:]
-  private var groupsByID: [UUID: TextAnnotationGroup] = [:]
+  private var spansByCue: [UUID: [TextAnnotationSpanV2]] = [:]
+  private var groupsByID: [UUID: TextAnnotationGroupV2] = [:]
 
   /// Version counter for cache invalidation - incremented on mutations
   private(set) var version = 0
@@ -36,11 +36,13 @@ final class AnnotationService {
   /// Add one logical annotation group and one span per touched cue segment.
   @discardableResult
   func addAnnotation(
+    audioFileID: UUID,
     selection: CrossCueTextSelection,
     stylePresetID: UUID
   ) -> [AnnotationRenderData] {
     let now = Date()
-    let group = TextAnnotationGroup(
+    let group = TextAnnotationGroupV2(
+      audioFileID: audioFileID,
       stylePresetID: stylePresetID,
       selectedTextSnapshot: selection.fullText,
       createdAt: now,
@@ -50,9 +52,12 @@ final class AnnotationService {
     groupsByID[group.id] = group
 
     for (index, segment) in selection.segments.enumerated() {
-      let span = TextAnnotationSpan(
+      let span = TextAnnotationSpanV2(
         groupID: group.id,
+        audioFileID: audioFileID,
         cueID: segment.cueID,
+        cueStartTime: segment.cueStartTime,
+        cueEndTime: segment.cueEndTime,
         rangeLocation: segment.localRange.location,
         rangeLength: segment.localRange.length,
         segmentOrder: index,
@@ -128,8 +133,8 @@ final class AnnotationService {
 
   /// Refresh the cache from ModelContext
   func refreshCache() {
-    let groupDescriptor = FetchDescriptor<TextAnnotationGroup>()
-    let spanDescriptor = FetchDescriptor<TextAnnotationSpan>()
+    let groupDescriptor = FetchDescriptor<TextAnnotationGroupV2>()
+    let spanDescriptor = FetchDescriptor<TextAnnotationSpanV2>()
     let groups = (try? modelContext.fetch(groupDescriptor)) ?? []
     let spans = (try? modelContext.fetch(spanDescriptor)) ?? []
 
@@ -140,7 +145,7 @@ final class AnnotationService {
 
   // MARK: - Private
 
-  private func findSpan(by id: UUID) -> TextAnnotationSpan? {
+  private func findSpan(by id: UUID) -> TextAnnotationSpanV2? {
     for spans in spansByCue.values {
       if let span = spans.first(where: { $0.id == id }) {
         return span
@@ -149,13 +154,13 @@ final class AnnotationService {
     return nil
   }
 
-  private func findSpans(groupID: UUID) -> [TextAnnotationSpan] {
+  private func findSpans(groupID: UUID) -> [TextAnnotationSpanV2] {
     spansByCue.values
       .flatMap { $0 }
       .filter { $0.groupID == groupID }
   }
 
-  private func displayData(from span: TextAnnotationSpan) -> AnnotationRenderData? {
+  private func displayData(from span: TextAnnotationSpanV2) -> AnnotationRenderData? {
     guard let group = groupsByID[span.groupID] else { return nil }
     let style = styleService.style(id: group.stylePresetID) ?? styleService.defaultStyle()
 

@@ -180,6 +180,7 @@ final class TranscriptionManager {
 
   /// Transcribe audio file using settings
   func transcribe(
+    audioFileID: UUID,
     audioURL: URL,
     settings: TranscriptionSettings
   ) async throws -> [SubtitleCue] {
@@ -250,6 +251,7 @@ final class TranscriptionManager {
         try? FileManager.default.removeItem(at: wavURL)
       }
 
+      var cueIndex = 0
       let cues: [SubtitleCue] = results.flatMap { result in
         result.segments.compactMap { segment in
           let cleanedText = cleanTranscriptionText(segment.text)
@@ -260,9 +262,20 @@ final class TranscriptionManager {
             return nil
           }
 
+          defer { cueIndex += 1 }
+          let startTime = Double(segment.start)
+          let endTime = Double(segment.end)
+          let cueID = SubtitleCue.generateDeterministicID(
+            audioFileID: audioFileID,
+            cueIndex: cueIndex,
+            startTime: startTime,
+            endTime: endTime
+          )
+
           return SubtitleCue(
-            startTime: Double(segment.start),
-            endTime: Double(segment.end),
+            id: cueID,
+            startTime: startTime,
+            endTime: endTime,
             text: cleanedText
           )
         }
