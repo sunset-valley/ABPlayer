@@ -1,11 +1,9 @@
+@testable import ABPlayerDev
 import AppKit
 import Foundation
 import Testing
 
-@testable import ABPlayerDev
-
 struct UnifiedStringBuilderTests {
-
   // MARK: - Helpers
 
   private func makeCue(startTime: Double, text: String) -> SubtitleCue {
@@ -29,7 +27,7 @@ struct UnifiedStringBuilderTests {
   // MARK: - Empty / single cue
 
   @Test
-  func testEmptyCuesProducesEmptyString() {
+  func emptyCuesProducesEmptyString() {
     let builder = makeBuilder(cues: [])
     let result = builder.build()
     #expect(result.attributedString.string.isEmpty)
@@ -37,7 +35,7 @@ struct UnifiedStringBuilderTests {
   }
 
   @Test
-  func testSingleCueContainsText() {
+  func singleCueContainsText() {
     let cue = makeCue(startTime: 1.0, text: "Hello world")
     let result = makeBuilder(cues: [cue]).build()
 
@@ -46,7 +44,7 @@ struct UnifiedStringBuilderTests {
   }
 
   @Test
-  func testSingleCueTimestampPresent() {
+  func singleCueTimestampPresent() {
     let cue = makeCue(startTime: 61.0, text: "Test")
     let result = makeBuilder(cues: [cue]).build()
     // 61 seconds → "1:01"
@@ -54,7 +52,7 @@ struct UnifiedStringBuilderTests {
   }
 
   @Test
-  func testSingleCueLayoutRanges() {
+  func singleCueLayoutRanges() {
     let text = "Hello world"
     let cue = makeCue(startTime: 1.0, text: text)
     let result = makeBuilder(cues: [cue]).build()
@@ -72,7 +70,7 @@ struct UnifiedStringBuilderTests {
   // MARK: - Multiple cues
 
   @Test
-  func testMultipleCuesProduceConsecutiveLayouts() {
+  func multipleCuesProduceConsecutiveLayouts() {
     let cues = [
       makeCue(startTime: 0, text: "First"),
       makeCue(startTime: 2, text: "Second"),
@@ -83,7 +81,7 @@ struct UnifiedStringBuilderTests {
     #expect(result.layouts.count == 3)
 
     // Layouts must be in document order without gaps or overlaps
-    for i in 1..<result.layouts.count {
+    for i in 1 ..< result.layouts.count {
       let prev = result.layouts[i - 1]
       let curr = result.layouts[i]
       let prevEnd = prev.paragraphRange.location + prev.paragraphRange.length
@@ -92,7 +90,7 @@ struct UnifiedStringBuilderTests {
   }
 
   @Test
-  func testMultipleCuesAllTextPresent() {
+  func multipleCuesAllTextPresent() {
     let texts = ["Alpha", "Beta", "Gamma"]
     let cues = texts.enumerated().map { makeCue(startTime: Double($0.offset) * 2, text: $0.element) }
     let str = makeBuilder(cues: cues).build().attributedString.string
@@ -102,7 +100,7 @@ struct UnifiedStringBuilderTests {
   }
 
   @Test
-  func testFullStringLength() {
+  func fullStringLength() {
     let cues = [
       makeCue(startTime: 0, text: "AB"),
       makeCue(startTime: 2, text: "CD"),
@@ -115,7 +113,7 @@ struct UnifiedStringBuilderTests {
   // MARK: - Active cue
 
   @Test
-  func testActiveCueHasTintedBackground() {
+  func activeCueHasTintedBackground() {
     let cue = makeCue(startTime: 0, text: "Active")
     let result = makeBuilder(cues: [cue], activeCueID: cue.id).build()
     let layout = result.layouts[0]
@@ -127,7 +125,7 @@ struct UnifiedStringBuilderTests {
   }
 
   @Test
-  func testInactiveCueHasNoBackground() {
+  func inactiveCueHasNoBackground() {
     let cue = makeCue(startTime: 0, text: "Inactive")
     let result = makeBuilder(cues: [cue], activeCueID: nil).build()
     let layout = result.layouts[0]
@@ -139,7 +137,7 @@ struct UnifiedStringBuilderTests {
   }
 
   @Test
-  func testOnlyActiveCueHasBackground() {
+  func onlyActiveCueHasBackground() {
     let cue1 = makeCue(startTime: 0, text: "First")
     let cue2 = makeCue(startTime: 2, text: "Second")
     let result = makeBuilder(cues: [cue1, cue2], activeCueID: cue1.id).build()
@@ -179,7 +177,7 @@ struct UnifiedStringBuilderTests {
   }
 
   @Test
-  func testUnderlineStyleAppliesUnderline() {
+  func underlineStyleAppliesUnderline() {
     let cue = makeCue(startTime: 0, text: "Hello world")
     let cueID = cue.id
     let annotation = makeAnnotation(kind: .underline, range: NSRange(location: 0, length: 5), selectedText: "Hello")
@@ -189,10 +187,13 @@ struct UnifiedStringBuilderTests {
     let attrs = result.attributedString.attributes(at: globalAnnotStart, effectiveRange: nil)
     let underline = attrs[.underlineStyle] as? Int
     #expect(underline == NSUnderlineStyle.single.rawValue)
+    let underlineOffset =
+      (attrs[NSAttributedString.Key("abUnderlineDrawYOffset")] as? NSNumber)?.doubleValue
+    #expect(underlineOffset == 1.0)
   }
 
   @Test
-  func testBackgroundStyleAppliesBackground() {
+  func backgroundStyleAppliesBackground() {
     let cue = makeCue(startTime: 0, text: "Hello world")
     let cueID = cue.id
     let annotation = makeAnnotation(kind: .background, range: NSRange(location: 6, length: 5), selectedText: "world")
@@ -205,7 +206,7 @@ struct UnifiedStringBuilderTests {
   }
 
   @Test
-  func testUnderlineAndBackgroundAppliesBoth() {
+  func underlineAndBackgroundAppliesBoth() {
     let cue = makeCue(startTime: 0, text: "Great sentence here")
     let cueID = cue.id
     let annotation = makeAnnotation(kind: .underlineAndBackground, range: NSRange(location: 0, length: 14), selectedText: "Great sentence")
@@ -213,13 +214,16 @@ struct UnifiedStringBuilderTests {
     let layout = result.layouts[0]
     let attrs = result.attributedString.attributes(at: layout.textRange.location, effectiveRange: nil)
     let underline = attrs[.underlineStyle] as? Int
+    let underlineOffset =
+      (attrs[NSAttributedString.Key("abUnderlineDrawYOffset")] as? NSNumber)?.doubleValue
     let bg = attrs[.backgroundColor] as? NSColor
     #expect(underline == NSUnderlineStyle.single.rawValue)
+    #expect(underlineOffset == 1.0)
     #expect(bg != nil)
   }
 
   @Test
-  func testOutOfBoundsAnnotationSkipped() {
+  func outOfBoundsAnnotationSkipped() {
     let cue = makeCue(startTime: 0, text: "Hi")
     let cueID = cue.id
     let annotation = makeAnnotation(kind: .underline, range: NSRange(location: 100, length: 10), selectedText: "overflow")
@@ -235,7 +239,7 @@ struct UnifiedStringBuilderTests {
   // MARK: - Font
 
   @Test
-  func testFontSizeApplied() {
+  func fontSizeApplied() {
     let cue = makeCue(startTime: 0, text: "Size test")
     let result = makeBuilder(cues: [cue], fontSize: 20.0).build()
     let layout = result.layouts[0]
@@ -250,7 +254,7 @@ struct UnifiedStringBuilderTests {
   // MARK: - Layout CueID mapping
 
   @Test
-  func testLayoutCueIDsMatchInput() {
+  func layoutCueIDsMatchInput() {
     let cues = [
       makeCue(startTime: 0, text: "A"),
       makeCue(startTime: 2, text: "B"),
@@ -265,15 +269,15 @@ struct UnifiedStringBuilderTests {
   // MARK: - Timestamp format
 
   @Test
-  func testZeroTimestamp() {
+  func zeroTimestamp() {
     let cue = makeCue(startTime: 0, text: "Zero")
     let str = makeBuilder(cues: [cue]).build().attributedString.string
     #expect(str.contains("0:00"))
   }
 
   @Test
-  func testMinuteTimestamp() {
-    let cue = makeCue(startTime: 90, text: "Ninety")  // 1:30
+  func minuteTimestamp() {
+    let cue = makeCue(startTime: 90, text: "Ninety") // 1:30
     let str = makeBuilder(cues: [cue]).build().attributedString.string
     #expect(str.contains("1:30"))
   }

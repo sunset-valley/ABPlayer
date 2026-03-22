@@ -18,24 +18,24 @@ final class SubtitleLoader {
         let gotAccess = audioURL.startAccessingSecurityScopedResource()
         defer { if gotAccess { audioURL.stopAccessingSecurityScopedResource() } }
         
-        return await loadSubtitles(from: srtURL)
+        return await loadSubtitles(from: srtURL, audioFileID: audioFile.id)
     }
     
     /// Load subtitles from a specific URL
     /// - Parameters:
     ///   - url: The URL of the subtitle file
     /// - Returns: Array of subtitle cues, empty if loading fails
-    func loadSubtitles(from url: URL) async -> [SubtitleCue] {
-        return await parseSubtitles(at: url)
+    func loadSubtitles(from url: URL, audioFileID: UUID) async -> [SubtitleCue] {
+        return await parseSubtitles(at: url, audioFileID: audioFileID)
     }
     
     /// Parse subtitles from a file URL (runs on background thread)
     /// - Parameter url: The URL of the subtitle file
     /// - Returns: Array of subtitle cues
-    private func parseSubtitles(at url: URL) async -> [SubtitleCue] {
+    private func parseSubtitles(at url: URL, audioFileID: UUID) async -> [SubtitleCue] {
         return await Task.detached {
             do {
-                return try SubtitleParser.parse(from: url)
+                return try SubtitleParser.parse(from: url, audioFileID: audioFileID)
             } catch {
                 return []
             }

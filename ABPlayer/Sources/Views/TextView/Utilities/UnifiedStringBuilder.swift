@@ -154,6 +154,7 @@ struct UnifiedStringBuilder {
 
     return CueLayout(
       cueID: cue.id,
+      endTime: cue.endTime,
       startTime: cue.startTime,
       cueText: text,
       prefixRange: prefixRange,

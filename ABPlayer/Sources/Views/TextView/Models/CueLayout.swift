@@ -6,6 +6,7 @@ import Foundation
 /// NSAttributedString / NSTextView APIs.
 struct CueLayout: Equatable, Sendable {
   let cueID: UUID
+  let endTime: Double
   let startTime: Double
   let cueText: String
 

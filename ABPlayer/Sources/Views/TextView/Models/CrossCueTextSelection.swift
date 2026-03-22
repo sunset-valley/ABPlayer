@@ -14,10 +14,28 @@ struct CrossCueTextSelection: Equatable, Sendable {
   struct CueSegment: Equatable, Sendable {
     /// The cue this segment belongs to.
     let cueID: UUID
+    /// Cue start time in seconds.
+    let cueStartTime: Double
+    /// Cue end time in seconds.
+    let cueEndTime: Double
     /// Character range **relative to the start of the cue's text** (cue-local).
     let localRange: NSRange
     /// The selected text within this cue.
     let text: String
+
+    init(
+      cueID: UUID,
+      cueStartTime: Double = 0,
+      cueEndTime: Double = 0,
+      localRange: NSRange,
+      text: String
+    ) {
+      self.cueID = cueID
+      self.cueStartTime = cueStartTime
+      self.cueEndTime = cueEndTime
+      self.localRange = localRange
+      self.text = text
+    }
   }
 
   // MARK: - Properties

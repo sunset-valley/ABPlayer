@@ -14,6 +14,23 @@ struct SubtitleCue: Codable, Identifiable, Equatable {
     self.endTime = endTime
     self.text = text
   }
+
+  static func generateDeterministicID(
+    audioFileID: UUID,
+    cueIndex: Int,
+    startTime: Double,
+    endTime: Double
+  ) -> UUID {
+    let startMilliseconds = normalizedMilliseconds(startTime)
+    let endMilliseconds = normalizedMilliseconds(endTime)
+    let key = "\(audioFileID.uuidString)|\(cueIndex)|\(startMilliseconds)|\(endMilliseconds)"
+    return DeterministicID.generate(from: key)
+  }
+
+  private static func normalizedMilliseconds(_ seconds: Double) -> Int64 {
+    guard seconds.isFinite else { return 0 }
+    return Int64((seconds * 1000).rounded())
+  }
 }
 
 @Model
@@ -62,15 +79,15 @@ struct SubtitleParser {
     }
   }
 
-  static func parse(from url: URL) throws -> [SubtitleCue] {
+  static func parse(from url: URL, audioFileID: UUID) throws -> [SubtitleCue] {
     let content = try String(contentsOf: url, encoding: .utf8)
     let format = detectFormat(from: url)
 
     switch format {
     case .srt:
-      return parseSRT(content)
+      return parseSRT(content, audioFileID: audioFileID)
     case .vtt:
-      return parseVTT(content)
+      return parseVTT(content, audioFileID: audioFileID)
     case .unknown:
       return []
     }
@@ -98,7 +115,7 @@ struct SubtitleParser {
 
   // MARK: - SRT Parser
 
-  private static func parseSRT(_ content: String) -> [SubtitleCue] {
+  private static func parseSRT(_ content: String, audioFileID: UUID) -> [SubtitleCue] {
     var cues: [SubtitleCue] = []
     let blocks = content.components(separatedBy: "\n\n")
 
@@ -116,7 +133,14 @@ struct SubtitleParser {
       }
 
       let text = lines.dropFirst(2).joined(separator: "\n")
-      cues.append(SubtitleCue(startTime: start, endTime: end, text: text))
+      let cueIndex = cues.count
+      let cueID = SubtitleCue.generateDeterministicID(
+        audioFileID: audioFileID,
+        cueIndex: cueIndex,
+        startTime: start,
+        endTime: end
+      )
+      cues.append(SubtitleCue(id: cueID, startTime: start, endTime: end, text: text))
     }
 
     return cues
@@ -124,7 +148,7 @@ struct SubtitleParser {
 
   // MARK: - VTT Parser
 
-  private static func parseVTT(_ content: String) -> [SubtitleCue] {
+  private static func parseVTT(_ content: String, audioFileID: UUID) -> [SubtitleCue] {
     var cues: [SubtitleCue] = []
     var lines = content.components(separatedBy: "\n")
 
@@ -161,7 +185,14 @@ struct SubtitleParser {
       let text = blockLines.dropFirst(timestampIndex + 1).joined(separator: "\n")
       guard !text.isEmpty else { continue }
 
-      cues.append(SubtitleCue(startTime: start, endTime: end, text: text))
+      let cueIndex = cues.count
+      let cueID = SubtitleCue.generateDeterministicID(
+        audioFileID: audioFileID,
+        cueIndex: cueIndex,
+        startTime: start,
+        endTime: end
+      )
+      cues.append(SubtitleCue(id: cueID, startTime: start, endTime: end, text: text))
     }
 
     return cues
