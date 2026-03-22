@@ -1,3 +1,15 @@
+## [0.2.21.102] - 2026-03-22
+
+### Features
+- add cancel action for FFmpeg download
+
+### Bug Fixes
+- restore subtitle editing and add UI coverage
+
+### Chores
+- refresh S3 storage after publish
+
+
 ## [0.2.20.101] - 2026-03-22
 
 ### Features

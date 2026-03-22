@@ -50,6 +50,7 @@ struct TranscriptTextView: NSViewRepresentable {
     scrollView.borderType = .noBorder
     scrollView.backgroundColor = .clear
     scrollView.drawsBackground = false
+    scrollView.setAccessibilityIdentifier("subtitle-transcript-scroll-view")
 
     let textView = TranscriptNSTextView()
     textView.isEditable = false
@@ -64,6 +65,7 @@ struct TranscriptTextView: NSViewRepresentable {
     textView.isHorizontallyResizable = false
     textView.autoresizingMask = [.width]
     textView.coordinator = context.coordinator
+    textView.setAccessibilityIdentifier("subtitle-transcript-text-view")
 
     scrollView.documentView = textView
 

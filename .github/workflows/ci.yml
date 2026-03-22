@@ -269,6 +269,13 @@ jobs:
                     --project "$SENTRY_PROJECT" \
                     DerivedData/Build/Products/Release/ABPlayer.app.dSYM
 
+            - name: Refresh S3
+              if: steps.compare_versions.outputs.should_release == 'true'
+              env:
+                  OPENLIST_TOKEN: ${{ secrets.OPENLIST_TOKEN }}
+              run: |
+                  curl -s -X POST https://s3.kcoding.cn/api/admin/storage/load_all --header "Authorization: $OPENLIST_TOKEN"
+
             - name: Send Telegram Notification
               if: steps.compare_versions.outputs.should_release == 'true'
               env:

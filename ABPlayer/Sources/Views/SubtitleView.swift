@@ -18,7 +18,6 @@ struct SubtitleView: View {
 
   // Edit-subtitle sheet state
   @State private var editingCueID: UUID?
-  @State private var isShowingEditSheet = false
 
   // Comment-editor sheet state (opened from annotation menu)
   @State private var isShowingCommentEditor = false
@@ -79,7 +78,6 @@ struct SubtitleView: View {
         },
         onEditSubtitleRequested: { cueID in
           editingCueID = cueID
-          isShowingEditSheet = true
         }
       )
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -173,7 +171,16 @@ struct SubtitleView: View {
       commentEditingAnnotation = nil
     }
     // Edit subtitle sheet
-    .sheet(isPresented: $isShowingEditSheet) {
+    .sheet(
+      isPresented: Binding(
+        get: { editingCueID != nil },
+        set: { isPresented in
+          if !isPresented {
+            editingCueID = nil
+          }
+        }
+      )
+    ) {
       if let cueID = editingCueID,
         let cue = cues.first(where: { $0.id == cueID })
       {

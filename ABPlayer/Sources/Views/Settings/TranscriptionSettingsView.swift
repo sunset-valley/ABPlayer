@@ -15,6 +15,7 @@ struct TranscriptionSettingsView: View {
   @State private var ffmpegPathStatus: FFmpegStatus = .unchecked
   @State private var isDownloadingFFmpeg = false
   @State private var ffmpegDownloadProgress: Double = 0
+  @State private var ffmpegDownloadTask: Task<Void, Never>?
   @State private var showFFmpegDeleteConfirmation = false
   @State private var mirrorSelection: String = ""
   @State private var ffmpegMirrorSelection: String = ""
@@ -251,13 +252,25 @@ struct TranscriptionSettingsView: View {
       LabeledContent("FFmpeg") {
         HStack(spacing: 8) {
           if isDownloadingFFmpeg {
-            ProgressView(value: ffmpegDownloadProgress)
-              .progressViewStyle(.linear)
-              .frame(width: 60)
-            Text("\(Int(ffmpegDownloadProgress * 100))%")
-              .monospacedDigit()
-              .foregroundStyle(.secondary)
-              .font(.caption)
+            HStack(spacing: 8) {
+              ProgressView(value: ffmpegDownloadProgress)
+                .progressViewStyle(.linear)
+                .frame(width: 60)
+
+              Text("\(Int(ffmpegDownloadProgress * 100))%")
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .font(.caption)
+
+              Button {
+                ffmpegDownloadTask?.cancel()
+              } label: {
+                Image(systemName: "xmark.circle.fill")
+                  .foregroundStyle(.secondary)
+              }
+              .buttonStyle(.plain)
+              .help("Cancel download")
+            }
           } else {
             Text(displayFFmpegPath)
               .foregroundStyle(ffmpegStatusColor)
@@ -268,7 +281,7 @@ struct TranscriptionSettingsView: View {
           if !isDownloadingFFmpeg {
             if ffmpegPathStatus != .valid {
               Button("Download") {
-                Task { await downloadFFmpeg() }
+                ffmpegDownloadTask = Task { await downloadFFmpeg() }
               }
               .buttonStyle(.borderedProminent)
               .controlSize(.small)
@@ -567,6 +580,10 @@ struct TranscriptionSettingsView: View {
   private func downloadFFmpeg() async {
     isDownloadingFFmpeg = true
     ffmpegDownloadProgress = 0
+    defer {
+      isDownloadingFFmpeg = false
+      ffmpegDownloadTask = nil
+    }
     do {
       try await settings.downloadFFmpeg { progress in
         Task { @MainActor in
@@ -574,10 +591,11 @@ struct TranscriptionSettingsView: View {
         }
       }
       refreshFFmpegStatus()
+    } catch is CancellationError {
+      ffmpegDownloadProgress = 0
     } catch {
       // Leave status as-is; user can retry
     }
-    isDownloadingFFmpeg = false
   }
 
   private func handleFileImportResult(_ result: Result<[URL], Error>) {

@@ -98,6 +98,11 @@ struct ABPlayerApp: App {
       || Self.hasLaunchEnvironment("ABP_UI_TESTING_ANNOTATION_DEMO")
   }
 
+  private var isSubtitleEditUITesting: Bool {
+    Self.hasLaunchArgument("--ui-testing-subtitle-edit")
+      || Self.hasLaunchEnvironment("ABP_UI_TESTING_SUBTITLE_EDIT")
+  }
+
   private static func hasLaunchArgument(_ argument: String) -> Bool {
     ProcessInfo.processInfo.arguments.contains(argument)
   }
@@ -298,7 +303,9 @@ struct ABPlayerApp: App {
   var body: some Scene {
     WindowGroup {
       Group {
-        if isAnnotationDemoUITesting {
+        if isSubtitleEditUITesting {
+          SubtitleEditDemoView()
+        } else if isAnnotationDemoUITesting {
           AnnotationMenuDemoView()
         } else {
           MainSplitView()

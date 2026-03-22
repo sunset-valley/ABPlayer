@@ -22,6 +22,7 @@ struct SubtitleEditView: View {
       TextEditor(text: $editableSubtitle)
         .font(.body)
         .frame(minHeight: 140)
+        .accessibilityIdentifier("subtitle-edit-text-editor")
         .padding(6)
         .overlay(
           RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -35,6 +36,7 @@ struct SubtitleEditView: View {
           editableSubtitle = originalSubtitle
           dismiss()
         }
+        .accessibilityIdentifier("subtitle-edit-cancel")
 
         Button("Confirm") {
           onConfirm(editableSubtitle)
@@ -42,6 +44,7 @@ struct SubtitleEditView: View {
         }
         .buttonStyle(.borderedProminent)
         .disabled(editableSubtitle == originalSubtitle)
+        .accessibilityIdentifier("subtitle-edit-confirm")
       }
     }
     .padding(16)
