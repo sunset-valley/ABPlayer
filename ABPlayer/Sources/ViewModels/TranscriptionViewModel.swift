@@ -162,13 +162,13 @@ final class TranscriptionViewModel {
         try SubtitleParser.writeSRT(cues: updatedCues, to: srtURL)
         cachedCues = updatedCues
       } catch {
-        return
+        Logger.data.error("⚠️ Failed to update subtitle at \(srtURL.path): \(error.localizedDescription)")
       }
     }
   }
 
   private func withSecurityScopedAccess(to bookmarkData: Data, _ body: () -> Void) {
-    guard let audioURL = try? resolveURL(from: bookmarkData) else { return }
+    guard let audioURL = resolveURL(from: bookmarkData) else { return }
 
     let gotAccess = audioURL.startAccessingSecurityScopedResource()
     defer {
@@ -177,18 +177,32 @@ final class TranscriptionViewModel {
       }
     }
 
-    guard gotAccess else { return }
     body()
   }
-  
-  private func resolveURL(from bookmarkData: Data) throws -> URL {
+
+  private func resolveURL(from bookmarkData: Data) -> URL? {
     var isStale = false
-    return try URL(
+
+    if let scopedURL = try? URL(
       resolvingBookmarkData: bookmarkData,
       options: [.withSecurityScope],
       relativeTo: nil,
       bookmarkDataIsStale: &isStale
-    )
+    ) {
+      return scopedURL
+    }
+
+    if let legacyURL = try? URL(
+      resolvingBookmarkData: bookmarkData,
+      options: [],
+      relativeTo: nil,
+      bookmarkDataIsStale: &isStale
+    ) {
+      return legacyURL
+    }
+
+    Logger.data.error("⚠️ Failed to resolve bookmark URL")
+    return nil
   }
   
 }

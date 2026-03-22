@@ -31,14 +31,21 @@ Use `-derivedDataPath "$HOME/Library/Developer/Xcode/DerivedData"` to avoid macO
 3. If a UI test fails, fix test/app behavior and rerun until green.
 4. Record any new UI test assumptions in docs when needed.
 
-### Annotation Menu Baseline
+### Annotation Menu UI Testing
 
-Current baseline for annotation-menu UI automation is `ABPlayer/UITests/AnnotationMenuUITests.swift` with these required passing cases:
+`ABPlayer/UITests/AnnotationMenuUITests.swift` verifies annotation style management behavior:
 
 - `testAddStyle`
 - `testRenameStyle`
 - `testChangeKind`
 - `testCannotDeleteUsedStyle`
+- `testExistingAnnotationStyleSelectionState`
+
+### Subtitle Edit Baseline
+
+`ABPlayer/UITests/SubtitleEditUITests.swift` verifies subtitle edit behavior from the context menu:
+
+- `testEditSubtitleFromContextMenuPersistsInView`
 
 ## Related Docs
 
