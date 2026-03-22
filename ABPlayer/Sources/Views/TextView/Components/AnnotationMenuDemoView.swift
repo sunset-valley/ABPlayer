@@ -72,10 +72,14 @@ struct AnnotationMenuDemoView: View {
   }
 
   private func addDemoAnnotation(stylePresetID: UUID) {
+    let audioFileID = UUID(uuidString: "00000000-0000-0000-0000-0000000000AA") ?? UUID()
+    let cueID = UUID(uuidString: "00000000-0000-0000-0000-000000000001") ?? UUID()
     let selection = CrossCueTextSelection(
       segments: [
         .init(
-          cueID: UUID(uuidString: "00000000-0000-0000-0000-000000000001") ?? UUID(),
+          cueID: cueID,
+          cueStartTime: 0,
+          cueEndTime: 1,
           localRange: NSRange(location: 0, length: 4),
           text: "demo"
         )
@@ -83,7 +87,11 @@ struct AnnotationMenuDemoView: View {
       fullText: "demo",
       globalRange: NSRange(location: 0, length: 4)
     )
-    _ = annotationService.addAnnotation(selection: selection, stylePresetID: stylePresetID)
+    _ = annotationService.addAnnotation(
+      audioFileID: audioFileID,
+      selection: selection,
+      stylePresetID: stylePresetID
+    )
 
     if existingAnnotation == nil {
       updateDemoSelectedStyle(stylePresetID: stylePresetID)

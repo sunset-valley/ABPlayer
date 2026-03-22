@@ -275,7 +275,12 @@ struct SubtitleView: View {
     stylePresetID: UUID
   ) {
     guard case let .selecting(selection) = state else { return }
-    _ = annotationService.addAnnotation(selection: selection, stylePresetID: stylePresetID)
+    guard let audioFileID = playerManager.currentFile?.id else { return }
+    _ = annotationService.addAnnotation(
+      audioFileID: audioFileID,
+      selection: selection,
+      stylePresetID: stylePresetID
+    )
   }
 
   private func dismissPopoverSelection() {

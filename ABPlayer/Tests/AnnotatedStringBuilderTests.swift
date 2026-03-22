@@ -1,13 +1,11 @@
+@testable import ABPlayerDev
 import AppKit
 import Foundation
 import Testing
 
-@testable import ABPlayerDev
-
 struct AnnotatedStringBuilderTests {
-
   @Test
-  func testPlainTextNoAnnotations() {
+  func plainTextNoAnnotations() {
     let builder = AnnotatedStringBuilder(
       fontSize: 16.0,
       defaultTextColor: .labelColor,
@@ -19,7 +17,7 @@ struct AnnotatedStringBuilderTests {
   }
 
   @Test
-  func testEmptyText() {
+  func emptyText() {
     let builder = AnnotatedStringBuilder(
       fontSize: 16.0,
       defaultTextColor: .labelColor,
@@ -31,8 +29,8 @@ struct AnnotatedStringBuilderTests {
   }
 
   @Test
-  func testFontApplied() {
-    let fontSize: Double = 20.0
+  func fontApplied() {
+    let fontSize = 20.0
     let builder = AnnotatedStringBuilder(
       fontSize: fontSize,
       defaultTextColor: .labelColor,
@@ -85,7 +83,7 @@ struct AnnotatedStringBuilderTests {
   }
 
   @Test
-  func testUnderlineStyleApplied() {
+  func underlineStyleApplied() {
     let annotation = makeAnnotation(kind: .underline, range: NSRange(location: 0, length: 5), selectedText: "Hello")
 
     let builder = AnnotatedStringBuilder(
@@ -99,6 +97,9 @@ struct AnnotatedStringBuilderTests {
 
     let underline = attributes[.underlineStyle] as? Int
     #expect(underline == NSUnderlineStyle.single.rawValue)
+    let underlineOffset =
+      (attributes[NSAttributedString.Key("abUnderlineDrawYOffset")] as? NSNumber)?.doubleValue
+    #expect(underlineOffset == 1.0)
 
     // Non-annotated text should remain default
     let normalAttributes = result.attributedString.attributes(at: 6, effectiveRange: nil)
@@ -107,7 +108,7 @@ struct AnnotatedStringBuilderTests {
   }
 
   @Test
-  func testBackgroundStyleApplied() {
+  func backgroundStyleApplied() {
     let annotation = makeAnnotation(kind: .background, range: NSRange(location: 6, length: 5), selectedText: "world")
 
     let builder = AnnotatedStringBuilder(
@@ -123,7 +124,7 @@ struct AnnotatedStringBuilderTests {
   }
 
   @Test
-  func testUnderlineAndBackgroundStyleApplied() {
+  func underlineAndBackgroundStyleApplied() {
     let annotation = makeAnnotation(kind: .underlineAndBackground, range: NSRange(location: 0, length: 11), selectedText: "Hello world")
 
     let builder = AnnotatedStringBuilder(
@@ -135,11 +136,14 @@ struct AnnotatedStringBuilderTests {
     let result = builder.build(text: "Hello world")
     let attributes = result.attributedString.attributes(at: 5, effectiveRange: nil)
     #expect((attributes[.underlineStyle] as? Int) == NSUnderlineStyle.single.rawValue)
+    let underlineOffset =
+      (attributes[NSAttributedString.Key("abUnderlineDrawYOffset")] as? NSNumber)?.doubleValue
+    #expect(underlineOffset == 1.0)
     #expect((attributes[.backgroundColor] as? NSColor) != nil)
   }
 
   @Test
-  func testMultipleAnnotations() {
+  func multipleAnnotations() {
     let annotations = [
       makeAnnotation(kind: .underline, range: NSRange(location: 0, length: 5), selectedText: "Hello"),
       makeAnnotation(kind: .background, range: NSRange(location: 6, length: 5), selectedText: "world"),
@@ -161,7 +165,7 @@ struct AnnotatedStringBuilderTests {
   }
 
   @Test
-  func testAnnotationOutOfBoundsIsSkipped() {
+  func annotationOutOfBoundsIsSkipped() {
     let annotation = makeAnnotation(kind: .underline, range: NSRange(location: 50, length: 10), selectedText: "overflow")
 
     let builder = AnnotatedStringBuilder(

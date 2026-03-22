@@ -17,8 +17,8 @@ struct AnnotationServiceTests {
   private func makeContext() throws -> TestContext {
     let schema = Schema([
       AnnotationStylePreset.self,
-      TextAnnotationGroup.self,
-      TextAnnotationSpan.self,
+      TextAnnotationGroupV2.self,
+      TextAnnotationSpanV2.self,
     ])
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
     let container = try ModelContainer(for: schema, configurations: config)
@@ -32,6 +32,7 @@ struct AnnotationServiceTests {
     let context = try makeContext()
     let service = context.service
     let style = context.styleService.defaultStyle()
+    let audioFileID = UUID()
     let cue1 = UUID()
     let cue2 = UUID()
 
@@ -44,7 +45,11 @@ struct AnnotationServiceTests {
       globalRange: NSRange(location: 0, length: 11)
     )
 
-    let created = service.addAnnotation(selection: selection, stylePresetID: style.id)
+    let created = service.addAnnotation(
+      audioFileID: audioFileID,
+      selection: selection,
+      stylePresetID: style.id
+    )
 
     #expect(created.count == 2)
     #expect(service.annotations(for: cue1).count == 1)
@@ -56,6 +61,7 @@ struct AnnotationServiceTests {
     let context = try makeContext()
     let service = context.service
     let style = context.styleService.defaultStyle()
+    let audioFileID = UUID()
     let cueID = UUID()
 
     let selection = CrossCueTextSelection(
@@ -64,7 +70,11 @@ struct AnnotationServiceTests {
       globalRange: NSRange(location: 0, length: 5)
     )
 
-    let created = service.addAnnotation(selection: selection, stylePresetID: style.id)
+    let created = service.addAnnotation(
+      audioFileID: audioFileID,
+      selection: selection,
+      stylePresetID: style.id
+    )
     guard let groupID = created.first?.groupID else {
       Issue.record("Expected group")
       return
@@ -83,6 +93,7 @@ struct AnnotationServiceTests {
     let service = context.service
     let styleA = context.styleService.defaultStyle()
     let styleB = context.styleService.addStyle(name: "Second", kind: .background)
+    let audioFileID = UUID()
     let cueID = UUID()
 
     let selection = CrossCueTextSelection(
@@ -91,7 +102,11 @@ struct AnnotationServiceTests {
       globalRange: NSRange(location: 0, length: 5)
     )
 
-    let created = service.addAnnotation(selection: selection, stylePresetID: styleA.id)
+    let created = service.addAnnotation(
+      audioFileID: audioFileID,
+      selection: selection,
+      stylePresetID: styleA.id
+    )
     guard let groupID = created.first?.groupID else {
       Issue.record("Expected group")
       return
@@ -107,6 +122,7 @@ struct AnnotationServiceTests {
     let context = try makeContext()
     let service = context.service
     let style = context.styleService.defaultStyle()
+    let audioFileID = UUID()
     let cueID = UUID()
 
     let selection = CrossCueTextSelection(
@@ -114,7 +130,7 @@ struct AnnotationServiceTests {
       fullText: "hello",
       globalRange: NSRange(location: 0, length: 5)
     )
-    _ = service.addAnnotation(selection: selection, stylePresetID: style.id)
+    _ = service.addAnnotation(audioFileID: audioFileID, selection: selection, stylePresetID: style.id)
 
     #expect(service.styleUsageCount(stylePresetID: style.id) == 1)
   }
@@ -124,6 +140,7 @@ struct AnnotationServiceTests {
     let context = try makeContext()
     let service = context.service
     let style = context.styleService.defaultStyle()
+    let audioFileID = UUID()
     let cue1 = UUID()
     let cue2 = UUID()
 
@@ -135,7 +152,11 @@ struct AnnotationServiceTests {
       fullText: "one\ntwo",
       globalRange: NSRange(location: 0, length: 7)
     )
-    let created = service.addAnnotation(selection: selection, stylePresetID: style.id)
+    let created = service.addAnnotation(
+      audioFileID: audioFileID,
+      selection: selection,
+      stylePresetID: style.id
+    )
     guard let groupID = created.first?.groupID else {
       Issue.record("Expected group")
       return

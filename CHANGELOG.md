@@ -1,3 +1,12 @@
+## [0.2.22.103] - 2026-03-22
+
+### Features
+- move to V2 persistence with stable cue IDs
+
+### Bug Fixes
+- stabilize underline rendering and subtitle edit UI input
+
+
 ## [0.2.21.102] - 2026-03-22
 
 ### Features

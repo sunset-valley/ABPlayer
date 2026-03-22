@@ -15,6 +15,7 @@ struct CueLayoutTests {
     let paragraphRange = NSRange(location: offset, length: prefixLen + textLen + 1)  // +1 for \n
     return CueLayout(
       cueID: UUID(),
+      endTime: 3.0,
       startTime: 1.0,
       cueText: String(repeating: "x", count: textLen),
       prefixRange: prefixRange,
