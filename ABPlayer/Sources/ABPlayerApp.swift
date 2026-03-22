@@ -110,7 +110,7 @@ struct ABPlayerApp: App {
   init() {
     let isUITesting =
       Self.hasLaunchArgument("--ui-testing")
-      || Self.hasLaunchEnvironment("ABP_UI_TESTING")
+        || Self.hasLaunchEnvironment("ABP_UI_TESTING")
 
     URLSessionProxyInjector.install(settings: proxySettings)
 
@@ -158,8 +158,11 @@ struct ABPlayerApp: App {
       )
       .appendingPathComponent("ABPlayer.sqlite")
 
-      if isUITesting || Self.shouldResetPersistentStoreForCurrentVersion() {
+      if isUITesting {
         try Self.deletePersistentStoreIfNeeded(at: storeURL)
+      } else if Self.shouldResetLegacyPersistentStoreForCurrentVersion() {
+        try Self.deletePersistentStoreIfNeeded(at: storeURL)
+        Self.markLegacyPersistentStoreResetCompleted()
       }
 
       let modelConfiguration = ModelConfiguration(url: storeURL)
@@ -274,13 +277,22 @@ struct ABPlayerApp: App {
     }
   }
 
-  private static func shouldResetPersistentStoreForCurrentVersion() -> Bool {
-    let targetVersion = "0.2.19"
+  private static func shouldResetLegacyPersistentStoreForCurrentVersion() -> Bool {
+    let hasReset = UserDefaults.standard.bool(
+      forKey: UserDefaultsKey.legacyPersistentStoreResetCompleted
+    )
+    guard !hasReset else { return false }
+
+    let targetVersion = "0.2.17"
     let currentVersion =
       (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
         ?? "0.0.0"
 
-    return currentVersion.compare(targetVersion, options: .numeric) != .orderedDescending
+    return currentVersion.compare(targetVersion, options: .numeric) == .orderedAscending
+  }
+
+  private static func markLegacyPersistentStoreResetCompleted() {
+    UserDefaults.standard.set(true, forKey: UserDefaultsKey.legacyPersistentStoreResetCompleted)
   }
 
   var body: some Scene {
