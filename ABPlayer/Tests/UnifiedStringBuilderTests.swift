@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import Testing
 
-@testable import ABPlayer
+@testable import ABPlayerDev
 
 struct UnifiedStringBuilderTests {
 
@@ -16,15 +16,13 @@ struct UnifiedStringBuilderTests {
     cues: [SubtitleCue],
     fontSize: Double = 16.0,
     activeCueID: UUID? = nil,
-    annotations: [UUID: [AnnotationDisplayData]] = [:],
-    colorConfig: AnnotationColorConfig = .default
+    annotations: [UUID: [AnnotationRenderData]] = [:]
   ) -> UnifiedStringBuilder {
     UnifiedStringBuilder(
       cues: cues,
       fontSize: fontSize,
       activeCueID: activeCueID,
-      annotationsProvider: { cueID in annotations[cueID] ?? [] },
-      colorConfig: colorConfig
+      annotationsProvider: { cueID in annotations[cueID] ?? [] }
     )
   }
 
@@ -157,128 +155,81 @@ struct UnifiedStringBuilderTests {
     #expect(bg2 == nil)
   }
 
-  // MARK: - Annotation colours
+  // MARK: - Annotation styles
 
-  @Test
-  func testVocabularyAnnotationColor() {
-    let cue = makeCue(startTime: 0, text: "Hello world")
-    let cueID = cue.id
-    let annotation = AnnotationDisplayData(
+  private func makeAnnotation(
+    kind: AnnotationStyleKind,
+    range: NSRange,
+    selectedText: String,
+    underlineHex: String = "#FF0000",
+    backgroundHex: String = "#00AAFF"
+  ) -> AnnotationRenderData {
+    AnnotationRenderData(
       id: UUID(),
-      type: .vocabulary,
-      range: NSRange(location: 0, length: 5),
-      selectedText: "Hello",
+      groupID: UUID(),
+      stylePresetID: UUID(),
+      styleName: "Style",
+      styleKind: kind,
+      underlineColorHex: underlineHex,
+      backgroundColorHex: backgroundHex,
+      range: range,
+      selectedText: selectedText,
       comment: nil
     )
+  }
+
+  @Test
+  func testUnderlineStyleAppliesUnderline() {
+    let cue = makeCue(startTime: 0, text: "Hello world")
+    let cueID = cue.id
+    let annotation = makeAnnotation(kind: .underline, range: NSRange(location: 0, length: 5), selectedText: "Hello")
     let result = makeBuilder(cues: [cue], annotations: [cueID: [annotation]]).build()
     let layout = result.layouts[0]
     let globalAnnotStart = layout.textRange.location
     let attrs = result.attributedString.attributes(at: globalAnnotStart, effectiveRange: nil)
-    let fgColor = attrs[.foregroundColor] as? NSColor
-    #expect(fgColor == .systemRed)
+    let underline = attrs[.underlineStyle] as? Int
+    #expect(underline == NSUnderlineStyle.single.rawValue)
   }
 
   @Test
-  func testCollocationAnnotationColor() {
+  func testBackgroundStyleAppliesBackground() {
     let cue = makeCue(startTime: 0, text: "Hello world")
     let cueID = cue.id
-    let annotation = AnnotationDisplayData(
-      id: UUID(),
-      type: .collocation,
-      range: NSRange(location: 6, length: 5),
-      selectedText: "world",
-      comment: nil
-    )
+    let annotation = makeAnnotation(kind: .background, range: NSRange(location: 6, length: 5), selectedText: "world")
     let result = makeBuilder(cues: [cue], annotations: [cueID: [annotation]]).build()
     let layout = result.layouts[0]
     let globalAnnotStart = layout.textRange.location + 6
     let attrs = result.attributedString.attributes(at: globalAnnotStart, effectiveRange: nil)
-    let fgColor = attrs[.foregroundColor] as? NSColor
-    #expect(fgColor == .systemBlue)
+    let bg = attrs[.backgroundColor] as? NSColor
+    #expect(bg != nil)
   }
 
   @Test
-  func testGoodSentenceAnnotationColor() {
+  func testUnderlineAndBackgroundAppliesBoth() {
     let cue = makeCue(startTime: 0, text: "Great sentence here")
     let cueID = cue.id
-    let annotation = AnnotationDisplayData(
-      id: UUID(),
-      type: .goodSentence,
-      range: NSRange(location: 0, length: 14),
-      selectedText: "Great sentence",
-      comment: nil
-    )
-    let result = makeBuilder(cues: [cue], annotations: [cueID: [annotation]]).build()
-    let layout = result.layouts[0]
-    let attrs = result.attributedString.attributes(at: layout.textRange.location, effectiveRange: nil)
-    let fgColor = attrs[.foregroundColor] as? NSColor
-    #expect(fgColor == .systemYellow)
-  }
-
-  @Test
-  func testAnnotationHasUnderline() {
-    let cue = makeCue(startTime: 0, text: "Hello")
-    let cueID = cue.id
-    let annotation = AnnotationDisplayData(
-      id: UUID(),
-      type: .vocabulary,
-      range: NSRange(location: 0, length: 5),
-      selectedText: "Hello",
-      comment: nil
-    )
+    let annotation = makeAnnotation(kind: .underlineAndBackground, range: NSRange(location: 0, length: 14), selectedText: "Great sentence")
     let result = makeBuilder(cues: [cue], annotations: [cueID: [annotation]]).build()
     let layout = result.layouts[0]
     let attrs = result.attributedString.attributes(at: layout.textRange.location, effectiveRange: nil)
     let underline = attrs[.underlineStyle] as? Int
+    let bg = attrs[.backgroundColor] as? NSColor
     #expect(underline == NSUnderlineStyle.single.rawValue)
+    #expect(bg != nil)
   }
 
   @Test
   func testOutOfBoundsAnnotationSkipped() {
     let cue = makeCue(startTime: 0, text: "Hi")
     let cueID = cue.id
-    let annotation = AnnotationDisplayData(
-      id: UUID(),
-      type: .vocabulary,
-      range: NSRange(location: 100, length: 10),
-      selectedText: "overflow",
-      comment: nil
-    )
+    let annotation = makeAnnotation(kind: .underline, range: NSRange(location: 100, length: 10), selectedText: "overflow")
     // Should not crash
     let result = makeBuilder(cues: [cue], annotations: [cueID: [annotation]]).build()
     #expect(result.layouts.count == 1)
     let layout = result.layouts[0]
     let attrs = result.attributedString.attributes(at: layout.textRange.location, effectiveRange: nil)
-    let fgColor = attrs[.foregroundColor] as? NSColor
-    // Default secondary colour — not annotation red
-    #expect(fgColor != .systemRed)
-  }
-
-  @Test
-  func testCustomColorConfig() {
-    let cue = makeCue(startTime: 0, text: "Test")
-    let cueID = cue.id
-    let annotation = AnnotationDisplayData(
-      id: UUID(),
-      type: .vocabulary,
-      range: NSRange(location: 0, length: 4),
-      selectedText: "Test",
-      comment: nil
-    )
-    let customConfig = AnnotationColorConfig(
-      vocabulary: .systemOrange,
-      collocation: .systemGreen,
-      goodSentence: .systemPurple
-    )
-    let result = makeBuilder(
-      cues: [cue],
-      annotations: [cueID: [annotation]],
-      colorConfig: customConfig
-    ).build()
-    let layout = result.layouts[0]
-    let attrs = result.attributedString.attributes(at: layout.textRange.location, effectiveRange: nil)
-    let fgColor = attrs[.foregroundColor] as? NSColor
-    #expect(fgColor == .systemOrange)
+    let underline = attrs[.underlineStyle] as? Int
+    #expect(underline == nil)
   }
 
   // MARK: - Font

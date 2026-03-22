@@ -2,7 +2,7 @@ import AVFoundation
 import Foundation
 import Testing
 
-@testable import ABPlayer
+@testable import ABPlayerDev
 
 // MARK: - A-B Loop Logic Tests
 

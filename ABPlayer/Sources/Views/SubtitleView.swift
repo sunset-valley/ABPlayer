@@ -7,6 +7,7 @@ import SwiftUI
 struct SubtitleView: View {
   @Environment(PlayerManager.self) private var playerManager
   @Environment(AnnotationService.self) private var annotationService
+  @Environment(AnnotationStyleService.self) private var annotationStyleService
   @Environment(TranscriptionSettings.self) private var transcriptionSettings
 
   let cues: [SubtitleCue]
@@ -21,7 +22,7 @@ struct SubtitleView: View {
 
   // Comment-editor sheet state (opened from annotation menu)
   @State private var isShowingCommentEditor = false
-  @State private var commentEditingAnnotation: AnnotationDisplayData?
+  @State private var commentEditingAnnotation: AnnotationRenderData?
   @State private var popoverAnchors: TranscriptTextView.PopoverAnchors?
   @State private var popoverContentSize: CGSize = .zero
 
@@ -44,8 +45,7 @@ struct SubtitleView: View {
         activeCueID: output.currentCueID,
         isUserScrolling: output.scrollState.isUserScrolling,
         textSelection: output.textSelection,
-        colorConfig: .default,
-        annotationVersion: annotationService.version,
+        annotationVersion: annotationService.version + annotationStyleService.version,
         annotationsProvider: { annotationService.annotations(for: $0) },
         onSelectionChanged: { selection in
           viewModel.handleTextSelection(
@@ -102,7 +102,7 @@ struct SubtitleView: View {
 
               popoverContent(output: output)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(minWidth: 200, maxWidth: 280, alignment: .leading)
+                .frame(minWidth: 320, maxWidth: 420, alignment: .leading)
                 .background {
                   GeometryReader { proxy in
                     Color.clear
@@ -207,8 +207,9 @@ struct SubtitleView: View {
       AnnotationMenuView(
         selectedText: selectedText,
         existingAnnotation: existingAnnotation,
-        onAnnotate: { type in
-          createAnnotation(from: output.textSelection, type: type)
+        styles: annotationStyleService.allStyles(),
+        onAnnotate: { styleID in
+          createAnnotation(from: output.textSelection, stylePresetID: styleID)
         },
         onEditComment: {
           if let annotation = existingAnnotation {
@@ -216,9 +217,9 @@ struct SubtitleView: View {
             isShowingCommentEditor = true
           }
         },
-        onChangeType: { type in
+        onChangeStyle: { styleID in
           if let annotation = existingAnnotation {
-            annotationService.updateType(groupID: annotation.groupID, type: type)
+            annotationService.updateStyle(groupID: annotation.groupID, stylePresetID: styleID)
           }
         },
         onDelete: {
@@ -254,7 +255,7 @@ struct SubtitleView: View {
 
   private func existingAnnotationForPopover(
     output: SubtitleViewModel.Output
-  ) -> AnnotationDisplayData? {
+  ) -> AnnotationRenderData? {
     if case let .annotationSelected(groupID, _) = output.textSelection {
       return annotationService.annotations(inGroup: groupID).first
     }
@@ -264,19 +265,10 @@ struct SubtitleView: View {
   /// Create one annotation per cue segment (supports cross-cue selections).
   private func createAnnotation(
     from state: SubtitleViewModel.TextSelectionState,
-    type: AnnotationType
+    stylePresetID: UUID
   ) {
     guard case let .selecting(selection) = state else { return }
-    let groupID = UUID()
-    for segment in selection.segments {
-      annotationService.addAnnotation(
-        cueID: segment.cueID,
-        groupID: groupID,
-        range: segment.localRange,
-        selectedText: segment.text,
-        type: type
-      )
-    }
+    _ = annotationService.addAnnotation(selection: selection, stylePresetID: stylePresetID)
   }
 
   private func dismissPopoverSelection() {
@@ -324,8 +316,8 @@ struct SubtitleView: View {
   ) {
     let margin: CGFloat = 10
     let gap: CGFloat = 12
-    let maxUsableWidth = max(220, min(360, containerSize.width - margin * 2))
-    let width = min(max(popoverContentSize.width, 220), maxUsableWidth)
+    let maxUsableWidth = max(260, min(440, containerSize.width - margin * 2))
+    let width = min(max(popoverContentSize.width, 320), maxUsableWidth)
     let height = max(popoverContentSize.height, 180)
 
     let preferredX = anchor.x - width / 2

@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 import Testing
 
-@testable import ABPlayer
+@testable import ABPlayerDev
 
 // MARK: - Repeat All Tests
 

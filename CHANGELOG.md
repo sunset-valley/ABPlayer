@@ -1,3 +1,20 @@
+## [0.2.20.101] - 2026-03-22
+
+### Features
+- unify style menu and route tests through ABPlayerDev
+
+### Bug Fixes
+- move actions to a scrollable top row and widen popover
+- reset legacy store only once before 0.2.17
+
+### Improvements
+- open style management in dedicated window
+- move to shared style preset architecture
+
+### Chores
+- add ui testing gate playbook
+
+
 ## [0.2.19.100] - 2026-03-21
 
 ### Improvements

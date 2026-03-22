@@ -208,6 +208,11 @@ Tests live in `ABPlayer/Tests/` and cover:
 - **Transcript rendering**: attributed string building, cross-cue selection, cue layout (`AnnotatedStringBuilderTests`, `UnifiedStringBuilderTests`, `CrossCueTextSelectionTests`, `CueLayoutTests`)
 - **Transcription**: state machine, settings, manager logic (`TranscriptionTests`)
 
+UI tests live in `ABPlayer/UITests/` and are a required quality gate:
+
+- **Annotation menu interaction**: add style, rename style, kind switch, and delete protection (`AnnotationMenuUITests`)
+- **Run command**: `tuist test -- -derivedDataPath "$HOME/Library/Developer/Xcode/DerivedData"`
+
 ## Related Docs
 
 - [Agent entry and rule map](../../CLAUDE.md)

@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import ABPlayer
+@testable import ABPlayerDev
 
 // NOTE: TranscriptionCacheTests removed - hash function replaced by audioFileId
 

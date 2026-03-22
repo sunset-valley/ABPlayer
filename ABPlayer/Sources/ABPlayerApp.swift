@@ -86,25 +86,48 @@ struct ABPlayerApp: App {
   private let librarySettings = LibrarySettings()
   private let playerSettings = PlayerSettings()
   private let proxySettings = ProxySettings()
+  private let annotationStyleService: AnnotationStyleService
   private let annotationService: AnnotationService
   private let subtitleLoader = SubtitleLoader()
 
   private let queueManager: TranscriptionQueueManager
   private let updater = SparkleUpdater()
 
+  private var isAnnotationDemoUITesting: Bool {
+    Self.hasLaunchArgument("--ui-testing-annotation-demo")
+      || Self.hasLaunchEnvironment("ABP_UI_TESTING_ANNOTATION_DEMO")
+  }
+
+  private static func hasLaunchArgument(_ argument: String) -> Bool {
+    ProcessInfo.processInfo.arguments.contains(argument)
+  }
+
+  private static func hasLaunchEnvironment(_ key: String) -> Bool {
+    guard let value = ProcessInfo.processInfo.environment[key] else { return false }
+    return value == "1" || value.lowercased() == "true"
+  }
+
   init() {
+    let isUITesting =
+      Self.hasLaunchArgument("--ui-testing")
+        || Self.hasLaunchEnvironment("ABP_UI_TESTING")
+
     URLSessionProxyInjector.install(settings: proxySettings)
 
-    let config = TelemetryDeck.Config(appID: "A4A99FD4-3F84-49FA-AF97-0806D61D0539")
-    TelemetryDeck.initialize(config: config)
+    if !isUITesting {
+      let config = TelemetryDeck.Config(appID: "A4A99FD4-3F84-49FA-AF97-0806D61D0539")
+      TelemetryDeck.initialize(config: config)
+    }
 
     do {
-      SentrySDK.start { (options: Sentry.Options) in
-        options.dsn =
-          "https://0e00826ef2b3fbc195fb428a468fd995@o4504292283580416.ingest.us.sentry.io/4510502660341760"
-        options.debug = false
-        options.enableAppHangTracking = false
-        options.sendDefaultPii = true
+      if !isUITesting {
+        SentrySDK.start { (options: Sentry.Options) in
+          options.dsn =
+            "https://0e00826ef2b3fbc195fb428a468fd995@o4504292283580416.ingest.us.sentry.io/4510502660341760"
+          options.debug = false
+          options.enableAppHangTracking = false
+          options.sendDefaultPii = true
+        }
       }
 
       let schema = Schema([
@@ -116,7 +139,9 @@ struct ABPlayerApp: App {
         SubtitleFile.self,
         Transcription.self,
         Vocabulary.self,
-        TextAnnotation.self,
+        AnnotationStylePreset.self,
+        TextAnnotationGroup.self,
+        TextAnnotationSpan.self,
       ])
 
       guard let appSupportDir = FileManager.default.urls(
@@ -133,8 +158,11 @@ struct ABPlayerApp: App {
       )
       .appendingPathComponent("ABPlayer.sqlite")
 
-      if Self.shouldResetPersistentStoreForCurrentVersion() {
+      if isUITesting {
         try Self.deletePersistentStoreIfNeeded(at: storeURL)
+      } else if Self.shouldResetLegacyPersistentStoreForCurrentVersion() {
+        try Self.deletePersistentStoreIfNeeded(at: storeURL)
+        Self.markLegacyPersistentStoreResetCompleted()
       }
 
       let modelConfiguration = ModelConfiguration(url: storeURL)
@@ -142,7 +170,11 @@ struct ABPlayerApp: App {
       modelContainer.mainContext.autosaveEnabled = true
 
       sessionTracker = SessionTracker(modelContainer: modelContainer)
-      annotationService = AnnotationService(modelContext: modelContainer.mainContext)
+      annotationStyleService = AnnotationStyleService(modelContext: modelContainer.mainContext)
+      annotationService = AnnotationService(
+        modelContext: modelContainer.mainContext,
+        styleService: annotationStyleService
+      )
 
       queueManager = TranscriptionQueueManager(
         transcriptionManager: transcriptionManager,
@@ -245,32 +277,48 @@ struct ABPlayerApp: App {
     }
   }
 
-  private static func shouldResetPersistentStoreForCurrentVersion() -> Bool {
+  private static func shouldResetLegacyPersistentStoreForCurrentVersion() -> Bool {
+    let hasReset = UserDefaults.standard.bool(
+      forKey: UserDefaultsKey.legacyPersistentStoreResetCompleted
+    )
+    guard !hasReset else { return false }
+
     let targetVersion = "0.2.17"
     let currentVersion =
       (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
         ?? "0.0.0"
 
-    return currentVersion.compare(targetVersion, options: .numeric) != .orderedDescending
+    return currentVersion.compare(targetVersion, options: .numeric) == .orderedAscending
+  }
+
+  private static func markLegacyPersistentStoreResetCompleted() {
+    UserDefaults.standard.set(true, forKey: UserDefaultsKey.legacyPersistentStoreResetCompleted)
   }
 
   var body: some Scene {
     WindowGroup {
-      MainSplitView()
-        .focusEffectDisabled()
-        .onChange(of: playerSettings.preventSleep) {
-          playerManager.updateSleepPrevention()
+      Group {
+        if isAnnotationDemoUITesting {
+          AnnotationMenuDemoView()
+        } else {
+          MainSplitView()
         }
-        .environment(playerManager)
-        .environment(sessionTracker)
-        .environment(transcriptionManager)
-        .environment(transcriptionSettings)
-        .environment(librarySettings)
-        .environment(playerSettings)
-        .environment(proxySettings)
-        .environment(queueManager)
-        .environment(annotationService)
-        .environment(subtitleLoader)
+      }
+      .focusEffectDisabled()
+      .onChange(of: playerSettings.preventSleep) {
+        playerManager.updateSleepPrevention()
+      }
+      .environment(playerManager)
+      .environment(sessionTracker)
+      .environment(transcriptionManager)
+      .environment(transcriptionSettings)
+      .environment(librarySettings)
+      .environment(playerSettings)
+      .environment(proxySettings)
+      .environment(queueManager)
+      .environment(annotationStyleService)
+      .environment(annotationService)
+      .environment(subtitleLoader)
     }
     .defaultSize(width: 1600, height: 900)
     .windowResizability(.contentSize)
@@ -305,9 +353,19 @@ struct ABPlayerApp: App {
           .environment(librarySettings)
           .environment(playerSettings)
           .environment(proxySettings)
+          .environment(annotationStyleService)
           .environment(transcriptionManager)
           .environment(updater)
       }
+      .defaultPosition(.center)
+      .commandsRemoved()
+
+      WindowGroup(id: "annotation-style-manager") {
+        AnnotationStyleManagerView()
+          .environment(annotationStyleService)
+          .environment(annotationService)
+      }
+      .defaultSize(width: 640, height: 480)
       .defaultPosition(.center)
       .commandsRemoved()
     #endif

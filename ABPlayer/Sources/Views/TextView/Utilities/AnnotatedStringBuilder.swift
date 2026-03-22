@@ -5,8 +5,7 @@ import Foundation
 struct AnnotatedStringBuilder {
   let fontSize: Double
   let defaultTextColor: NSColor
-  let annotations: [AnnotationDisplayData]
-  let colorConfig: AnnotationColorConfig
+  let annotations: [AnnotationRenderData]
 
   struct Result {
     let attributedString: NSAttributedString
@@ -38,28 +37,8 @@ struct AnnotatedStringBuilder {
             range.location + range.length <= nsString.length
       else { continue }
 
-      let color = colorConfig.color(for: annotation.type)
-
-      result.addAttribute(
-        .backgroundColor,
-        value: color.withAlphaComponent(0.15),
-        range: range
-      )
-      result.addAttribute(
-        .underlineStyle,
-        value: NSUnderlineStyle.single.rawValue,
-        range: range
-      )
-      result.addAttribute(
-        .underlineColor,
-        value: color.withAlphaComponent(0.6),
-        range: range
-      )
-      result.addAttribute(
-        .foregroundColor,
-        value: color,
-        range: range
-      )
+      let style = AnnotationStyleResolver.resolve(annotation)
+      AnnotationAttributeApplicator.apply(style: style, to: result, range: range)
     }
 
     return Result(attributedString: result)

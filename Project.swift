@@ -1,7 +1,7 @@
 import ProjectDescription
 
-let buildVersionString = "100"
-let shortVersionString = "0.2.19"
+let buildVersionString = "101"
+let shortVersionString = "0.2.20"
 let project = Project(
   name: "ABPlayer",
   settings: .settings(
@@ -96,7 +96,29 @@ let project = Project(
       buildableFolders: [
         "ABPlayer/Tests",
       ],
-      dependencies: [.target(name: "ABPlayer")]
+      dependencies: [.target(name: "ABPlayerDev")]
     ),
+    .target(
+      name: "ABPlayerUITests",
+      destinations: .macOS,
+      product: .uiTests,
+      bundleId: "cc.ihugo.app.ABPlayerUITests",
+      deploymentTargets: .macOS("26.0"),
+      infoPlist: .default,
+      buildableFolders: [
+        "ABPlayer/UITests",
+      ],
+      dependencies: [.target(name: "ABPlayerDev")]
+    ),
+  ],
+  schemes: [
+    .scheme(
+      name: "ABPlayerDev",
+      shared: true,
+      buildAction: .buildAction(targets: ["ABPlayerDev"]),
+      testAction: .targets(["ABPlayerTests", "ABPlayerUITests"]),
+      runAction: .runAction(executable: "ABPlayerDev"),
+      archiveAction: .archiveAction(configuration: .release)
+    )
   ]
 )
