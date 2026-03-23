@@ -103,6 +103,11 @@ struct ABPlayerApp: App {
       || Self.hasLaunchEnvironment("ABP_UI_TESTING_SUBTITLE_EDIT")
   }
 
+  private var isTranscriptScrollUITesting: Bool {
+    Self.hasLaunchArgument("--ui-testing-transcript-scroll")
+      || Self.hasLaunchEnvironment("ABP_UI_TESTING_TRANSCRIPT_SCROLL")
+  }
+
   private static func hasLaunchArgument(_ argument: String) -> Bool {
     ProcessInfo.processInfo.arguments.contains(argument)
   }
@@ -312,7 +317,9 @@ struct ABPlayerApp: App {
   var body: some Scene {
     WindowGroup {
       Group {
-        if isSubtitleEditUITesting {
+        if isTranscriptScrollUITesting {
+          TranscriptScrollDemoView()
+        } else if isSubtitleEditUITesting {
           SubtitleEditDemoView()
         } else if isAnnotationDemoUITesting {
           AnnotationMenuDemoView()

@@ -1,3 +1,9 @@
+## [0.2.25.106] - 2026-03-23
+
+### Bug Fixes
+- stabilize scroll sizing and add UI regression coverage
+
+
 ## [0.2.24.105] - 2026-03-22
 
 ### Bug Fixes

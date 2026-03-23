@@ -13,6 +13,19 @@ struct SubtitleView: View {
   let cues: [SubtitleCue]
   let fontSize: Double
   let onEditSubtitle: (UUID, String) -> Void
+  let onScrollMetricsChanged: (TranscriptTextView.ScrollMetrics) -> Void
+
+  init(
+    cues: [SubtitleCue],
+    fontSize: Double,
+    onEditSubtitle: @escaping (UUID, String) -> Void,
+    onScrollMetricsChanged: @escaping (TranscriptTextView.ScrollMetrics) -> Void = { _ in }
+  ) {
+    self.cues = cues
+    self.fontSize = fontSize
+    self.onEditSubtitle = onEditSubtitle
+    self.onScrollMetricsChanged = onScrollMetricsChanged
+  }
 
   @State private var viewModel = SubtitleViewModel(playerManager: nil)
 
@@ -78,7 +91,8 @@ struct SubtitleView: View {
         },
         onEditSubtitleRequested: { cueID in
           editingCueID = cueID
-        }
+        },
+        onScrollMetricsChanged: onScrollMetricsChanged
       )
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .overlay(alignment: .topLeading) {
