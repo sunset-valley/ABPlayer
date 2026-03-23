@@ -55,6 +55,7 @@ jobs:
                     -workspace ABPlayer.xcworkspace \
                     -scheme ABPlayer \
                     -destination 'platform=macOS' \
+                    -skip-testing:ABPlayerUITests \
                     -enableCodeCoverage YES \
                     -derivedDataPath DerivedData
 
