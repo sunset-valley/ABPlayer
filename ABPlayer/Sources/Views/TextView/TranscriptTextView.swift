@@ -16,6 +16,17 @@ import SwiftUI
 ///   auto-scrolling.
 struct TranscriptTextView: NSViewRepresentable {
 
+  struct ScrollMetrics: Equatable {
+    let offsetY: CGFloat
+    let maxOffsetY: CGFloat
+    let documentHeight: CGFloat
+    let visibleHeight: CGFloat
+
+    var isAtBottom: Bool {
+      maxOffsetY <= 1 || offsetY >= maxOffsetY - 1
+    }
+  }
+
   struct PopoverAnchors: Equatable {
     let bottom: CGPoint
     let top: CGPoint
@@ -39,6 +50,7 @@ struct TranscriptTextView: NSViewRepresentable {
   let onCueTap: (UUID, Double) -> Void
   let onUserScrolled: () -> Void
   let onEditSubtitleRequested: (UUID) -> Void
+  var onScrollMetricsChanged: (ScrollMetrics) -> Void = { _ in }
 
   // MARK: - NSViewRepresentable
 
@@ -90,12 +102,14 @@ struct TranscriptTextView: NSViewRepresentable {
   func updateNSView(_ scrollView: NSScrollView, context: Context) {
     let coordinator = context.coordinator
     guard let textView = scrollView.documentView as? TranscriptNSTextView else { return }
+    let documentWidth = max(1, scrollView.contentView.bounds.width)
 
     // Snapshot old state before mutating
     let oldActiveCueID = coordinator.activeCueID
     let activeCueChanged = oldActiveCueID != activeCueID
     let wasUserScrolling = coordinator.isUserScrolling
     let resumingAutoScroll = wasUserScrolling && !isUserScrolling
+    let widthChanged = abs(coordinator.lastDocumentWidth - documentWidth) > 0.5
 
     // Full rebuild needed when cues, font, or annotations change — but NOT
     // just because the active cue advanced. Active-cue changes use the fast
@@ -123,13 +137,21 @@ struct TranscriptTextView: NSViewRepresentable {
     coordinator.onCueTap = onCueTap
     coordinator.onUserScrolled = onUserScrolled
     coordinator.onEditSubtitleRequested = onEditSubtitleRequested
+    coordinator.onScrollMetricsChanged = onScrollMetricsChanged
+    coordinator.lastDocumentWidth = documentWidth
 
     if needsFullRebuild {
-      coordinator.rebuildAttributedString(in: textView)
-    } else if activeCueChanged {
-      // Fast path: swap highlight on old and new paragraphs only
-      coordinator.updateActiveCueHighlight(
-        from: oldActiveCueID, to: activeCueID, in: textView)
+      coordinator.rebuildAttributedString(in: textView, documentWidth: documentWidth)
+    } else {
+      if widthChanged {
+        coordinator.updateDocumentSize(in: textView, documentWidth: documentWidth)
+      }
+
+      if activeCueChanged {
+        // Fast path: swap highlight on old and new paragraphs only
+        coordinator.updateActiveCueHighlight(
+          from: oldActiveCueID, to: activeCueID, in: textView)
+      }
     }
 
     // Sync selection highlight from SwiftUI state → NSTextView
@@ -144,6 +166,8 @@ struct TranscriptTextView: NSViewRepresentable {
     if !isUserScrolling, let cueID = activeCueID {
       coordinator.scrollToActiveCue(cueID, in: scrollView)
     }
+
+    coordinator.publishScrollMetrics(in: scrollView)
   }
 
   func makeCoordinator() -> Coordinator {
@@ -158,7 +182,8 @@ struct TranscriptTextView: NSViewRepresentable {
       onAnnotationTapped: onAnnotationTapped,
       onCueTap: onCueTap,
       onUserScrolled: onUserScrolled,
-      onEditSubtitleRequested: onEditSubtitleRequested
+      onEditSubtitleRequested: onEditSubtitleRequested,
+      onScrollMetricsChanged: onScrollMetricsChanged
     )
   }
 
@@ -183,6 +208,7 @@ struct TranscriptTextView: NSViewRepresentable {
     var onCueTap: (UUID, Double) -> Void
     var onUserScrolled: () -> Void
     var onEditSubtitleRequested: (UUID) -> Void
+    var onScrollMetricsChanged: (ScrollMetrics) -> Void
 
     // Build cache
     var layouts: [CueLayout] = []
@@ -199,6 +225,12 @@ struct TranscriptTextView: NSViewRepresentable {
     // Scroll deduplication
     var lastScrolledCueID: UUID?
     var didNotifyUserScroll = false
+    var lastDocumentWidth: CGFloat = 0
+
+    // Coalesces scroll-metrics delivery onto the next main-actor turn so
+    // SwiftUI state updates in clients do not occur during NSView updates.
+    var pendingScrollMetrics: ScrollMetrics?
+    var isScrollMetricsDeliveryScheduled = false
 
     // MARK: Init
 
@@ -213,7 +245,8 @@ struct TranscriptTextView: NSViewRepresentable {
       onAnnotationTapped: @escaping (UUID, CrossCueTextSelection, AnnotationRenderData) -> Void,
       onCueTap: @escaping (UUID, Double) -> Void,
       onUserScrolled: @escaping () -> Void,
-      onEditSubtitleRequested: @escaping (UUID) -> Void
+      onEditSubtitleRequested: @escaping (UUID) -> Void,
+      onScrollMetricsChanged: @escaping (ScrollMetrics) -> Void
     ) {
       self.cues = cues
       self.cueIDs = cues.map(\.id)
@@ -227,11 +260,12 @@ struct TranscriptTextView: NSViewRepresentable {
       self.onCueTap = onCueTap
       self.onUserScrolled = onUserScrolled
       self.onEditSubtitleRequested = onEditSubtitleRequested
+      self.onScrollMetricsChanged = onScrollMetricsChanged
     }
 
     // MARK: - Build
 
-    func rebuildAttributedString(in textView: TranscriptNSTextView) {
+    func rebuildAttributedString(in textView: TranscriptNSTextView, documentWidth: CGFloat) {
       let builder = UnifiedStringBuilder(
         cues: cues,
         fontSize: fontSize,
@@ -243,11 +277,32 @@ struct TranscriptTextView: NSViewRepresentable {
       layouts = result.layouts
 
       textView.textStorage?.setAttributedString(result.attributedString)
+      updateDocumentSize(in: textView, documentWidth: documentWidth)
 
       // Clear stale selection state after a full rebuild
       activeSelectionRange = nil
       selectionHighlightRange = nil
       lastScrolledCueID = nil
+    }
+
+    func updateDocumentSize(in textView: TranscriptNSTextView, documentWidth: CGFloat) {
+      guard let layoutManager = textView.layoutManager,
+        let textContainer = textView.textContainer
+      else { return }
+
+      let targetWidth = max(1, documentWidth)
+      if abs(textView.frame.width - targetWidth) > 0.5 {
+        textView.setFrameSize(NSSize(width: targetWidth, height: textView.frame.height))
+      }
+
+      layoutManager.ensureLayout(for: textContainer)
+      let usedRect = layoutManager.usedRect(for: textContainer)
+      let inset = textView.textContainerInset
+      let contentHeight = max(1, ceil(usedRect.height + inset.height * 2))
+
+      if abs(textView.frame.height - contentHeight) > 0.5 {
+        textView.setFrameSize(NSSize(width: targetWidth, height: contentHeight))
+      }
     }
 
     // MARK: - Selection sync
@@ -668,9 +723,43 @@ struct TranscriptTextView: NSViewRepresentable {
     // MARK: - Scroll notification
 
     @objc func handleLiveScroll(_ notification: Notification) {
-      guard !didNotifyUserScroll else { return }
-      didNotifyUserScroll = true
-      onUserScrolled()
+      guard let scrollView = notification.object as? NSScrollView else { return }
+
+      if !didNotifyUserScroll {
+        didNotifyUserScroll = true
+        onUserScrolled()
+      }
+
+      publishScrollMetrics(in: scrollView)
+    }
+
+    func publishScrollMetrics(in scrollView: NSScrollView) {
+      guard let textView = scrollView.documentView as? TranscriptNSTextView else { return }
+
+      let visibleHeight = max(1, scrollView.contentView.bounds.height)
+      let documentHeight = max(1, textView.frame.height)
+      let maxOffsetY = max(0, documentHeight - visibleHeight)
+      let offsetY = max(0, min(scrollView.contentView.bounds.origin.y, maxOffsetY))
+
+      pendingScrollMetrics = ScrollMetrics(
+        offsetY: offsetY,
+        maxOffsetY: maxOffsetY,
+        documentHeight: documentHeight,
+        visibleHeight: visibleHeight
+      )
+
+      guard !isScrollMetricsDeliveryScheduled else { return }
+      isScrollMetricsDeliveryScheduled = true
+
+      Task { @MainActor [weak self] in
+        guard let self else { return }
+
+        self.isScrollMetricsDeliveryScheduled = false
+        guard let metrics = self.pendingScrollMetrics else { return }
+        self.pendingScrollMetrics = nil
+
+        self.onScrollMetricsChanged(metrics)
+      }
     }
   }
 }
