@@ -275,10 +275,41 @@ jobs:
                   OPENLIST_TOKEN: ${{ secrets.OPENLIST_TOKEN }}
               run: |
                   MODIFIED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-                  COMMON_JSON_TEMPLATE='{"id":1,"mount_path":"%s","order":0,"driver":"GitHub Releases","cache_expiration":30,"custom_cache_policies":"","status":"work","addition":"{\"root_folder_path\":\"\",\"repo_structure\":\"sunset-valley/ABPlayer\",\"show_readme\":false,\"token\":\"\",\"show_source_code\":false,\"show_all_version\":false,\"gh_proxy\":\"https://gh-proxy.com/github.com\"}","remark":"","modified":"%s","disabled":false,"disable_index":true,"enable_sign":false,"order_by":"","order_direction":"","extract_folder":"front","web_proxy":false,"webdav_policy":"302_redirect","proxy_range":false,"down_proxy_url":"","disable_proxy_sign":false}'
+                  COMMON_ADDITION='{"root_folder_path":"","repo_structure":"sunset-valley/ABPlayer","show_readme":false,"token":"","show_source_code":false,"show_all_version":false,"gh_proxy":"https://gh-proxy.com/github.com"}'
 
-                  PAYLOAD_RELEASE_1=$(printf "$COMMON_JSON_TEMPLATE" "/ABPlayerRelease1" "$MODIFIED_AT")
-                  PAYLOAD_RELEASE=$(printf "$COMMON_JSON_TEMPLATE" "/ABPlayerRelease" "$MODIFIED_AT")
+                  build_payload() {
+                    local mount_path="$1"
+                    jq -cn \
+                      --arg mount_path "$mount_path" \
+                      --arg modified "$MODIFIED_AT" \
+                      --arg addition "$COMMON_ADDITION" \
+                      '{
+                        id: 1,
+                        mount_path: $mount_path,
+                        order: 0,
+                        driver: "GitHub Releases",
+                        cache_expiration: 30,
+                        custom_cache_policies: "",
+                        status: "work",
+                        addition: $addition,
+                        remark: "",
+                        modified: $modified,
+                        disabled: false,
+                        disable_index: true,
+                        enable_sign: false,
+                        order_by: "",
+                        order_direction: "",
+                        extract_folder: "front",
+                        web_proxy: false,
+                        webdav_policy: "302_redirect",
+                        proxy_range: false,
+                        down_proxy_url: "",
+                        disable_proxy_sign: false
+                      }'
+                  }
+
+                  PAYLOAD_RELEASE_1="$(build_payload "/ABPlayerRelease1")"
+                  PAYLOAD_RELEASE="$(build_payload "/ABPlayerRelease")"
 
                   curl -s -X POST https://s3.kcoding.cn/api/admin/storage/update -H "Authorization: $OPENLIST_TOKEN" -H "Content-Type: application/json;charset=UTF-8" --data-raw "$PAYLOAD_RELEASE_1"
                   curl -s -X POST https://s3.kcoding.cn/api/admin/storage/update -H "Authorization: $OPENLIST_TOKEN" -H "Content-Type: application/json;charset=UTF-8" --data-raw "$PAYLOAD_RELEASE"
