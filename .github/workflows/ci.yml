@@ -274,7 +274,14 @@ jobs:
               env:
                   OPENLIST_TOKEN: ${{ secrets.OPENLIST_TOKEN }}
               run: |
-                  curl -s -X POST https://s3.kcoding.cn/api/admin/storage/load_all --header "Authorization: $OPENLIST_TOKEN"
+                  MODIFIED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+                  COMMON_JSON_TEMPLATE='{"id":1,"mount_path":"%s","order":0,"driver":"GitHub Releases","cache_expiration":30,"custom_cache_policies":"","status":"work","addition":"{\"root_folder_path\":\"\",\"repo_structure\":\"sunset-valley/ABPlayer\",\"show_readme\":false,\"token\":\"\",\"show_source_code\":false,\"show_all_version\":false,\"gh_proxy\":\"https://gh-proxy.com/github.com\"}","remark":"","modified":"%s","disabled":false,"disable_index":true,"enable_sign":false,"order_by":"","order_direction":"","extract_folder":"front","web_proxy":false,"webdav_policy":"302_redirect","proxy_range":false,"down_proxy_url":"","disable_proxy_sign":false}'
+
+                  PAYLOAD_RELEASE_1=$(printf "$COMMON_JSON_TEMPLATE" "/ABPlayerRelease1" "$MODIFIED_AT")
+                  PAYLOAD_RELEASE=$(printf "$COMMON_JSON_TEMPLATE" "/ABPlayerRelease" "$MODIFIED_AT")
+
+                  curl -s -X POST https://s3.kcoding.cn/api/admin/storage/update -H "Authorization: $OPENLIST_TOKEN" -H "Content-Type: application/json;charset=UTF-8" --data-raw "$PAYLOAD_RELEASE_1"
+                  curl -s -X POST https://s3.kcoding.cn/api/admin/storage/update -H "Authorization: $OPENLIST_TOKEN" -H "Content-Type: application/json;charset=UTF-8" --data-raw "$PAYLOAD_RELEASE"
 
             - name: Send Telegram Notification
               if: steps.compare_versions.outputs.should_release == 'true'
