@@ -1,3 +1,15 @@
+## [0.2.24.105] - 2026-03-22
+
+### Bug Fixes
+- build Refresh S3 payload via jq
+
+### Chores
+- 0.2.23
+
+### Other
+- Add LICENSE file (#150)
+
+
 ## [0.2.23.104] - 2026-03-22
 
 ### Chores
