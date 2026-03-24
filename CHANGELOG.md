@@ -1,3 +1,9 @@
+## [0.2.28.110] - 2026-03-24
+
+### Features
+- implement collection and note creation functionality with UI integration
+
+
 ## [0.2.27.109] - 2026-03-24
 
 ### Features
