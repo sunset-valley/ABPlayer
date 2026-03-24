@@ -311,10 +311,10 @@ final class NotesBrowserService {
     let groups = allAnnotationGroups()
       .filter { $0.audioFileID == mediaID }
       .sorted {
-        if $0.updatedAt == $1.updatedAt {
-          return $0.createdAt < $1.createdAt
+        if $0.createdAt == $1.createdAt {
+          return $0.id.uuidString < $1.id.uuidString
         }
-        return $0.updatedAt > $1.updatedAt
+        return $0.createdAt < $1.createdAt
       }
     let mediaName = findMedia(id: mediaID)?.displayName
 
@@ -395,7 +395,7 @@ final class NotesBrowserService {
 
   func csvString(forNoteID noteID: UUID, filter: NotesBrowserEntryFilter = .all) throws -> String {
     let entries = try filteredEntries(forNoteID: noteID, filter: filter)
-    var rows: [String] = ["title,note"]
+    var rows = ["title,note"]
     rows.reserveCapacity(entries.count + 1)
 
     for entry in entries {
@@ -413,7 +413,7 @@ final class NotesBrowserService {
     }
 
     let entries = filteredEntries(forMediaID: mediaID, filter: filter)
-    var rows: [String] = ["title,note"]
+    var rows = ["title,note"]
     rows.reserveCapacity(entries.count + 1)
 
     for entry in entries {
@@ -501,7 +501,7 @@ final class NotesBrowserService {
     switch filter {
     case .all:
       return entries
-    case .stylePreset(let stylePresetID):
+    case let .stylePreset(stylePresetID):
       return entries.filter { $0.stylePresetID == stylePresetID }
     }
   }

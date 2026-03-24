@@ -115,7 +115,7 @@ final class TranscriptScrollUITests: XCTestCase {
 
   @MainActor
   private func scrollToBottom(scrollView: XCUIElement) {
-    for _ in 0 ..< 24 {
+    for _ in 0 ..< 12 {
       scrollView.swipeUp()
     }
   }
