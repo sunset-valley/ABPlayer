@@ -147,6 +147,8 @@ struct NotesBrowserView: View {
       List(viewModel.output.entries) { entry in
         entryRow(entry)
       }
+      .listStyle(.plain)
+      .scrollContentBackground(.hidden)
       .accessibilityIdentifier("notes-browser-right-list")
       .overlay {
         if viewModel.output.entries.isEmpty {
@@ -170,17 +172,21 @@ struct NotesBrowserView: View {
     .pickerStyle(.segmented)
     .accessibilityIdentifier("notes-browser-right-filter-picker")
     .disabled(viewModel.output.entryFilterOptions.count <= 1)
-    .padding(.horizontal)
-    .padding(.top, 8)
+    .padding(.horizontal, 12)
+    .padding(.top, 10)
+    .padding(.bottom, 2)
   }
 
   private func entryRow(_ entry: NotesBrowserEntry) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(alignment: .top, spacing: 8) {
         Image(systemName: entry.kind == .annotation ? "highlighter" : "square.and.pencil")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(entry.kind == .annotation ? Color.asset.appAccent : Color.asset.textSecondary)
+          .font(.body)
         Text(entry.title)
-          .font(.headline)
+          .bodyStyle()
+          .fontWeight(.medium)
+          .lineLimit(3)
 
         Spacer(minLength: 8)
 
@@ -189,17 +195,43 @@ struct NotesBrowserView: View {
 
       if let note = entry.note, !note.isEmpty {
         Text(note)
-          .font(.body)
+          .font(.sm)
+          .foregroundStyle(Color.asset.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
+          .lineLimit(5)
+          .padding(8)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+              .fill(Color.asset.bgSecondary.opacity(0.5))
+          )
       }
 
-      if let mediaName = entry.mediaName {
-        Label(mediaName, systemImage: "play.rectangle")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+      HStack(spacing: 12) {
+        if let stylePresetName = entry.stylePresetName {
+          Label(stylePresetName, systemImage: "paintbrush.pointed")
+            .captionStyle()
+        }
+        if let mediaName = entry.mediaName {
+          Label(mediaName, systemImage: "play.rectangle")
+            .captionStyle()
+        }
+        Spacer(minLength: 0)
+        Text(entry.updatedAt ?? entry.createdAt, style: .relative)
+          .captionStyle()
       }
     }
-    .padding(.vertical, 4)
+    .padding(10)
+    .background(
+      RoundedRectangle(cornerRadius: 10, style: .continuous)
+        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.72))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 10, style: .continuous)
+        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 1)
+    )
+    .listRowSeparator(.hidden)
+    .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
   }
 
   private func editNoteButton(for entry: NotesBrowserEntry) -> some View {
@@ -207,7 +239,7 @@ struct NotesBrowserView: View {
       noteEntryToEdit = entry
     } label: {
       Label(entry.note == nil ? "Add Note" : "Edit Note", systemImage: "square.and.pencil")
-        .font(.caption)
+        .captionStyle()
     }
     .buttonStyle(.borderless)
     .help(entry.note == nil ? "Add Note" : "Edit Note")
