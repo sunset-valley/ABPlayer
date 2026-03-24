@@ -88,6 +88,7 @@ struct ABPlayerApp: App {
   private let proxySettings = ProxySettings()
   private let annotationStyleService: AnnotationStyleService
   private let annotationService: AnnotationService
+  private let notesBrowserService: NotesBrowserService
   private let subtitleLoader = SubtitleLoader()
 
   private let queueManager: TranscriptionQueueManager
@@ -161,6 +162,10 @@ struct ABPlayerApp: App {
         TextAnnotationSpan.self,
         TextAnnotationGroupV2.self,
         TextAnnotationSpanV2.self,
+        NoteCollection.self,
+        Note.self,
+        NoteEntry.self,
+        NoteAnnotationLink.self,
       ])
 
       guard let appSupportDir = FileManager.default.urls(
@@ -194,6 +199,7 @@ struct ABPlayerApp: App {
         modelContext: modelContainer.mainContext,
         styleService: annotationStyleService
       )
+      notesBrowserService = NotesBrowserService(modelContext: modelContainer.mainContext)
 
       queueManager = TranscriptionQueueManager(
         transcriptionManager: transcriptionManager,
@@ -341,6 +347,7 @@ struct ABPlayerApp: App {
       .environment(queueManager)
       .environment(annotationStyleService)
       .environment(annotationService)
+      .environment(notesBrowserService)
       .environment(subtitleLoader)
     }
     .defaultSize(width: 1600, height: 900)
@@ -348,6 +355,7 @@ struct ABPlayerApp: App {
     .modelContainer(modelContainer)
     .commands {
       SettingsCommands()
+      NotesBrowserCommands()
       PluginCommands()
       CommandGroup(replacing: .appInfo) {
         Button("About ABPlayer") {
@@ -391,6 +399,14 @@ struct ABPlayerApp: App {
       .defaultSize(width: 640, height: 480)
       .defaultPosition(.center)
       .commandsRemoved()
+
+      WindowGroup(id: "notes-browser") {
+        NotesBrowserView()
+          .environment(notesBrowserService)
+      }
+      .defaultSize(width: 1280, height: 820)
+      .defaultPosition(.center)
+      .commandsRemoved()
     #endif
   }
 }
@@ -405,6 +421,21 @@ struct PluginCommands: Commands {
           plugin.open()
         }
       }
+    }
+  }
+}
+
+// MARK: - Notes Browser Commands
+
+struct NotesBrowserCommands: Commands {
+  @Environment(\.openWindow) private var openWindow
+
+  var body: some Commands {
+    CommandMenu("Window") {
+      Button("Notes Browser") {
+        openWindow(id: "notes-browser")
+      }
+      .keyboardShortcut("n", modifiers: [.command, .shift])
     }
   }
 }
