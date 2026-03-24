@@ -11,6 +11,9 @@ final class TextAnnotationGroupV2 {
   var createdAt: Date
   var updatedAt: Date
 
+  @Relationship(deleteRule: .cascade, inverse: \NoteAnnotationLink.annotationGroup)
+  var noteLinks: [NoteAnnotationLink] = []
+
   init(
     id: UUID = UUID(),
     audioFileID: UUID,

@@ -1,3 +1,30 @@
+## [0.2.26.108] - 2026-03-23
+
+### Features
+- add windowed notes browser with SwiftData-backed notes
+
+### Bug Fixes
+- enable csv export for media annotations
+
+### Chores
+- move command menu and add ui-test postmortem
+- document transcript scroll regression
+- skip UI tests in CI runs
+
+
+## [0.2.26.107] - 2026-03-23
+
+### Features
+- add windowed notes browser with SwiftData-backed notes
+
+### Bug Fixes
+- enable csv export for media annotations
+
+### Chores
+- move command menu and add ui-test postmortem
+- document transcript scroll regression
+
+
 ## [0.2.25.106] - 2026-03-23
 
 ### Bug Fixes
