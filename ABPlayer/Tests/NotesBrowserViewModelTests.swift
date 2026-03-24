@@ -15,6 +15,7 @@ struct NotesBrowserViewModelTests {
   @MainActor
   private func makeContext() throws -> TestContext {
     let schema = Schema([
+      AnnotationStylePreset.self,
       ABFile.self,
       TextAnnotationGroupV2.self,
       TextAnnotationSpanV2.self,
@@ -44,13 +45,14 @@ struct NotesBrowserViewModelTests {
   private func insertAnnotationGroup(
     container: ModelContainer,
     mediaID: UUID,
+    stylePresetID: UUID = UUID(),
     text: String,
     comment: String?
   ) throws -> TextAnnotationGroupV2 {
     let now = Date()
     let group = TextAnnotationGroupV2(
       audioFileID: mediaID,
-      stylePresetID: UUID(),
+      stylePresetID: stylePresetID,
       selectedTextSnapshot: text,
       comment: comment,
       createdAt: now,
@@ -146,5 +148,63 @@ struct NotesBrowserViewModelTests {
     #expect(mediaOutput.middleMode == .media)
     #expect(mediaOutput.selectedMiddleItem == .media(media.id))
     #expect(mediaOutput.exportSelection?.kind == .media(mediaID: media.id, mediaName: media.displayName))
+  }
+
+  @Test @MainActor
+  func testEntryFilterOptionsAndFilteringByStylePreset() throws {
+    let context = try makeContext()
+    let media = makeMediaFile(name: "video.mp4", type: .video)
+    context.container.mainContext.insert(media)
+
+    let styleA = AnnotationStylePreset(
+      name: "Style A",
+      kind: .underline,
+      underlineColorHex: "#ff0000",
+      backgroundColorHex: "#00000000",
+      sortOrder: 0
+    )
+    let styleB = AnnotationStylePreset(
+      name: "Style B",
+      kind: .background,
+      underlineColorHex: "#00ff00",
+      backgroundColorHex: "#0000ff",
+      sortOrder: 1
+    )
+    context.container.mainContext.insert(styleA)
+    context.container.mainContext.insert(styleB)
+
+    _ = try insertAnnotationGroup(
+      container: context.container,
+      mediaID: media.id,
+      stylePresetID: styleA.id,
+      text: "A",
+      comment: "a"
+    )
+    _ = try insertAnnotationGroup(
+      container: context.container,
+      mediaID: media.id,
+      stylePresetID: styleB.id,
+      text: "B",
+      comment: "b"
+    )
+
+    let viewModel = NotesBrowserViewModel()
+    viewModel.configureIfNeeded(notesService: context.service)
+    _ = viewModel.transform(input: .init(event: .onAppear))
+
+    let output = viewModel.transform(input: .init(event: .selectMiddleItem(.media(media.id))))
+
+    #expect(output.entryFilterOptions.count == 3)
+    #expect(output.entryFilterOptions.contains(where: { $0.filter == .all }))
+    #expect(output.entryFilterOptions.contains(where: { $0.filter == .stylePreset(styleA.id) }))
+    #expect(output.entryFilterOptions.contains(where: { $0.filter == .stylePreset(styleB.id) }))
+    #expect(output.entries.count == 2)
+
+    let filtered = viewModel.transform(input: .init(event: .selectEntryFilter(.stylePreset(styleA.id))))
+
+    #expect(filtered.selectedEntryFilter == .stylePreset(styleA.id))
+    #expect(filtered.entries.count == 1)
+    #expect(filtered.entries.first?.stylePresetID == styleA.id)
+    #expect(filtered.exportFilter == .stylePreset(styleA.id))
   }
 }

@@ -429,6 +429,8 @@ struct ABPlayerApp: App {
   private var notesBrowserWindowScene: some Scene {
     Window("Notes Browser", id: "notes-browser") {
       NotesBrowserView()
+        .environment(annotationStyleService)
+        .environment(annotationService)
         .environment(notesBrowserService)
     }
     .defaultSize(width: 1280, height: 820)

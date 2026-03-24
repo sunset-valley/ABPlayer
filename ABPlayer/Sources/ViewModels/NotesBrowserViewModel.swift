@@ -51,12 +51,32 @@ final class NotesBrowserViewModel {
     case note(UUID)
   }
 
+  enum EntryFilter: Hashable {
+    case all
+    case stylePreset(UUID)
+  }
+
+  struct EntryFilterOption: Identifiable, Hashable {
+    let filter: EntryFilter
+    let title: String
+
+    var id: String {
+      switch filter {
+      case .all:
+        return "all"
+      case .stylePreset(let stylePresetID):
+        return "style-\(stylePresetID.uuidString.lowercased())"
+      }
+    }
+  }
+
   struct Input {
     enum Event {
       case onAppear
       case refresh
       case selectSource(Source?)
       case selectMiddleItem(MiddleSelection?)
+      case selectEntryFilter(EntryFilter)
     }
 
     let event: Event
@@ -102,7 +122,10 @@ final class NotesBrowserViewModel {
     let leftSections: [LeftSourceSection]
     let middleMode: MiddleMode
     let middleItems: [MiddleListItem]
+    let entryFilterOptions: [EntryFilterOption]
+    let selectedEntryFilter: EntryFilter
     let entries: [NotesBrowserEntry]
+    let exportFilter: NotesBrowserEntryFilter
     let exportSelection: ExportSelection?
     let selectedSource: Source?
     let selectedMiddleItem: MiddleSelection?
@@ -114,17 +137,22 @@ final class NotesBrowserViewModel {
   private(set) var output: Output
   private var selectedSource: Source?
   private var selectedMiddleItem: MiddleSelection?
+  private var selectedEntryFilter: EntryFilter
 
   init() {
     output = Output(
       leftSections: [],
       middleMode: .media,
       middleItems: [],
+      entryFilterOptions: [.init(filter: .all, title: "All")],
+      selectedEntryFilter: .all,
       entries: [],
+      exportFilter: .all,
       exportSelection: nil,
       selectedSource: nil,
       selectedMiddleItem: nil
     )
+    selectedEntryFilter = .all
   }
 
   func configureIfNeeded(notesService: NotesBrowserService) {
@@ -149,6 +177,9 @@ final class NotesBrowserViewModel {
     case .selectMiddleItem(let item):
       selectedMiddleItem = item
       reloadState()
+    case .selectEntryFilter(let filter):
+      selectedEntryFilter = filter
+      reloadState()
     }
 
     return output
@@ -160,7 +191,10 @@ final class NotesBrowserViewModel {
           leftSections: [],
           middleMode: .media,
           middleItems: [],
+          entryFilterOptions: [.init(filter: .all, title: "All")],
+          selectedEntryFilter: .all,
           entries: [],
+          exportFilter: .all,
           exportSelection: nil,
           selectedSource: nil,
           selectedMiddleItem: nil
@@ -184,7 +218,10 @@ final class NotesBrowserViewModel {
       selectedMiddleItem = middleItems.first?.selection
     }
 
-    let entries = buildEntries(notesService: notesService, for: selectedMiddleItem)
+    let allEntries = buildEntries(notesService: notesService, for: selectedMiddleItem)
+    let entryFilterOptions = buildEntryFilterOptions(entries: allEntries)
+    selectedEntryFilter = validatedEntryFilter(from: selectedEntryFilter, options: entryFilterOptions)
+    let entries = filterEntries(allEntries, with: selectedEntryFilter)
     let exportSelection = resolveExportSelection(
       selectedMiddleItem: selectedMiddleItem,
       middleItems: middleItems
@@ -194,7 +231,10 @@ final class NotesBrowserViewModel {
       leftSections: leftSections,
       middleMode: middleMode,
       middleItems: middleItems,
+      entryFilterOptions: entryFilterOptions,
+      selectedEntryFilter: selectedEntryFilter,
       entries: entries,
+      exportFilter: exportFilter(from: selectedEntryFilter),
       exportSelection: exportSelection,
       selectedSource: selectedSource,
       selectedMiddleItem: selectedMiddleItem
@@ -307,6 +347,54 @@ final class NotesBrowserViewModel {
       return notesService.entries(forMediaID: mediaID)
     case .note(let noteID):
       return (try? notesService.entries(forNoteID: noteID)) ?? []
+    }
+  }
+
+  private func buildEntryFilterOptions(entries: [NotesBrowserEntry]) -> [EntryFilterOption] {
+    var stylesByID: [UUID: String] = [:]
+    for entry in entries {
+      guard let stylePresetID = entry.stylePresetID else { continue }
+      let styleName = entry.stylePresetName?.trimmingCharacters(in: .whitespacesAndNewlines)
+      if let styleName, !styleName.isEmpty {
+        stylesByID[stylePresetID] = styleName
+      } else if stylesByID[stylePresetID] == nil {
+        stylesByID[stylePresetID] = "Style"
+      }
+    }
+
+    let styleOptions = stylesByID
+      .map { stylePresetID, styleName in
+        EntryFilterOption(filter: .stylePreset(stylePresetID), title: styleName)
+      }
+      .sorted { lhs, rhs in
+        lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+      }
+
+    return [EntryFilterOption(filter: .all, title: "All")] + styleOptions
+  }
+
+  private func validatedEntryFilter(from filter: EntryFilter, options: [EntryFilterOption]) -> EntryFilter {
+    guard options.contains(where: { $0.filter == filter }) else {
+      return .all
+    }
+    return filter
+  }
+
+  private func filterEntries(_ entries: [NotesBrowserEntry], with filter: EntryFilter) -> [NotesBrowserEntry] {
+    switch filter {
+    case .all:
+      return entries
+    case .stylePreset(let stylePresetID):
+      return entries.filter { $0.stylePresetID == stylePresetID }
+    }
+  }
+
+  private func exportFilter(from filter: EntryFilter) -> NotesBrowserEntryFilter {
+    switch filter {
+    case .all:
+      return .all
+    case .stylePreset(let stylePresetID):
+      return .stylePreset(stylePresetID)
     }
   }
 

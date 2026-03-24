@@ -167,4 +167,37 @@ struct AnnotationServiceTests {
     #expect(service.annotations(for: cue2).isEmpty)
     #expect(service.annotations(inGroup: groupID).isEmpty)
   }
+
+  @Test @MainActor
+  func testAddAnnotationSnapshotUsesSegmentsTextInsteadOfFullText() throws {
+    let context = try makeContext()
+    let service = context.service
+    let style = context.styleService.defaultStyle()
+    let audioFileID = UUID()
+    let cue1 = UUID()
+    let cue2 = UUID()
+
+    let selection = CrossCueTextSelection(
+      segments: [
+        .init(cueID: cue1, localRange: NSRange(location: 0, length: 5), text: "hello"),
+        .init(cueID: cue2, localRange: NSRange(location: 0, length: 5), text: "world"),
+      ],
+      fullText: "0:01\thello\n0:02\tworld",
+      globalRange: NSRange(location: 0, length: 22)
+    )
+
+    let created = service.addAnnotation(
+      audioFileID: audioFileID,
+      selection: selection,
+      stylePresetID: style.id
+    )
+
+    #expect(created.count == 2)
+    guard let first = created.first else {
+      Issue.record("Expected created annotation")
+      return
+    }
+    #expect(first.selectedText == "hello\nworld")
+    #expect(!first.selectedText.contains("0:01"))
+  }
 }

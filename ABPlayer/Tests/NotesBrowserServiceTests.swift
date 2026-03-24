@@ -1,11 +1,9 @@
+@testable import ABPlayerDev
 import Foundation
 import SwiftData
 import Testing
 
-@testable import ABPlayerDev
-
 struct NotesBrowserServiceTests {
-
   @MainActor
   private struct TestContext {
     let container: ModelContainer
@@ -58,10 +56,11 @@ struct NotesBrowserServiceTests {
     context: TestContext,
     mediaID: UUID,
     cueID: UUID,
+    stylePresetID: UUID? = nil,
     selectedText: String,
     comment: String?
   ) -> UUID {
-    let style = context.styleService.defaultStyle()
+    let resolvedStylePresetID = stylePresetID ?? context.styleService.defaultStyle().id
     let selection = CrossCueTextSelection(
       segments: [
         .init(
@@ -70,7 +69,7 @@ struct NotesBrowserServiceTests {
           cueEndTime: 1,
           localRange: NSRange(location: 0, length: max(1, selectedText.count)),
           text: selectedText
-        )
+        ),
       ],
       fullText: selectedText,
       globalRange: NSRange(location: 0, length: max(1, selectedText.count))
@@ -79,7 +78,7 @@ struct NotesBrowserServiceTests {
     let created = context.annotationService.addAnnotation(
       audioFileID: mediaID,
       selection: selection,
-      stylePresetID: style.id
+      stylePresetID: resolvedStylePresetID
     )
 
     guard let groupID = created.first?.groupID else {
@@ -95,7 +94,7 @@ struct NotesBrowserServiceTests {
   }
 
   @Test @MainActor
-  func testCreateCollectionRejectsDuplicateNameCaseInsensitive() throws {
+  func createCollectionRejectsDuplicateNameCaseInsensitive() throws {
     let context = try makeContext()
 
     _ = try context.notesService.createCollection(name: "Study")
@@ -109,7 +108,7 @@ struct NotesBrowserServiceTests {
   }
 
   @Test @MainActor
-  func testCreateNoteRejectsDuplicateTitleWithinSameCollection() throws {
+  func createNoteRejectsDuplicateTitleWithinSameCollection() throws {
     let context = try makeContext()
     let collection = try context.notesService.createCollection(name: "French")
 
@@ -124,7 +123,7 @@ struct NotesBrowserServiceTests {
   }
 
   @Test @MainActor
-  func testCreateNoteAllowsSameTitleInDifferentCollections() throws {
+  func createNoteAllowsSameTitleInDifferentCollections() throws {
     let context = try makeContext()
     let c1 = try context.notesService.createCollection(name: "A")
     let c2 = try context.notesService.createCollection(name: "B")
@@ -136,7 +135,7 @@ struct NotesBrowserServiceTests {
   }
 
   @Test @MainActor
-  func testAddAnnotationToNoteRejectsDuplicateLink() throws {
+  func addAnnotationToNoteRejectsDuplicateLink() throws {
     let context = try makeContext()
     let media = makeMediaFile(name: "track.mp3", type: .audio)
     context.container.mainContext.insert(media)
@@ -163,7 +162,7 @@ struct NotesBrowserServiceTests {
   }
 
   @Test @MainActor
-  func testSameAnnotationCanBeLinkedToMultipleNotes() throws {
+  func sameAnnotationCanBeLinkedToMultipleNotes() throws {
     let context = try makeContext()
     let media = makeMediaFile(name: "track.mp3", type: .audio)
     context.container.mainContext.insert(media)
@@ -192,7 +191,7 @@ struct NotesBrowserServiceTests {
   }
 
   @Test @MainActor
-  func testDeleteCollectionCascadesNotesEntriesAndLinks() throws {
+  func deleteCollectionCascadesNotesEntriesAndLinks() throws {
     let context = try makeContext()
     let media = makeMediaFile(name: "track.mp3", type: .audio)
     context.container.mainContext.insert(media)
@@ -228,7 +227,7 @@ struct NotesBrowserServiceTests {
   }
 
   @Test @MainActor
-  func testDeleteAnnotationCleansUpLinks() throws {
+  func deleteAnnotationCleansUpLinks() throws {
     let context = try makeContext()
     let media = makeMediaFile(name: "track.mp3", type: .audio)
     context.container.mainContext.insert(media)
@@ -253,7 +252,7 @@ struct NotesBrowserServiceTests {
   }
 
   @Test @MainActor
-  func testEntriesForNoteReturnsMixedSortedItems() throws {
+  func entriesForNoteReturnsMixedSortedItems() throws {
     let context = try makeContext()
     let media = makeMediaFile(name: "video.mp4", type: .video)
     context.container.mainContext.insert(media)
@@ -284,7 +283,7 @@ struct NotesBrowserServiceTests {
   }
 
   @Test @MainActor
-  func testMediaWithAnnotationsFiltersByType() throws {
+  func mediaWithAnnotationsFiltersByType() throws {
     let context = try makeContext()
 
     let audio = makeMediaFile(name: "audio.mp3", type: .audio)
@@ -320,7 +319,7 @@ struct NotesBrowserServiceTests {
   }
 
   @Test @MainActor
-  func testEditingAnnotationCommentReflectsInNoteEntries() throws {
+  func editingAnnotationCommentReflectsInNoteEntries() throws {
     let context = try makeContext()
     let media = makeMediaFile(name: "video.mp4", type: .video)
     context.container.mainContext.insert(media)
@@ -345,7 +344,29 @@ struct NotesBrowserServiceTests {
   }
 
   @Test @MainActor
-  func testCSVExportForNoteIncludesCustomAndAnnotationRows() throws {
+  func updateCustomEntryCanUpdateAndClearNote() throws {
+    let context = try makeContext()
+    let collection = try context.notesService.createCollection(name: "Study")
+    let note = try context.notesService.createNote(collectionID: collection.id, title: "Lesson")
+    let entry = try context.notesService.createCustomEntry(noteID: note.id, title: "Custom", note: "before")
+
+    try context.notesService.updateCustomEntry(entryID: entry.id, title: "Custom", note: "after")
+
+    var entries = try context.notesService.entries(forNoteID: note.id)
+    #expect(entries.count == 1)
+    #expect(entries.first?.kind == .custom)
+    #expect(entries.first?.note == "after")
+
+    try context.notesService.updateCustomEntry(entryID: entry.id, title: "Custom", note: "   ")
+
+    entries = try context.notesService.entries(forNoteID: note.id)
+    #expect(entries.count == 1)
+    #expect(entries.first?.kind == .custom)
+    #expect(entries.first?.note == nil)
+  }
+
+  @Test @MainActor
+  func cSVExportForNoteIncludesCustomAndAnnotationRows() throws {
     let context = try makeContext()
     let media = makeMediaFile(name: "video.mp4", type: .video)
     context.container.mainContext.insert(media)
@@ -380,7 +401,7 @@ struct NotesBrowserServiceTests {
   }
 
   @Test @MainActor
-  func testCSVExportThrowsForMissingNote() throws {
+  func cSVExportThrowsForMissingNote() throws {
     let context = try makeContext()
 
     #expect(
@@ -392,7 +413,7 @@ struct NotesBrowserServiceTests {
   }
 
   @Test @MainActor
-  func testCSVExportForMediaIncludesAnnotationRows() throws {
+  func cSVExportForMediaIncludesAnnotationRows() throws {
     let context = try makeContext()
     let media = makeMediaFile(name: "audio.mp3", type: .audio)
     context.container.mainContext.insert(media)
@@ -415,7 +436,136 @@ struct NotesBrowserServiceTests {
   }
 
   @Test @MainActor
-  func testCSVExportThrowsForMissingMedia() throws {
+  func entriesIncludeStylePresetMetadataForAnnotations() throws {
+    let context = try makeContext()
+    let media = makeMediaFile(name: "audio.mp3", type: .audio)
+    context.container.mainContext.insert(media)
+
+    let customStyle = context.styleService.addStyle(name: "My Style", kind: .underline)
+    let groupID = createAnnotationGroup(
+      context: context,
+      mediaID: media.id,
+      cueID: UUID(),
+      stylePresetID: customStyle.id,
+      selectedText: "styled",
+      comment: "note"
+    )
+
+    let mediaEntries = context.notesService.entries(forMediaID: media.id)
+    #expect(mediaEntries.count == 1)
+    #expect(mediaEntries.first?.annotationGroupID == groupID)
+    #expect(mediaEntries.first?.stylePresetID == customStyle.id)
+    #expect(mediaEntries.first?.stylePresetName == "My Style")
+  }
+
+  @Test @MainActor
+  func entriesForMediaSortByCreatedAtDescendingIgnoringUpdatedAt() throws {
+    let context = try makeContext()
+    let media = makeMediaFile(name: "audio.mp3", type: .audio)
+    context.container.mainContext.insert(media)
+
+    let now = Date()
+    let olderCreatedAt = now.addingTimeInterval(-120)
+    let newerCreatedAt = now.addingTimeInterval(-60)
+
+    let firstGroup = TextAnnotationGroupV2(
+      audioFileID: media.id,
+      stylePresetID: UUID(),
+      selectedTextSnapshot: "older",
+      comment: "older comment",
+      createdAt: olderCreatedAt,
+      updatedAt: now
+    )
+    let secondGroup = TextAnnotationGroupV2(
+      audioFileID: media.id,
+      stylePresetID: UUID(),
+      selectedTextSnapshot: "newer",
+      comment: "newer comment",
+      createdAt: newerCreatedAt,
+      updatedAt: now.addingTimeInterval(-300)
+    )
+    context.container.mainContext.insert(firstGroup)
+    context.container.mainContext.insert(secondGroup)
+    try context.container.mainContext.save()
+
+    let entries = context.notesService.entries(forMediaID: media.id)
+
+    #expect(entries.count == 2)
+    #expect(entries.map(\.title) == ["older", "newer"])
+    #expect(entries.map(\.createdAt) == [olderCreatedAt, newerCreatedAt])
+  }
+
+  @Test @MainActor
+  func cSVExportForNoteCanFilterByStylePreset() throws {
+    let context = try makeContext()
+    let media = makeMediaFile(name: "video.mp4", type: .video)
+    context.container.mainContext.insert(media)
+
+    let styleA = context.styleService.addStyle(name: "Style A", kind: .underline)
+    let styleB = context.styleService.addStyle(name: "Style B", kind: .background)
+    let groupA = createAnnotationGroup(
+      context: context,
+      mediaID: media.id,
+      cueID: UUID(),
+      stylePresetID: styleA.id,
+      selectedText: "A",
+      comment: "note A"
+    )
+    _ = createAnnotationGroup(
+      context: context,
+      mediaID: media.id,
+      cueID: UUID(),
+      stylePresetID: styleB.id,
+      selectedText: "B",
+      comment: "note B"
+    )
+
+    let collection = try context.notesService.createCollection(name: "Study")
+    let note = try context.notesService.createNote(collectionID: collection.id, title: "Lesson")
+    _ = try context.notesService.createCustomEntry(noteID: note.id, title: "Custom", note: "body")
+    _ = try context.notesService.addAnnotationToNote(noteID: note.id, annotationGroupID: groupA)
+
+    let filtered = try context.notesService.csvString(
+      forNoteID: note.id,
+      filter: .stylePreset(styleA.id)
+    )
+    #expect(filtered == "title,note\nA,note A")
+  }
+
+  @Test @MainActor
+  func cSVExportForMediaCanFilterByStylePreset() throws {
+    let context = try makeContext()
+    let media = makeMediaFile(name: "audio.mp3", type: .audio)
+    context.container.mainContext.insert(media)
+
+    let styleA = context.styleService.addStyle(name: "Style A", kind: .underline)
+    let styleB = context.styleService.addStyle(name: "Style B", kind: .background)
+    _ = createAnnotationGroup(
+      context: context,
+      mediaID: media.id,
+      cueID: UUID(),
+      stylePresetID: styleA.id,
+      selectedText: "A",
+      comment: "note A"
+    )
+    _ = createAnnotationGroup(
+      context: context,
+      mediaID: media.id,
+      cueID: UUID(),
+      stylePresetID: styleB.id,
+      selectedText: "B",
+      comment: "note B"
+    )
+
+    let filtered = try context.notesService.csvString(
+      forMediaID: media.id,
+      filter: .stylePreset(styleB.id)
+    )
+    #expect(filtered == "title,note\nB,note B")
+  }
+
+  @Test @MainActor
+  func cSVExportThrowsForMissingMedia() throws {
     let context = try makeContext()
 
     #expect(

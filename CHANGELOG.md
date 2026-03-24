@@ -1,3 +1,13 @@
+## [0.2.27.109] - 2026-03-24
+
+### Features
+- refresh entry list styling for better scanability
+- add entry filtering by style preset and enhance note editing
+
+### Improvements
+- optimize sorting logic and improve test function naming
+
+
 ## [0.2.26.108] - 2026-03-23
 
 ### Features
