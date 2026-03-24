@@ -10,11 +10,15 @@ import SwiftUI
 @MainActor
 struct NotesBrowserView: View {
   @Environment(NotesBrowserService.self) private var notesService
+  @Environment(AnnotationService.self) private var annotationService
+  @Environment(AnnotationStyleService.self) private var annotationStyleService
 
   @State private var viewModel = NotesBrowserViewModel()
   @State private var sourceSelection: NotesBrowserViewModel.Source?
   @State private var middleSelection: NotesBrowserViewModel.MiddleSelection?
-  @State private var exportErrorMessage: String?
+  @State private var entryFilterSelection: NotesBrowserViewModel.EntryFilter = .all
+  @State private var noteEntryToEdit: NotesBrowserEntry?
+  @State private var errorMessage: String?
 
   var body: some View {
     NavigationSplitView {
@@ -37,6 +41,12 @@ struct NotesBrowserView: View {
     .onChange(of: middleSelection) { _, newValue in
       applyOutput(viewModel.transform(input: .init(event: .selectMiddleItem(newValue))))
     }
+    .onChange(of: entryFilterSelection) { _, newValue in
+      applyOutput(viewModel.transform(input: .init(event: .selectEntryFilter(newValue))))
+    }
+    .onChange(of: annotationStyleService.version) { _, _ in
+      applyOutput(viewModel.transform(input: .init(event: .refresh)))
+    }
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
         Button {
@@ -48,13 +58,21 @@ struct NotesBrowserView: View {
         .accessibilityIdentifier("notes-browser-export-csv-button")
       }
     }
+    .sheet(item: $noteEntryToEdit) { entry in
+      NotesBrowserNoteEditorView(
+        entryTitle: entry.title,
+        existingNote: entry.note
+      ) { updatedNote in
+        updateNote(updatedNote, for: entry)
+      }
+    }
     .alert(
-      "Export Failed",
-      isPresented: .constant(exportErrorMessage != nil),
-      presenting: exportErrorMessage
+      "Action Failed",
+      isPresented: .constant(errorMessage != nil),
+      presenting: errorMessage
     ) { _ in
       Button("OK", role: .cancel) {
-        exportErrorMessage = nil
+        errorMessage = nil
       }
     } message: { message in
       Text(message)
@@ -123,44 +141,90 @@ struct NotesBrowserView: View {
   }
 
   private var rightColumn: some View {
-    List(viewModel.output.entries) { entry in
-      VStack(alignment: .leading, spacing: 8) {
-        HStack(spacing: 8) {
-          Image(systemName: entry.kind == .annotation ? "highlighter" : "square.and.pencil")
-            .foregroundStyle(.secondary)
-          Text(entry.title)
-            .font(.headline)
-        }
+    VStack(alignment: .leading, spacing: 8) {
+      entryFilterPicker
 
-        if let note = entry.note, !note.isEmpty {
-          Text(note)
-            .font(.body)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-
-        if let mediaName = entry.mediaName {
-          Label(mediaName, systemImage: "play.rectangle")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+      List(viewModel.output.entries) { entry in
+        entryRow(entry)
+      }
+      .accessibilityIdentifier("notes-browser-right-list")
+      .overlay {
+        if viewModel.output.entries.isEmpty {
+          ContentUnavailableView(
+            "No Entries",
+            systemImage: "text.alignleft",
+            description: Text("Select media or note to view entries.")
+          )
         }
       }
-      .padding(.vertical, 4)
     }
-    .accessibilityIdentifier("notes-browser-right-list")
-    .overlay {
-      if viewModel.output.entries.isEmpty {
-        ContentUnavailableView(
-          "No Entries",
-          systemImage: "text.alignleft",
-          description: Text("Select media or note to view entries.")
-        )
+  }
+
+  private var entryFilterPicker: some View {
+    Picker("Filter", selection: $entryFilterSelection) {
+      ForEach(viewModel.output.entryFilterOptions) { option in
+        Text(localizedFilterTitle(option.title))
+          .tag(option.filter)
       }
     }
+    .pickerStyle(.segmented)
+    .accessibilityIdentifier("notes-browser-right-filter-picker")
+    .disabled(viewModel.output.entryFilterOptions.count <= 1)
+    .padding(.horizontal)
+    .padding(.top, 8)
+  }
+
+  private func entryRow(_ entry: NotesBrowserEntry) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(alignment: .top, spacing: 8) {
+        Image(systemName: entry.kind == .annotation ? "highlighter" : "square.and.pencil")
+          .foregroundStyle(.secondary)
+        Text(entry.title)
+          .font(.headline)
+
+        Spacer(minLength: 8)
+
+        editNoteButton(for: entry)
+      }
+
+      if let note = entry.note, !note.isEmpty {
+        Text(note)
+          .font(.body)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
+      if let mediaName = entry.mediaName {
+        Label(mediaName, systemImage: "play.rectangle")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .padding(.vertical, 4)
+  }
+
+  private func editNoteButton(for entry: NotesBrowserEntry) -> some View {
+    Button {
+      noteEntryToEdit = entry
+    } label: {
+      Label(entry.note == nil ? "Add Note" : "Edit Note", systemImage: "square.and.pencil")
+        .font(.caption)
+    }
+    .buttonStyle(.borderless)
+    .help(entry.note == nil ? "Add Note" : "Edit Note")
+    .accessibilityIdentifier("notes-browser-entry-edit-\(entry.id.uuidString.lowercased())")
   }
 
   private func applyOutput(_ output: NotesBrowserViewModel.Output) {
     sourceSelection = output.selectedSource
     middleSelection = output.selectedMiddleItem
+    entryFilterSelection = output.selectedEntryFilter
+  }
+
+  private func localizedFilterTitle(_ title: String) -> String {
+    if title == "All" {
+      return "全部"
+    }
+    return title
   }
 
   private func accessibilityIdentifier(for source: NotesBrowserViewModel.Source) -> String {
@@ -169,16 +233,16 @@ struct NotesBrowserView: View {
       return "notes-browser-source-all-videos"
     case .media(.allAudios):
       return "notes-browser-source-all-audios"
-    case .collection(let collectionID):
+    case let .collection(collectionID):
       return "notes-browser-source-collection-\(collectionID.uuidString.lowercased())"
     }
   }
 
   private func accessibilityIdentifier(for selection: NotesBrowserViewModel.MiddleSelection) -> String {
     switch selection {
-    case .media(let mediaID):
+    case let .media(mediaID):
       return "notes-browser-middle-media-\(mediaID.uuidString.lowercased())"
-    case .note(let noteID):
+    case let .note(noteID):
       return "notes-browser-middle-note-\(noteID.uuidString.lowercased())"
     }
   }
@@ -192,11 +256,11 @@ struct NotesBrowserView: View {
       let csvData: Data
       let defaultFileName: String
       switch exportSelection.kind {
-      case .note(let noteID, let noteTitle):
-        csvData = try notesService.csvData(forNoteID: noteID)
+      case let .note(noteID, noteTitle):
+        csvData = try notesService.csvData(forNoteID: noteID, filter: viewModel.output.exportFilter)
         defaultFileName = defaultExportFileName(baseName: noteTitle)
-      case .media(let mediaID, let mediaName):
-        csvData = try notesService.csvData(forMediaID: mediaID)
+      case let .media(mediaID, mediaName):
+        csvData = try notesService.csvData(forMediaID: mediaID, filter: viewModel.output.exportFilter)
         defaultFileName = defaultExportFileName(baseName: mediaName)
       }
 
@@ -218,8 +282,45 @@ struct NotesBrowserView: View {
         try csvData.write(to: saveURL, options: .atomic)
       #endif
     } catch {
-      exportErrorMessage = error.localizedDescription
+      errorMessage = error.localizedDescription
     }
+  }
+
+  private func updateNote(_ note: String?, for entry: NotesBrowserEntry) {
+    let normalizedNote = normalizeOptionalNote(note)
+
+    do {
+      switch entry.kind {
+      case .custom:
+        try notesService.updateCustomEntry(
+          entryID: entry.id,
+          title: entry.title,
+          note: normalizedNote
+        )
+      case .annotation:
+        guard let annotationGroupID = entry.annotationGroupID else {
+          errorMessage = NotesBrowserServiceError.annotationNotFound.localizedDescription
+          return
+        }
+        annotationService.updateComment(groupID: annotationGroupID, comment: normalizedNote)
+      }
+
+      applyOutput(viewModel.transform(input: .init(event: .refresh)))
+    } catch {
+      errorMessage = error.localizedDescription
+    }
+  }
+
+  private func normalizeOptionalNote(_ value: String?) -> String? {
+    guard let value else {
+      return nil
+    }
+
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+      return nil
+    }
+    return trimmed
   }
 
   private func defaultExportFileName(baseName: String) -> String {

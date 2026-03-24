@@ -58,10 +58,11 @@ struct NotesBrowserServiceTests {
     context: TestContext,
     mediaID: UUID,
     cueID: UUID,
+    stylePresetID: UUID? = nil,
     selectedText: String,
     comment: String?
   ) -> UUID {
-    let style = context.styleService.defaultStyle()
+    let resolvedStylePresetID = stylePresetID ?? context.styleService.defaultStyle().id
     let selection = CrossCueTextSelection(
       segments: [
         .init(
@@ -79,7 +80,7 @@ struct NotesBrowserServiceTests {
     let created = context.annotationService.addAnnotation(
       audioFileID: mediaID,
       selection: selection,
-      stylePresetID: style.id
+      stylePresetID: resolvedStylePresetID
     )
 
     guard let groupID = created.first?.groupID else {
@@ -345,6 +346,28 @@ struct NotesBrowserServiceTests {
   }
 
   @Test @MainActor
+  func testUpdateCustomEntryCanUpdateAndClearNote() throws {
+    let context = try makeContext()
+    let collection = try context.notesService.createCollection(name: "Study")
+    let note = try context.notesService.createNote(collectionID: collection.id, title: "Lesson")
+    let entry = try context.notesService.createCustomEntry(noteID: note.id, title: "Custom", note: "before")
+
+    try context.notesService.updateCustomEntry(entryID: entry.id, title: "Custom", note: "after")
+
+    var entries = try context.notesService.entries(forNoteID: note.id)
+    #expect(entries.count == 1)
+    #expect(entries.first?.kind == .custom)
+    #expect(entries.first?.note == "after")
+
+    try context.notesService.updateCustomEntry(entryID: entry.id, title: "Custom", note: "   ")
+
+    entries = try context.notesService.entries(forNoteID: note.id)
+    #expect(entries.count == 1)
+    #expect(entries.first?.kind == .custom)
+    #expect(entries.first?.note == nil)
+  }
+
+  @Test @MainActor
   func testCSVExportForNoteIncludesCustomAndAnnotationRows() throws {
     let context = try makeContext()
     let media = makeMediaFile(name: "video.mp4", type: .video)
@@ -412,6 +435,98 @@ struct NotesBrowserServiceTests {
     let csvData = try context.notesService.csvData(forMediaID: media.id)
     let decoded = String(decoding: csvData, as: UTF8.self)
     #expect(decoded == csvString)
+  }
+
+  @Test @MainActor
+  func testEntriesIncludeStylePresetMetadataForAnnotations() throws {
+    let context = try makeContext()
+    let media = makeMediaFile(name: "audio.mp3", type: .audio)
+    context.container.mainContext.insert(media)
+
+    let customStyle = context.styleService.addStyle(name: "My Style", kind: .underline)
+    let groupID = createAnnotationGroup(
+      context: context,
+      mediaID: media.id,
+      cueID: UUID(),
+      stylePresetID: customStyle.id,
+      selectedText: "styled",
+      comment: "note"
+    )
+
+    let mediaEntries = context.notesService.entries(forMediaID: media.id)
+    #expect(mediaEntries.count == 1)
+    #expect(mediaEntries.first?.annotationGroupID == groupID)
+    #expect(mediaEntries.first?.stylePresetID == customStyle.id)
+    #expect(mediaEntries.first?.stylePresetName == "My Style")
+  }
+
+  @Test @MainActor
+  func testCSVExportForNoteCanFilterByStylePreset() throws {
+    let context = try makeContext()
+    let media = makeMediaFile(name: "video.mp4", type: .video)
+    context.container.mainContext.insert(media)
+
+    let styleA = context.styleService.addStyle(name: "Style A", kind: .underline)
+    let styleB = context.styleService.addStyle(name: "Style B", kind: .background)
+    let groupA = createAnnotationGroup(
+      context: context,
+      mediaID: media.id,
+      cueID: UUID(),
+      stylePresetID: styleA.id,
+      selectedText: "A",
+      comment: "note A"
+    )
+    _ = createAnnotationGroup(
+      context: context,
+      mediaID: media.id,
+      cueID: UUID(),
+      stylePresetID: styleB.id,
+      selectedText: "B",
+      comment: "note B"
+    )
+
+    let collection = try context.notesService.createCollection(name: "Study")
+    let note = try context.notesService.createNote(collectionID: collection.id, title: "Lesson")
+    _ = try context.notesService.createCustomEntry(noteID: note.id, title: "Custom", note: "body")
+    _ = try context.notesService.addAnnotationToNote(noteID: note.id, annotationGroupID: groupA)
+
+    let filtered = try context.notesService.csvString(
+      forNoteID: note.id,
+      filter: .stylePreset(styleA.id)
+    )
+    #expect(filtered == "title,note\nA,note A")
+  }
+
+  @Test @MainActor
+  func testCSVExportForMediaCanFilterByStylePreset() throws {
+    let context = try makeContext()
+    let media = makeMediaFile(name: "audio.mp3", type: .audio)
+    context.container.mainContext.insert(media)
+
+    let styleA = context.styleService.addStyle(name: "Style A", kind: .underline)
+    let styleB = context.styleService.addStyle(name: "Style B", kind: .background)
+    _ = createAnnotationGroup(
+      context: context,
+      mediaID: media.id,
+      cueID: UUID(),
+      stylePresetID: styleA.id,
+      selectedText: "A",
+      comment: "note A"
+    )
+    _ = createAnnotationGroup(
+      context: context,
+      mediaID: media.id,
+      cueID: UUID(),
+      stylePresetID: styleB.id,
+      selectedText: "B",
+      comment: "note B"
+    )
+
+    let filtered = try context.notesService.csvString(
+      forMediaID: media.id,
+      filter: .stylePreset(styleB.id)
+    )
+    #expect(filtered == "title,note\nB,note B")
   }
 
   @Test @MainActor

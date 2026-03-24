@@ -3,6 +3,8 @@ import SwiftUI
 @MainActor
 struct NotesBrowserExportDemoView: View {
   @Environment(NotesBrowserService.self) private var notesService
+  @Environment(AnnotationService.self) private var annotationService
+  @Environment(AnnotationStyleService.self) private var annotationStyleService
   @Environment(\.modelContext) private var modelContext
 
   @State private var didSeedData = false
@@ -26,6 +28,7 @@ struct NotesBrowserExportDemoView: View {
         )
       } else if didSeedData {
         NotesBrowserView()
+          .environment(annotationService)
       } else {
         ProgressView("Preparing notes export demo...")
           .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -58,9 +61,10 @@ struct NotesBrowserExportDemoView: View {
     )
     modelContext.insert(media)
 
+    let defaultStyle = annotationStyleService.defaultStyle()
     let annotationGroup = TextAnnotationGroupV2(
       audioFileID: media.id,
-      stylePresetID: UUID(),
+      stylePresetID: defaultStyle.id,
       selectedTextSnapshot: "Snapshot title",
       comment: "Annotation note",
       createdAt: now,

@@ -41,10 +41,13 @@ final class AnnotationService {
     stylePresetID: UUID
   ) -> [AnnotationRenderData] {
     let now = Date()
+    let selectedTextSnapshot = selection.segments
+      .map(\.text)
+      .joined(separator: "\n")
     let group = TextAnnotationGroupV2(
       audioFileID: audioFileID,
       stylePresetID: stylePresetID,
-      selectedTextSnapshot: selection.fullText,
+      selectedTextSnapshot: selectedTextSnapshot,
       createdAt: now,
       updatedAt: now
     )

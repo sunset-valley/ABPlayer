@@ -42,6 +42,11 @@ enum NotesBrowserEntryKind: Equatable, Sendable {
   case annotation
 }
 
+enum NotesBrowserEntryFilter: Equatable, Sendable {
+  case all
+  case stylePreset(UUID)
+}
+
 struct NotesBrowserEntry: Identifiable, Equatable, Sendable {
   let id: UUID
   let kind: NotesBrowserEntryKind
@@ -50,6 +55,8 @@ struct NotesBrowserEntry: Identifiable, Equatable, Sendable {
   let note: String?
   let mediaID: UUID?
   let mediaName: String?
+  let stylePresetID: UUID?
+  let stylePresetName: String?
   let annotationGroupID: UUID?
   let createdAt: Date
   let updatedAt: Date?
@@ -300,6 +307,7 @@ final class NotesBrowserService {
   }
 
   func entries(forMediaID mediaID: UUID) -> [NotesBrowserEntry] {
+    let styleNamesByID = annotationStyleNamesByID()
     let groups = allAnnotationGroups()
       .filter { $0.audioFileID == mediaID }
       .sorted {
@@ -319,6 +327,8 @@ final class NotesBrowserService {
         note: group.comment,
         mediaID: group.audioFileID,
         mediaName: mediaName,
+        stylePresetID: group.stylePresetID,
+        stylePresetName: styleNamesByID[group.stylePresetID],
         annotationGroupID: group.id,
         createdAt: group.createdAt,
         updatedAt: group.updatedAt
@@ -330,6 +340,8 @@ final class NotesBrowserService {
     guard let note = findNote(id: noteID) else {
       throw NotesBrowserServiceError.noteNotFound
     }
+
+    let styleNamesByID = annotationStyleNamesByID()
 
     var merged: [NotesBrowserEntry] = []
     merged.reserveCapacity(note.entries.count + note.annotationLinks.count)
@@ -344,6 +356,8 @@ final class NotesBrowserService {
           note: entry.note,
           mediaID: nil,
           mediaName: nil,
+          stylePresetID: nil,
+          stylePresetName: nil,
           annotationGroupID: nil,
           createdAt: entry.createdAt,
           updatedAt: entry.updatedAt
@@ -362,6 +376,8 @@ final class NotesBrowserService {
           note: group.comment,
           mediaID: group.audioFileID,
           mediaName: findMedia(id: group.audioFileID)?.displayName,
+          stylePresetID: group.stylePresetID,
+          stylePresetName: styleNamesByID[group.stylePresetID],
           annotationGroupID: group.id,
           createdAt: link.createdAt,
           updatedAt: group.updatedAt
@@ -377,8 +393,8 @@ final class NotesBrowserService {
     }
   }
 
-  func csvString(forNoteID noteID: UUID) throws -> String {
-    let entries = try entries(forNoteID: noteID)
+  func csvString(forNoteID noteID: UUID, filter: NotesBrowserEntryFilter = .all) throws -> String {
+    let entries = try filteredEntries(forNoteID: noteID, filter: filter)
     var rows: [String] = ["title,note"]
     rows.reserveCapacity(entries.count + 1)
 
@@ -391,12 +407,12 @@ final class NotesBrowserService {
     return rows.joined(separator: "\n")
   }
 
-  func csvString(forMediaID mediaID: UUID) throws -> String {
+  func csvString(forMediaID mediaID: UUID, filter: NotesBrowserEntryFilter = .all) throws -> String {
     guard findMedia(id: mediaID) != nil else {
       throw NotesBrowserServiceError.mediaNotFound
     }
 
-    let entries = entries(forMediaID: mediaID)
+    let entries = filteredEntries(forMediaID: mediaID, filter: filter)
     var rows: [String] = ["title,note"]
     rows.reserveCapacity(entries.count + 1)
 
@@ -409,13 +425,13 @@ final class NotesBrowserService {
     return rows.joined(separator: "\n")
   }
 
-  func csvData(forNoteID noteID: UUID) throws -> Data {
-    let csvContent = try csvString(forNoteID: noteID)
+  func csvData(forNoteID noteID: UUID, filter: NotesBrowserEntryFilter = .all) throws -> Data {
+    let csvContent = try csvString(forNoteID: noteID, filter: filter)
     return Data(csvContent.utf8)
   }
 
-  func csvData(forMediaID mediaID: UUID) throws -> Data {
-    let csvContent = try csvString(forMediaID: mediaID)
+  func csvData(forMediaID mediaID: UUID, filter: NotesBrowserEntryFilter = .all) throws -> Data {
+    let csvContent = try csvString(forMediaID: mediaID, filter: filter)
     return Data(csvContent.utf8)
   }
 
@@ -462,6 +478,32 @@ final class NotesBrowserService {
 
   private func allAnnotationGroups() -> [TextAnnotationGroupV2] {
     (try? modelContext.fetch(FetchDescriptor<TextAnnotationGroupV2>())) ?? []
+  }
+
+  private func annotationStyleNamesByID() -> [UUID: String] {
+    let styles = (try? modelContext.fetch(FetchDescriptor<AnnotationStylePreset>())) ?? []
+    return Dictionary(uniqueKeysWithValues: styles.map { ($0.id, $0.name) })
+  }
+
+  private func filteredEntries(forNoteID noteID: UUID, filter: NotesBrowserEntryFilter) throws -> [NotesBrowserEntry] {
+    let entries = try entries(forNoteID: noteID)
+    return filterEntries(entries, using: filter)
+  }
+
+  private func filteredEntries(forMediaID mediaID: UUID, filter: NotesBrowserEntryFilter) -> [NotesBrowserEntry] {
+    let entries = entries(forMediaID: mediaID)
+    return filterEntries(entries, using: filter)
+  }
+
+  private func filterEntries(_ entries: [NotesBrowserEntry], using filter: NotesBrowserEntryFilter)
+    -> [NotesBrowserEntry]
+  {
+    switch filter {
+    case .all:
+      return entries
+    case .stylePreset(let stylePresetID):
+      return entries.filter { $0.stylePresetID == stylePresetID }
+    }
   }
 
   private func normalizeRequiredText(_ value: String) throws -> String {
