@@ -457,7 +457,7 @@ struct NotesBrowserCommands: Commands {
   @Environment(\.openWindow) private var openWindow
 
   var body: some Commands {
-    CommandMenu("Window") {
+    CommandMenu("Study") {
       Button("Notes Browser") {
         openWindow(id: "notes-browser")
       }
