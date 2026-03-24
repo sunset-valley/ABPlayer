@@ -70,6 +70,17 @@ final class NotesBrowserViewModel {
     }
   }
 
+  struct CollectionWithNotes: Identifiable {
+    struct NoteItem: Identifiable {
+      let id: UUID
+      let title: String
+    }
+
+    let id: UUID
+    let name: String
+    let notes: [NoteItem]
+  }
+
   struct Input {
     enum Event {
       case onAppear
@@ -77,6 +88,9 @@ final class NotesBrowserViewModel {
       case selectSource(Source?)
       case selectMiddleItem(MiddleSelection?)
       case selectEntryFilter(EntryFilter)
+      case createCollection(name: String)
+      case createNote(collectionID: UUID, title: String)
+      case addEntryToNote(annotationGroupID: UUID, noteID: UUID)
     }
 
     let event: Event
@@ -129,6 +143,10 @@ final class NotesBrowserViewModel {
     let exportSelection: ExportSelection?
     let selectedSource: Source?
     let selectedMiddleItem: MiddleSelection?
+    let actionError: String?
+    let canCreateNote: Bool
+    let selectedCollectionID: UUID?
+    let collectionsForPicker: [CollectionWithNotes]
   }
 
   @ObservationIgnored
@@ -138,6 +156,7 @@ final class NotesBrowserViewModel {
   private var selectedSource: Source?
   private var selectedMiddleItem: MiddleSelection?
   private var selectedEntryFilter: EntryFilter
+  private var pendingActionError: String?
 
   init() {
     output = Output(
@@ -150,7 +169,11 @@ final class NotesBrowserViewModel {
       exportFilter: .all,
       exportSelection: nil,
       selectedSource: nil,
-      selectedMiddleItem: nil
+      selectedMiddleItem: nil,
+      actionError: nil,
+      canCreateNote: false,
+      selectedCollectionID: nil,
+      collectionsForPicker: []
     )
     selectedEntryFilter = .all
   }
@@ -162,6 +185,8 @@ final class NotesBrowserViewModel {
 
   @discardableResult
   func transform(input: Input) -> Output {
+    pendingActionError = nil
+
     switch input.event {
     case .onAppear:
       if selectedSource == nil {
@@ -180,6 +205,36 @@ final class NotesBrowserViewModel {
     case .selectEntryFilter(let filter):
       selectedEntryFilter = filter
       reloadState()
+    case .createCollection(let name):
+      if let notesService {
+        do {
+          let collection = try notesService.createCollection(name: name)
+          selectedSource = .collection(collection.id)
+          selectedMiddleItem = nil
+        } catch {
+          pendingActionError = error.localizedDescription
+        }
+      }
+      reloadState()
+    case .createNote(let collectionID, let title):
+      if let notesService {
+        do {
+          let note = try notesService.createNote(collectionID: collectionID, title: title)
+          selectedMiddleItem = .note(note.id)
+        } catch {
+          pendingActionError = error.localizedDescription
+        }
+      }
+      reloadState()
+    case .addEntryToNote(let annotationGroupID, let noteID):
+      if let notesService {
+        do {
+          try notesService.addAnnotationToNote(noteID: noteID, annotationGroupID: annotationGroupID)
+        } catch {
+          pendingActionError = error.localizedDescription
+        }
+      }
+      reloadState()
     }
 
     return output
@@ -188,17 +243,21 @@ final class NotesBrowserViewModel {
   private func reloadState() {
     guard let notesService else {
       output = Output(
-          leftSections: [],
-          middleMode: .media,
-          middleItems: [],
-          entryFilterOptions: [.init(filter: .all, title: "All")],
-          selectedEntryFilter: .all,
-          entries: [],
-          exportFilter: .all,
-          exportSelection: nil,
-          selectedSource: nil,
-          selectedMiddleItem: nil
-        )
+        leftSections: [],
+        middleMode: .media,
+        middleItems: [],
+        entryFilterOptions: [.init(filter: .all, title: "All")],
+        selectedEntryFilter: .all,
+        entries: [],
+        exportFilter: .all,
+        exportSelection: nil,
+        selectedSource: nil,
+        selectedMiddleItem: nil,
+        actionError: pendingActionError,
+        canCreateNote: false,
+        selectedCollectionID: nil,
+        collectionsForPicker: []
+      )
       return
     }
 
@@ -227,6 +286,19 @@ final class NotesBrowserViewModel {
       middleItems: middleItems
     )
 
+    let canCreateNote: Bool
+    let selectedCollectionID: UUID?
+    switch selectedSource {
+    case .collection(let id):
+      canCreateNote = true
+      selectedCollectionID = id
+    default:
+      canCreateNote = false
+      selectedCollectionID = nil
+    }
+
+    let collectionsForPicker = buildCollectionsForPicker(notesService: notesService, collections: collections)
+
     output = Output(
       leftSections: leftSections,
       middleMode: middleMode,
@@ -237,7 +309,11 @@ final class NotesBrowserViewModel {
       exportFilter: exportFilter(from: selectedEntryFilter),
       exportSelection: exportSelection,
       selectedSource: selectedSource,
-      selectedMiddleItem: selectedMiddleItem
+      selectedMiddleItem: selectedMiddleItem,
+      actionError: pendingActionError,
+      canCreateNote: canCreateNote,
+      selectedCollectionID: selectedCollectionID,
+      collectionsForPicker: collectionsForPicker
     )
   }
 
@@ -417,6 +493,20 @@ final class NotesBrowserViewModel {
         return nil
       }
       return ExportSelection(kind: .media(mediaID: mediaID, mediaName: selectedItem.title))
+    }
+  }
+
+  private func buildCollectionsForPicker(
+    notesService: NotesBrowserService,
+    collections: [NoteCollection]
+  ) -> [CollectionWithNotes] {
+    collections.map { collection in
+      let notes = (try? notesService.notes(inCollectionID: collection.id)) ?? []
+      return CollectionWithNotes(
+        id: collection.id,
+        name: collection.name,
+        notes: notes.map { CollectionWithNotes.NoteItem(id: $0.id, title: $0.title) }
+      )
     }
   }
 }

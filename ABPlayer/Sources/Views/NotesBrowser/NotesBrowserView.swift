@@ -19,6 +19,11 @@ struct NotesBrowserView: View {
   @State private var entryFilterSelection: NotesBrowserViewModel.EntryFilter = .all
   @State private var noteEntryToEdit: NotesBrowserEntry?
   @State private var errorMessage: String?
+  @State private var isCreatingCollection = false
+  @State private var newCollectionName = ""
+  @State private var isCreatingNote = false
+  @State private var newNoteTitle = ""
+  @State private var entryToAddToCollection: NotesBrowserEntry?
 
   var body: some View {
     NavigationSplitView {
@@ -57,6 +62,17 @@ struct NotesBrowserView: View {
         .disabled(viewModel.output.exportSelection == nil)
         .accessibilityIdentifier("notes-browser-export-csv-button")
       }
+      if viewModel.output.canCreateNote {
+        ToolbarItem {
+          Button {
+            newNoteTitle = ""
+            isCreatingNote = true
+          } label: {
+            Label("New Note", systemImage: "plus")
+          }
+          .accessibilityIdentifier("notes-browser-create-note-button")
+        }
+      }
     }
     .sheet(item: $noteEntryToEdit) { entry in
       NotesBrowserNoteEditorView(
@@ -64,6 +80,40 @@ struct NotesBrowserView: View {
         existingNote: entry.note
       ) { updatedNote in
         updateNote(updatedNote, for: entry)
+      }
+    }
+    .sheet(item: $entryToAddToCollection) { entry in
+      NotesBrowserAddToCollectionView(
+        collections: viewModel.output.collectionsForPicker
+      ) { noteID in
+        guard let annotationGroupID = entry.annotationGroupID else { return }
+        applyOutput(viewModel.transform(input: .init(event: .addEntryToNote(
+          annotationGroupID: annotationGroupID,
+          noteID: noteID
+        ))))
+      }
+    }
+    .alert("New Collection", isPresented: $isCreatingCollection) {
+      TextField("Name", text: $newCollectionName)
+      Button("Create") {
+        let name = newCollectionName
+        newCollectionName = ""
+        applyOutput(viewModel.transform(input: .init(event: .createCollection(name: name))))
+      }
+      Button("Cancel", role: .cancel) {
+        newCollectionName = ""
+      }
+    }
+    .alert("New Note", isPresented: $isCreatingNote) {
+      TextField("Title", text: $newNoteTitle)
+      Button("Create") {
+        guard let collectionID = viewModel.output.selectedCollectionID else { return }
+        let title = newNoteTitle
+        newNoteTitle = ""
+        applyOutput(viewModel.transform(input: .init(event: .createNote(collectionID: collectionID, title: title))))
+      }
+      Button("Cancel", role: .cancel) {
+        newNoteTitle = ""
       }
     }
     .alert(
@@ -82,12 +132,14 @@ struct NotesBrowserView: View {
   private var leftColumn: some View {
     List(selection: $sourceSelection) {
       ForEach(viewModel.output.leftSections) { section in
-        Section(section.title) {
+        Section {
           ForEach(section.items) { item in
             Label(item.title, systemImage: item.systemImage)
               .tag(Optional(item.source))
               .accessibilityIdentifier(accessibilityIdentifier(for: item.source))
           }
+        } header: {
+          leftSectionHeader(section)
         }
       }
     }
@@ -101,6 +153,28 @@ struct NotesBrowserView: View {
           description: Text("Media and collections will appear here.")
         )
       }
+    }
+  }
+
+  @ViewBuilder
+  private func leftSectionHeader(_ section: NotesBrowserViewModel.LeftSourceSection) -> some View {
+    if section.id == "collections" {
+      HStack {
+        Text(section.title)
+        Spacer()
+        Button {
+          newCollectionName = ""
+          isCreatingCollection = true
+        } label: {
+          Image(systemName: "plus")
+            .imageScale(.medium)
+        }
+        .buttonStyle(.borderless)
+        .accessibilityIdentifier("notes-browser-create-collection-button")
+      }
+      .padding(.trailing, 8)
+    } else {
+      Text(section.title)
     }
   }
 
@@ -232,6 +306,14 @@ struct NotesBrowserView: View {
     )
     .listRowSeparator(.hidden)
     .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+    .contextMenu {
+      if entry.kind == .annotation, viewModel.output.middleMode == .media {
+        Button("Add to Collection...") {
+          entryToAddToCollection = entry
+        }
+        .accessibilityIdentifier("notes-browser-entry-add-to-collection-\(entry.id.uuidString.lowercased())")
+      }
+    }
   }
 
   private func editNoteButton(for entry: NotesBrowserEntry) -> some View {
@@ -250,6 +332,9 @@ struct NotesBrowserView: View {
     sourceSelection = output.selectedSource
     middleSelection = output.selectedMiddleItem
     entryFilterSelection = output.selectedEntryFilter
+    if let error = output.actionError {
+      errorMessage = error
+    }
   }
 
   private func localizedFilterTitle(_ title: String) -> String {

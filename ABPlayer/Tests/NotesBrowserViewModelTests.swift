@@ -207,4 +207,168 @@ struct NotesBrowserViewModelTests {
     #expect(filtered.entries.first?.stylePresetID == styleA.id)
     #expect(filtered.exportFilter == .stylePreset(styleA.id))
   }
+
+  @Test @MainActor
+  func testCreateCollectionCreatesAndSelectsIt() throws {
+    let context = try makeContext()
+    let viewModel = NotesBrowserViewModel()
+    viewModel.configureIfNeeded(notesService: context.service)
+    _ = viewModel.transform(input: .init(event: .onAppear))
+
+    let output = viewModel.transform(input: .init(event: .createCollection(name: "Study")))
+
+    let collectionItems = output.leftSections.first(where: { $0.id == "collections" })?.items ?? []
+    #expect(collectionItems.count == 1)
+    #expect(collectionItems.first?.title == "Study")
+
+    if case .collection(let id) = output.selectedSource {
+      #expect(output.middleMode == .notes)
+      _ = id
+    } else {
+      Issue.record("Expected collection source to be selected")
+    }
+    #expect(output.actionError == nil)
+  }
+
+  @Test @MainActor
+  func testCreateCollectionWithDuplicateNameSurfacesError() throws {
+    let context = try makeContext()
+    _ = try context.service.createCollection(name: "Study")
+
+    let viewModel = NotesBrowserViewModel()
+    viewModel.configureIfNeeded(notesService: context.service)
+    _ = viewModel.transform(input: .init(event: .onAppear))
+
+    let output = viewModel.transform(input: .init(event: .createCollection(name: "Study")))
+
+    #expect(output.actionError != nil)
+  }
+
+  @Test @MainActor
+  func testCreateNoteCreatesAndSelectsIt() throws {
+    let context = try makeContext()
+    let collection = try context.service.createCollection(name: "Study")
+
+    let viewModel = NotesBrowserViewModel()
+    viewModel.configureIfNeeded(notesService: context.service)
+    _ = viewModel.transform(input: .init(event: .onAppear))
+    _ = viewModel.transform(input: .init(event: .selectSource(.collection(collection.id))))
+
+    let output = viewModel.transform(input: .init(event: .createNote(collectionID: collection.id, title: "Lesson 1")))
+
+    #expect(output.middleItems.count == 1)
+    #expect(output.middleItems.first?.title == "Lesson 1")
+    #expect(output.selectedMiddleItem == output.middleItems.first?.selection)
+    #expect(output.actionError == nil)
+  }
+
+  @Test @MainActor
+  func testCreateNoteWithEmptyTitleSurfacesError() throws {
+    let context = try makeContext()
+    let collection = try context.service.createCollection(name: "Study")
+
+    let viewModel = NotesBrowserViewModel()
+    viewModel.configureIfNeeded(notesService: context.service)
+    _ = viewModel.transform(input: .init(event: .onAppear))
+    _ = viewModel.transform(input: .init(event: .selectSource(.collection(collection.id))))
+
+    let output = viewModel.transform(input: .init(event: .createNote(collectionID: collection.id, title: "  ")))
+
+    #expect(output.actionError != nil)
+    #expect(output.middleItems.isEmpty)
+  }
+
+  @Test @MainActor
+  func testAddEntryToNoteLinksAnnotationAndRefreshes() throws {
+    let context = try makeContext()
+    let collection = try context.service.createCollection(name: "Study")
+    let note = try context.service.createNote(collectionID: collection.id, title: "Lesson 1")
+
+    let media = makeMediaFile(name: "video.mp4", type: .video)
+    context.container.mainContext.insert(media)
+    let group = try insertAnnotationGroup(
+      container: context.container,
+      mediaID: media.id,
+      text: "snapshot",
+      comment: nil
+    )
+
+    let viewModel = NotesBrowserViewModel()
+    viewModel.configureIfNeeded(notesService: context.service)
+    _ = viewModel.transform(input: .init(event: .onAppear))
+    _ = viewModel.transform(input: .init(event: .selectMiddleItem(.media(media.id))))
+
+    let addOutput = viewModel.transform(input: .init(event: .addEntryToNote(
+      annotationGroupID: group.id,
+      noteID: note.id
+    )))
+    #expect(addOutput.actionError == nil)
+
+    _ = viewModel.transform(input: .init(event: .selectSource(.collection(collection.id))))
+    let noteOutput = viewModel.transform(input: .init(event: .selectMiddleItem(.note(note.id))))
+    #expect(noteOutput.entries.count == 1)
+    #expect(noteOutput.entries.first?.annotationGroupID == group.id)
+  }
+
+  @Test @MainActor
+  func testAddEntryToNoteWithDuplicateSurfacesError() throws {
+    let context = try makeContext()
+    let collection = try context.service.createCollection(name: "Study")
+    let note = try context.service.createNote(collectionID: collection.id, title: "Lesson 1")
+
+    let media = makeMediaFile(name: "video.mp4", type: .video)
+    context.container.mainContext.insert(media)
+    let group = try insertAnnotationGroup(
+      container: context.container,
+      mediaID: media.id,
+      text: "snapshot",
+      comment: nil
+    )
+
+    let viewModel = NotesBrowserViewModel()
+    viewModel.configureIfNeeded(notesService: context.service)
+    _ = viewModel.transform(input: .init(event: .onAppear))
+    _ = viewModel.transform(input: .init(event: .selectMiddleItem(.media(media.id))))
+    _ = viewModel.transform(input: .init(event: .addEntryToNote(annotationGroupID: group.id, noteID: note.id)))
+
+    let output = viewModel.transform(input: .init(event: .addEntryToNote(
+      annotationGroupID: group.id,
+      noteID: note.id
+    )))
+    #expect(output.actionError != nil)
+  }
+
+  @Test @MainActor
+  func testCollectionsForPickerIsPopulated() throws {
+    let context = try makeContext()
+    let c1 = try context.service.createCollection(name: "Alpha")
+    let c2 = try context.service.createCollection(name: "Beta")
+    _ = try context.service.createNote(collectionID: c1.id, title: "Note A")
+    _ = try context.service.createNote(collectionID: c2.id, title: "Note B1")
+    _ = try context.service.createNote(collectionID: c2.id, title: "Note B2")
+
+    let viewModel = NotesBrowserViewModel()
+    viewModel.configureIfNeeded(notesService: context.service)
+    let output = viewModel.transform(input: .init(event: .onAppear))
+
+    #expect(output.collectionsForPicker.count == 2)
+    let betaCollection = output.collectionsForPicker.first { $0.name == "Beta" }
+    #expect(betaCollection?.notes.count == 2)
+  }
+
+  @Test @MainActor
+  func testActionErrorClearsOnNextEvent() throws {
+    let context = try makeContext()
+    _ = try context.service.createCollection(name: "Study")
+
+    let viewModel = NotesBrowserViewModel()
+    viewModel.configureIfNeeded(notesService: context.service)
+    _ = viewModel.transform(input: .init(event: .onAppear))
+
+    let errorOutput = viewModel.transform(input: .init(event: .createCollection(name: "Study")))
+    #expect(errorOutput.actionError != nil)
+
+    let refreshOutput = viewModel.transform(input: .init(event: .refresh))
+    #expect(refreshOutput.actionError == nil)
+  }
 }
