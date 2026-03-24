@@ -1,4 +1,11 @@
+import Foundation
+#if os(macOS)
+  import AppKit
+#endif
 import SwiftUI
+#if os(macOS)
+  import UniformTypeIdentifiers
+#endif
 
 @MainActor
 struct NotesBrowserView: View {
@@ -7,6 +14,7 @@ struct NotesBrowserView: View {
   @State private var viewModel = NotesBrowserViewModel()
   @State private var sourceSelection: NotesBrowserViewModel.Source?
   @State private var middleSelection: NotesBrowserViewModel.MiddleSelection?
+  @State private var exportErrorMessage: String?
 
   var body: some View {
     NavigationSplitView {
@@ -29,6 +37,28 @@ struct NotesBrowserView: View {
     .onChange(of: middleSelection) { _, newValue in
       applyOutput(viewModel.transform(input: .init(event: .selectMiddleItem(newValue))))
     }
+    .toolbar {
+      ToolbarItem(placement: .primaryAction) {
+        Button {
+          exportSelectedNoteToCSV()
+        } label: {
+          Label("Export CSV", systemImage: "square.and.arrow.down")
+        }
+        .disabled(viewModel.output.exportSelection == nil)
+        .accessibilityIdentifier("notes-browser-export-csv-button")
+      }
+    }
+    .alert(
+      "Export Failed",
+      isPresented: .constant(exportErrorMessage != nil),
+      presenting: exportErrorMessage
+    ) { _ in
+      Button("OK", role: .cancel) {
+        exportErrorMessage = nil
+      }
+    } message: { message in
+      Text(message)
+    }
   }
 
   private var leftColumn: some View {
@@ -38,10 +68,12 @@ struct NotesBrowserView: View {
           ForEach(section.items) { item in
             Label(item.title, systemImage: item.systemImage)
               .tag(Optional(item.source))
+              .accessibilityIdentifier(accessibilityIdentifier(for: item.source))
           }
         }
       }
     }
+    .accessibilityIdentifier("notes-browser-left-list")
     .listStyle(.sidebar)
     .overlay {
       if viewModel.output.leftSections.allSatisfy({ $0.items.isEmpty }) {
@@ -66,8 +98,10 @@ struct NotesBrowserView: View {
           }
         }
         .tag(Optional(item.selection))
+        .accessibilityIdentifier(accessibilityIdentifier(for: item.selection))
       }
     }
+    .accessibilityIdentifier("notes-browser-middle-list")
     .overlay {
       if viewModel.output.middleItems.isEmpty {
         switch viewModel.output.middleMode {
@@ -112,6 +146,7 @@ struct NotesBrowserView: View {
       }
       .padding(.vertical, 4)
     }
+    .accessibilityIdentifier("notes-browser-right-list")
     .overlay {
       if viewModel.output.entries.isEmpty {
         ContentUnavailableView(
@@ -126,5 +161,87 @@ struct NotesBrowserView: View {
   private func applyOutput(_ output: NotesBrowserViewModel.Output) {
     sourceSelection = output.selectedSource
     middleSelection = output.selectedMiddleItem
+  }
+
+  private func accessibilityIdentifier(for source: NotesBrowserViewModel.Source) -> String {
+    switch source {
+    case .media(.allVideos):
+      return "notes-browser-source-all-videos"
+    case .media(.allAudios):
+      return "notes-browser-source-all-audios"
+    case .collection(let collectionID):
+      return "notes-browser-source-collection-\(collectionID.uuidString.lowercased())"
+    }
+  }
+
+  private func accessibilityIdentifier(for selection: NotesBrowserViewModel.MiddleSelection) -> String {
+    switch selection {
+    case .media(let mediaID):
+      return "notes-browser-middle-media-\(mediaID.uuidString.lowercased())"
+    case .note(let noteID):
+      return "notes-browser-middle-note-\(noteID.uuidString.lowercased())"
+    }
+  }
+
+  private func exportSelectedNoteToCSV() {
+    guard let exportSelection = viewModel.output.exportSelection else {
+      return
+    }
+
+    do {
+      let csvData: Data
+      let defaultFileName: String
+      switch exportSelection.kind {
+      case .note(let noteID, let noteTitle):
+        csvData = try notesService.csvData(forNoteID: noteID)
+        defaultFileName = defaultExportFileName(baseName: noteTitle)
+      case .media(let mediaID, let mediaName):
+        csvData = try notesService.csvData(forMediaID: mediaID)
+        defaultFileName = defaultExportFileName(baseName: mediaName)
+      }
+
+      if let uiTestPath = uiTestExportPath() {
+        let destinationURL = URL(fileURLWithPath: uiTestPath)
+        try csvData.write(to: destinationURL, options: .atomic)
+        return
+      }
+
+      #if os(macOS)
+        let savePanel = NSSavePanel()
+        savePanel.canCreateDirectories = true
+        savePanel.allowedContentTypes = [.commaSeparatedText]
+        savePanel.nameFieldStringValue = defaultFileName
+        let result = savePanel.runModal()
+        guard result == .OK, let saveURL = savePanel.url else {
+          return
+        }
+        try csvData.write(to: saveURL, options: .atomic)
+      #endif
+    } catch {
+      exportErrorMessage = error.localizedDescription
+    }
+  }
+
+  private func defaultExportFileName(baseName: String) -> String {
+    let invalidCharacters = CharacterSet(charactersIn: "/\\?%*|\"<>:")
+    let sanitized = baseName
+      .components(separatedBy: invalidCharacters)
+      .joined(separator: "-")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let stem = sanitized.isEmpty ? "note" : sanitized
+    return "\(stem).csv"
+  }
+
+  private func uiTestExportPath() -> String? {
+    let rawValue = ProcessInfo.processInfo.environment["ABP_UI_TESTING_NOTES_EXPORT_OUTPUT_PATH"]
+    guard let rawValue else {
+      return nil
+    }
+
+    let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+      return nil
+    }
+    return trimmed
   }
 }

@@ -6,6 +6,7 @@ enum NotesBrowserServiceError: LocalizedError, Equatable {
   case invalidName
   case collectionNotFound
   case noteNotFound
+  case mediaNotFound
   case customEntryNotFound
   case annotationNotFound
   case duplicateCollectionName
@@ -20,6 +21,8 @@ enum NotesBrowserServiceError: LocalizedError, Equatable {
       return "Collection not found"
     case .noteNotFound:
       return "Note not found"
+    case .mediaNotFound:
+      return "Media not found"
     case .customEntryNotFound:
       return "Custom entry not found"
     case .annotationNotFound:
@@ -374,6 +377,48 @@ final class NotesBrowserService {
     }
   }
 
+  func csvString(forNoteID noteID: UUID) throws -> String {
+    let entries = try entries(forNoteID: noteID)
+    var rows: [String] = ["title,note"]
+    rows.reserveCapacity(entries.count + 1)
+
+    for entry in entries {
+      let title = escapeCSVField(entry.title)
+      let note = escapeCSVField(entry.note ?? "")
+      rows.append("\(title),\(note)")
+    }
+
+    return rows.joined(separator: "\n")
+  }
+
+  func csvString(forMediaID mediaID: UUID) throws -> String {
+    guard findMedia(id: mediaID) != nil else {
+      throw NotesBrowserServiceError.mediaNotFound
+    }
+
+    let entries = entries(forMediaID: mediaID)
+    var rows: [String] = ["title,note"]
+    rows.reserveCapacity(entries.count + 1)
+
+    for entry in entries {
+      let title = escapeCSVField(entry.title)
+      let note = escapeCSVField(entry.note ?? "")
+      rows.append("\(title),\(note)")
+    }
+
+    return rows.joined(separator: "\n")
+  }
+
+  func csvData(forNoteID noteID: UUID) throws -> Data {
+    let csvContent = try csvString(forNoteID: noteID)
+    return Data(csvContent.utf8)
+  }
+
+  func csvData(forMediaID mediaID: UUID) throws -> Data {
+    let csvContent = try csvString(forMediaID: mediaID)
+    return Data(csvContent.utf8)
+  }
+
   // MARK: - Helpers
 
   private func findCollection(id: UUID) -> NoteCollection? {
@@ -435,6 +480,16 @@ final class NotesBrowserService {
 
   private func canonicalKey(_ value: String) -> String {
     value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+  }
+
+  private func escapeCSVField(_ value: String) -> String {
+    let shouldQuote = value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r")
+    guard shouldQuote else {
+      return value
+    }
+
+    let escaped = value.replacingOccurrences(of: "\"", with: "\"\"")
+    return "\"\(escaped)\""
   }
 
   private func hasCollectionNameConflict(normalizedName: String, excludingID: UUID?) -> Bool {

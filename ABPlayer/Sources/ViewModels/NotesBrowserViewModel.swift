@@ -89,11 +89,21 @@ final class NotesBrowserViewModel {
     }
   }
 
+  struct ExportSelection: Equatable {
+    enum Kind: Equatable {
+      case note(noteID: UUID, noteTitle: String)
+      case media(mediaID: UUID, mediaName: String)
+    }
+
+    let kind: Kind
+  }
+
   struct Output {
     let leftSections: [LeftSourceSection]
     let middleMode: MiddleMode
     let middleItems: [MiddleListItem]
     let entries: [NotesBrowserEntry]
+    let exportSelection: ExportSelection?
     let selectedSource: Source?
     let selectedMiddleItem: MiddleSelection?
   }
@@ -111,6 +121,7 @@ final class NotesBrowserViewModel {
       middleMode: .media,
       middleItems: [],
       entries: [],
+      exportSelection: nil,
       selectedSource: nil,
       selectedMiddleItem: nil
     )
@@ -146,13 +157,14 @@ final class NotesBrowserViewModel {
   private func reloadState() {
     guard let notesService else {
       output = Output(
-        leftSections: [],
-        middleMode: .media,
-        middleItems: [],
-        entries: [],
-        selectedSource: nil,
-        selectedMiddleItem: nil
-      )
+          leftSections: [],
+          middleMode: .media,
+          middleItems: [],
+          entries: [],
+          exportSelection: nil,
+          selectedSource: nil,
+          selectedMiddleItem: nil
+        )
       return
     }
 
@@ -173,12 +185,17 @@ final class NotesBrowserViewModel {
     }
 
     let entries = buildEntries(notesService: notesService, for: selectedMiddleItem)
+    let exportSelection = resolveExportSelection(
+      selectedMiddleItem: selectedMiddleItem,
+      middleItems: middleItems
+    )
 
     output = Output(
       leftSections: leftSections,
       middleMode: middleMode,
       middleItems: middleItems,
       entries: entries,
+      exportSelection: exportSelection,
       selectedSource: selectedSource,
       selectedMiddleItem: selectedMiddleItem
     )
@@ -290,6 +307,28 @@ final class NotesBrowserViewModel {
       return notesService.entries(forMediaID: mediaID)
     case .note(let noteID):
       return (try? notesService.entries(forNoteID: noteID)) ?? []
+    }
+  }
+
+  private func resolveExportSelection(
+    selectedMiddleItem: MiddleSelection?,
+    middleItems: [MiddleListItem]
+  ) -> ExportSelection? {
+    guard let selectedMiddleItem else {
+      return nil
+    }
+
+    switch selectedMiddleItem {
+    case .note(let noteID):
+      guard let selectedItem = middleItems.first(where: { $0.selection == .note(noteID) }) else {
+        return nil
+      }
+      return ExportSelection(kind: .note(noteID: noteID, noteTitle: selectedItem.title))
+    case .media(let mediaID):
+      guard let selectedItem = middleItems.first(where: { $0.selection == .media(mediaID) }) else {
+        return nil
+      }
+      return ExportSelection(kind: .media(mediaID: mediaID, mediaName: selectedItem.title))
     }
   }
 }

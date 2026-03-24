@@ -89,6 +89,7 @@ struct NotesBrowserViewModelTests {
     #expect(output.middleItems.count == 1)
     #expect(output.middleItems.first?.title == "Lesson 1")
     #expect(output.selectedMiddleItem == .note(note.id))
+    #expect(output.exportSelection?.kind == .note(noteID: note.id, noteTitle: "Lesson 1"))
   }
 
   @Test @MainActor
@@ -114,5 +115,36 @@ struct NotesBrowserViewModelTests {
     #expect(output.entries.first?.title == "snapshot")
     #expect(output.entries.first?.note == "memo")
     #expect(output.entries.first?.annotationGroupID == group.id)
+    #expect(output.exportSelection?.kind == .media(mediaID: media.id, mediaName: media.displayName))
+  }
+
+  @Test @MainActor
+  func testExportSelectionClearsWhenSourceSwitchesBackToMedia() throws {
+    let context = try makeContext()
+    let collection = try context.service.createCollection(name: "Study")
+    let note = try context.service.createNote(collectionID: collection.id, title: "Lesson 1")
+
+    let media = makeMediaFile(name: "video.mp4", type: .video)
+    context.container.mainContext.insert(media)
+    _ = try insertAnnotationGroup(
+      container: context.container,
+      mediaID: media.id,
+      text: "snapshot",
+      comment: "memo"
+    )
+
+    let viewModel = NotesBrowserViewModel()
+    viewModel.configureIfNeeded(notesService: context.service)
+    _ = viewModel.transform(input: .init(event: .onAppear))
+    let collectionOutput = viewModel.transform(input: .init(event: .selectSource(.collection(collection.id))))
+
+    #expect(collectionOutput.selectedMiddleItem == .note(note.id))
+    #expect(collectionOutput.exportSelection?.kind == .note(noteID: note.id, noteTitle: "Lesson 1"))
+
+    let mediaOutput = viewModel.transform(input: .init(event: .selectSource(.media(.allVideos))))
+
+    #expect(mediaOutput.middleMode == .media)
+    #expect(mediaOutput.selectedMiddleItem == .media(media.id))
+    #expect(mediaOutput.exportSelection?.kind == .media(mediaID: media.id, mediaName: media.displayName))
   }
 }

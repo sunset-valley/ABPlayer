@@ -99,6 +99,11 @@ struct ABPlayerApp: App {
       || Self.hasLaunchEnvironment("ABP_UI_TESTING_ANNOTATION_DEMO")
   }
 
+  private var isUITesting: Bool {
+    Self.hasLaunchArgument("--ui-testing")
+      || Self.hasLaunchEnvironment("ABP_UI_TESTING")
+  }
+
   private var isSubtitleEditUITesting: Bool {
     Self.hasLaunchArgument("--ui-testing-subtitle-edit")
       || Self.hasLaunchEnvironment("ABP_UI_TESTING_SUBTITLE_EDIT")
@@ -107,6 +112,11 @@ struct ABPlayerApp: App {
   private var isTranscriptScrollUITesting: Bool {
     Self.hasLaunchArgument("--ui-testing-transcript-scroll")
       || Self.hasLaunchEnvironment("ABP_UI_TESTING_TRANSCRIPT_SCROLL")
+  }
+
+  private var isNotesExportUITesting: Bool {
+    Self.hasLaunchArgument("--ui-testing-notes-export")
+      || Self.hasLaunchEnvironment("ABP_UI_TESTING_NOTES_EXPORT")
   }
 
   private static func hasLaunchArgument(_ argument: String) -> Bool {
@@ -119,12 +129,12 @@ struct ABPlayerApp: App {
   }
 
   init() {
-    let isUITesting =
-      Self.hasLaunchArgument("--ui-testing")
-        || Self.hasLaunchEnvironment("ABP_UI_TESTING")
     let isSubtitleEditUITesting =
       Self.hasLaunchArgument("--ui-testing-subtitle-edit")
         || Self.hasLaunchEnvironment("ABP_UI_TESTING_SUBTITLE_EDIT")
+    let isUITesting =
+      Self.hasLaunchArgument("--ui-testing")
+        || Self.hasLaunchEnvironment("ABP_UI_TESTING")
 
     if isSubtitleEditUITesting {
       _ = KeyboardInputSourceManager.selectEnglishInputSource()
@@ -321,34 +331,48 @@ struct ABPlayerApp: App {
   }
 
   var body: some Scene {
+    mainWindowScene
+    #if os(macOS)
+      settingsWindowScene
+      annotationStyleManagerWindowScene
+      notesBrowserWindowScene
+    #endif
+  }
+
+  @ViewBuilder
+  private var mainWindowRootView: some View {
+    if isTranscriptScrollUITesting {
+      TranscriptScrollDemoView()
+    } else if isSubtitleEditUITesting {
+      SubtitleEditDemoView()
+    } else if isAnnotationDemoUITesting {
+      AnnotationMenuDemoView()
+    } else if isNotesExportUITesting {
+      NotesBrowserExportDemoView()
+    } else {
+      MainSplitView()
+    }
+  }
+
+  private var mainWindowScene: some Scene {
     WindowGroup {
-      Group {
-        if isTranscriptScrollUITesting {
-          TranscriptScrollDemoView()
-        } else if isSubtitleEditUITesting {
-          SubtitleEditDemoView()
-        } else if isAnnotationDemoUITesting {
-          AnnotationMenuDemoView()
-        } else {
-          MainSplitView()
+      mainWindowRootView
+        .focusEffectDisabled()
+        .onChange(of: playerSettings.preventSleep) {
+          playerManager.updateSleepPrevention()
         }
-      }
-      .focusEffectDisabled()
-      .onChange(of: playerSettings.preventSleep) {
-        playerManager.updateSleepPrevention()
-      }
-      .environment(playerManager)
-      .environment(sessionTracker)
-      .environment(transcriptionManager)
-      .environment(transcriptionSettings)
-      .environment(librarySettings)
-      .environment(playerSettings)
-      .environment(proxySettings)
-      .environment(queueManager)
-      .environment(annotationStyleService)
-      .environment(annotationService)
-      .environment(notesBrowserService)
-      .environment(subtitleLoader)
+        .environment(playerManager)
+        .environment(sessionTracker)
+        .environment(transcriptionManager)
+        .environment(transcriptionSettings)
+        .environment(librarySettings)
+        .environment(playerSettings)
+        .environment(proxySettings)
+        .environment(queueManager)
+        .environment(annotationStyleService)
+        .environment(annotationService)
+        .environment(notesBrowserService)
+        .environment(subtitleLoader)
     }
     .defaultSize(width: 1600, height: 900)
     .windowResizability(.contentSize)
@@ -363,9 +387,7 @@ struct ABPlayerApp: App {
             NSApplication.AboutPanelOptionKey.credits: NSAttributedString(
               string: "Developed by Sunset Valley",
               attributes: [
-                NSAttributedString.Key.font: NSFont.systemFont(
-                  ofSize: 11
-                ),
+                NSAttributedString.Key.font: NSFont.systemFont(ofSize: 11),
               ]
             ),
           ])
@@ -376,38 +398,42 @@ struct ABPlayerApp: App {
         }
       }
     }
+  }
 
-    #if os(macOS)
-      WindowGroup(id: "settings-window") {
-        SettingsView()
-          .environment(transcriptionSettings)
-          .environment(librarySettings)
-          .environment(playerSettings)
-          .environment(proxySettings)
-          .environment(annotationStyleService)
-          .environment(transcriptionManager)
-          .environment(updater)
-      }
-      .defaultPosition(.center)
-      .commandsRemoved()
+  private var settingsWindowScene: some Scene {
+    WindowGroup(id: "settings-window") {
+      SettingsView()
+        .environment(transcriptionSettings)
+        .environment(librarySettings)
+        .environment(playerSettings)
+        .environment(proxySettings)
+        .environment(annotationStyleService)
+        .environment(transcriptionManager)
+        .environment(updater)
+    }
+    .defaultPosition(.center)
+    .commandsRemoved()
+  }
 
-      WindowGroup(id: "annotation-style-manager") {
-        AnnotationStyleManagerView()
-          .environment(annotationStyleService)
-          .environment(annotationService)
-      }
-      .defaultSize(width: 640, height: 480)
-      .defaultPosition(.center)
-      .commandsRemoved()
+  private var annotationStyleManagerWindowScene: some Scene {
+    WindowGroup(id: "annotation-style-manager") {
+      AnnotationStyleManagerView()
+        .environment(annotationStyleService)
+        .environment(annotationService)
+    }
+    .defaultSize(width: 640, height: 480)
+    .defaultPosition(.center)
+    .commandsRemoved()
+  }
 
-      WindowGroup(id: "notes-browser") {
-        NotesBrowserView()
-          .environment(notesBrowserService)
-      }
-      .defaultSize(width: 1280, height: 820)
-      .defaultPosition(.center)
-      .commandsRemoved()
-    #endif
+  private var notesBrowserWindowScene: some Scene {
+    Window("Notes Browser", id: "notes-browser") {
+      NotesBrowserView()
+        .environment(notesBrowserService)
+    }
+    .defaultSize(width: 1280, height: 820)
+    .defaultPosition(.center)
+    .commandsRemoved()
   }
 }
 

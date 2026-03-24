@@ -343,4 +343,86 @@ struct NotesBrowserServiceTests {
     #expect(entries.count == 1)
     #expect(entries.first?.note == "after")
   }
+
+  @Test @MainActor
+  func testCSVExportForNoteIncludesCustomAndAnnotationRows() throws {
+    let context = try makeContext()
+    let media = makeMediaFile(name: "video.mp4", type: .video)
+    context.container.mainContext.insert(media)
+
+    let groupID = createAnnotationGroup(
+      context: context,
+      mediaID: media.id,
+      cueID: UUID(),
+      selectedText: "Snapshot \"quoted\",line",
+      comment: "Line 1\nLine 2"
+    )
+
+    let collection = try context.notesService.createCollection(name: "Study")
+    let note = try context.notesService.createNote(collectionID: collection.id, title: "Lesson")
+    _ = try context.notesService.createCustomEntry(
+      noteID: note.id,
+      title: "Custom,Title",
+      note: "Custom \"Note\""
+    )
+    _ = try context.notesService.addAnnotationToNote(noteID: note.id, annotationGroupID: groupID)
+
+    let csvString = try context.notesService.csvString(forNoteID: note.id)
+
+    let expected =
+      "title,note\n\"Custom,Title\",\"Custom \"\"Note\"\"\"\n\"Snapshot \"\"quoted\"\",line\",\"Line 1\nLine 2\""
+
+    #expect(csvString == expected)
+
+    let csvData = try context.notesService.csvData(forNoteID: note.id)
+    let decoded = String(decoding: csvData, as: UTF8.self)
+    #expect(decoded == csvString)
+  }
+
+  @Test @MainActor
+  func testCSVExportThrowsForMissingNote() throws {
+    let context = try makeContext()
+
+    #expect(
+      throws: NotesBrowserServiceError.noteNotFound,
+      performing: {
+        _ = try context.notesService.csvString(forNoteID: UUID())
+      }
+    )
+  }
+
+  @Test @MainActor
+  func testCSVExportForMediaIncludesAnnotationRows() throws {
+    let context = try makeContext()
+    let media = makeMediaFile(name: "audio.mp3", type: .audio)
+    context.container.mainContext.insert(media)
+
+    _ = createAnnotationGroup(
+      context: context,
+      mediaID: media.id,
+      cueID: UUID(),
+      selectedText: "Snapshot \"quoted\"",
+      comment: "Line 1\nLine 2"
+    )
+
+    let csvString = try context.notesService.csvString(forMediaID: media.id)
+    let expected = "title,note\n\"Snapshot \"\"quoted\"\"\",\"Line 1\nLine 2\""
+    #expect(csvString == expected)
+
+    let csvData = try context.notesService.csvData(forMediaID: media.id)
+    let decoded = String(decoding: csvData, as: UTF8.self)
+    #expect(decoded == csvString)
+  }
+
+  @Test @MainActor
+  func testCSVExportThrowsForMissingMedia() throws {
+    let context = try makeContext()
+
+    #expect(
+      throws: NotesBrowserServiceError.mediaNotFound,
+      performing: {
+        _ = try context.notesService.csvString(forMediaID: UUID())
+      }
+    )
+  }
 }
