@@ -1,3 +1,12 @@
+## [0.2.29.111] - 2026-03-27
+
+### Features
+- add annotation removal flow
+
+### Bug Fixes
+- polish annotation popover sizing
+
+
 ## [0.2.28.110] - 2026-03-24
 
 ### Features
