@@ -91,6 +91,8 @@ final class NotesBrowserViewModel {
       case createCollection(name: String)
       case createNote(collectionID: UUID, title: String)
       case addEntryToNote(annotationGroupID: UUID, noteID: UUID)
+      case removeAnnotationFromNote(annotationGroupID: UUID, noteID: UUID)
+      case deleteAnnotation(annotationGroupID: UUID)
     }
 
     let event: Event
@@ -151,6 +153,8 @@ final class NotesBrowserViewModel {
 
   @ObservationIgnored
   private var notesService: NotesBrowserService?
+  @ObservationIgnored
+  private var annotationService: AnnotationService?
 
   private(set) var output: Output
   private var selectedSource: Source?
@@ -178,9 +182,16 @@ final class NotesBrowserViewModel {
     selectedEntryFilter = .all
   }
 
-  func configureIfNeeded(notesService: NotesBrowserService) {
-    guard self.notesService == nil else { return }
-    self.notesService = notesService
+  func configureIfNeeded(
+    notesService: NotesBrowserService,
+    annotationService: AnnotationService? = nil
+  ) {
+    if self.notesService == nil {
+      self.notesService = notesService
+    }
+    if self.annotationService == nil, let annotationService {
+      self.annotationService = annotationService
+    }
   }
 
   @discardableResult
@@ -233,6 +244,22 @@ final class NotesBrowserViewModel {
         } catch {
           pendingActionError = error.localizedDescription
         }
+      }
+      reloadState()
+    case .removeAnnotationFromNote(let annotationGroupID, let noteID):
+      if let notesService {
+        do {
+          try notesService.removeAnnotationFromNote(noteID: noteID, annotationGroupID: annotationGroupID)
+        } catch {
+          pendingActionError = error.localizedDescription
+        }
+      }
+      reloadState()
+    case .deleteAnnotation(let annotationGroupID):
+      if let annotationService {
+        annotationService.removeAnnotationGroup(groupID: annotationGroupID)
+      } else {
+        pendingActionError = "Annotation service unavailable"
       }
       reloadState()
     }
