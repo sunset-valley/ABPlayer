@@ -9,6 +9,8 @@ struct NotesBrowserViewModelTests {
   @MainActor
   private struct TestContext {
     let container: ModelContainer
+    let styleService: AnnotationStyleService
+    let annotationService: AnnotationService
     let service: NotesBrowserService
   }
 
@@ -26,8 +28,18 @@ struct NotesBrowserViewModelTests {
     ])
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
     let container = try ModelContainer(for: schema, configurations: config)
+    let styleService = AnnotationStyleService(modelContext: container.mainContext)
+    let annotationService = AnnotationService(
+      modelContext: container.mainContext,
+      styleService: styleService
+    )
     let service = NotesBrowserService(modelContext: container.mainContext)
-    return TestContext(container: container, service: service)
+    return TestContext(
+      container: container,
+      styleService: styleService,
+      annotationService: annotationService,
+      service: service
+    )
   }
 
   @MainActor
@@ -61,6 +73,48 @@ struct NotesBrowserViewModelTests {
     container.mainContext.insert(group)
     try container.mainContext.save()
     return group
+  }
+
+  @MainActor
+  private func createAnnotationGroup(
+    context: TestContext,
+    mediaID: UUID,
+    cueID: UUID = UUID(),
+    stylePresetID: UUID? = nil,
+    selectedText: String,
+    comment: String?
+  ) -> UUID {
+    let resolvedStylePresetID = stylePresetID ?? context.styleService.defaultStyle().id
+    let selection = CrossCueTextSelection(
+      segments: [
+        .init(
+          cueID: cueID,
+          cueStartTime: 0,
+          cueEndTime: 1,
+          localRange: NSRange(location: 0, length: max(1, selectedText.count)),
+          text: selectedText
+        ),
+      ],
+      fullText: selectedText,
+      globalRange: NSRange(location: 0, length: max(1, selectedText.count))
+    )
+
+    let created = context.annotationService.addAnnotation(
+      audioFileID: mediaID,
+      selection: selection,
+      stylePresetID: resolvedStylePresetID
+    )
+
+    guard let groupID = created.first?.groupID else {
+      Issue.record("Expected group ID")
+      return UUID()
+    }
+
+    if let comment {
+      context.annotationService.updateComment(groupID: groupID, comment: comment)
+    }
+
+    return groupID
   }
 
   @Test @MainActor
@@ -336,6 +390,63 @@ struct NotesBrowserViewModelTests {
       noteID: note.id
     )))
     #expect(output.actionError != nil)
+  }
+
+  @Test @MainActor
+  func testRemoveAnnotationFromNoteOnlyUnlinksCurrentNote() throws {
+    let context = try makeContext()
+    let collection = try context.service.createCollection(name: "Study")
+    let note = try context.service.createNote(collectionID: collection.id, title: "Lesson 1")
+
+    let media = makeMediaFile(name: "video.mp4", type: .video)
+    context.container.mainContext.insert(media)
+    let groupID = createAnnotationGroup(
+      context: context,
+      mediaID: media.id,
+      selectedText: "snapshot",
+      comment: "memo"
+    )
+    _ = try context.service.addAnnotationToNote(noteID: note.id, annotationGroupID: groupID)
+
+    let viewModel = NotesBrowserViewModel()
+    viewModel.configureIfNeeded(notesService: context.service, annotationService: context.annotationService)
+    _ = viewModel.transform(input: .init(event: .onAppear))
+
+    let output = viewModel.transform(input: .init(event: .removeAnnotationFromNote(
+      annotationGroupID: groupID,
+      noteID: note.id
+    )))
+
+    #expect(output.actionError == nil)
+    #expect((try context.service.entries(forNoteID: note.id)).isEmpty)
+    #expect(context.service.entries(forMediaID: media.id).count == 1)
+  }
+
+  @Test @MainActor
+  func testDeleteAnnotationRemovesItFromMediaAndAllLinkedNotes() throws {
+    let context = try makeContext()
+    let collection = try context.service.createCollection(name: "Study")
+    let note = try context.service.createNote(collectionID: collection.id, title: "Lesson 1")
+
+    let media = makeMediaFile(name: "video.mp4", type: .video)
+    context.container.mainContext.insert(media)
+    let groupID = createAnnotationGroup(
+      context: context,
+      mediaID: media.id,
+      selectedText: "snapshot",
+      comment: "memo"
+    )
+    _ = try context.service.addAnnotationToNote(noteID: note.id, annotationGroupID: groupID)
+
+    let viewModel = NotesBrowserViewModel()
+    viewModel.configureIfNeeded(notesService: context.service, annotationService: context.annotationService)
+    _ = viewModel.transform(input: .init(event: .onAppear))
+
+    let output = viewModel.transform(input: .init(event: .deleteAnnotation(annotationGroupID: groupID)))
+
+    #expect(output.actionError == nil)
+    #expect(context.service.entries(forMediaID: media.id).isEmpty)
+    #expect((try context.service.entries(forNoteID: note.id)).isEmpty)
   }
 
   @Test @MainActor

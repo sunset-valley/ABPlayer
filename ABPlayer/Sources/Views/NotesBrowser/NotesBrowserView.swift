@@ -24,6 +24,7 @@ struct NotesBrowserView: View {
   @State private var isCreatingNote = false
   @State private var newNoteTitle = ""
   @State private var entryToAddToCollection: NotesBrowserEntry?
+  @State private var pendingAnnotationAction: PendingAnnotationAction?
 
   var body: some View {
     NavigationSplitView {
@@ -37,7 +38,7 @@ struct NotesBrowserView: View {
     }
     .navigationTitle("Notes Browser")
     .onAppear {
-      viewModel.configureIfNeeded(notesService: notesService)
+      viewModel.configureIfNeeded(notesService: notesService, annotationService: annotationService)
       applyOutput(viewModel.transform(input: .init(event: .onAppear)))
     }
     .onChange(of: sourceSelection) { _, newValue in
@@ -115,6 +116,20 @@ struct NotesBrowserView: View {
       Button("Cancel", role: .cancel) {
         newNoteTitle = ""
       }
+    }
+    .alert(
+      pendingAnnotationAction?.title ?? "Delete Annotation",
+      isPresented: isPresentingPendingAnnotationAction,
+      presenting: pendingAnnotationAction
+    ) { action in
+      Button(action.confirmButtonTitle, role: .destructive) {
+        applyPendingAnnotationAction(action)
+      }
+      Button("Cancel", role: .cancel) {
+        pendingAnnotationAction = nil
+      }
+    } message: { action in
+      Text(action.message)
     }
     .alert(
       "Action Failed",
@@ -306,14 +321,33 @@ struct NotesBrowserView: View {
     )
     .listRowSeparator(.hidden)
     .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
-    .contextMenu {
-      if entry.kind == .annotation, viewModel.output.middleMode == .media {
-        Button("Add to Collection...") {
-          entryToAddToCollection = entry
+      .contextMenu {
+        if entry.kind == .annotation, viewModel.output.middleMode == .media {
+          Button("Add to Collection...") {
+            entryToAddToCollection = entry
+          }
+          .accessibilityIdentifier("notes-browser-entry-add-to-collection-\(entry.id.uuidString.lowercased())")
+
+          Divider()
+
+          Button("Delete Annotation...", role: .destructive) {
+            requestDeleteAnnotation(entry)
+          }
+          .accessibilityIdentifier("notes-browser-entry-delete-annotation-\(entry.id.uuidString.lowercased())")
+        } else if entry.kind == .annotation, viewModel.output.middleMode == .notes {
+          Button("Remove from Note...", role: .destructive) {
+            requestRemoveAnnotationFromNote(entry)
+          }
+          .accessibilityIdentifier("notes-browser-entry-remove-from-note-\(entry.id.uuidString.lowercased())")
+
+          Divider()
+
+          Button("Delete Annotation...", role: .destructive) {
+            requestDeleteAnnotation(entry)
+          }
+          .accessibilityIdentifier("notes-browser-entry-delete-annotation-\(entry.id.uuidString.lowercased())")
         }
-        .accessibilityIdentifier("notes-browser-entry-add-to-collection-\(entry.id.uuidString.lowercased())")
       }
-    }
   }
 
   private func editNoteButton(for entry: NotesBrowserEntry) -> some View {
@@ -461,5 +495,99 @@ struct NotesBrowserView: View {
       return nil
     }
     return trimmed
+  }
+
+  private var isPresentingPendingAnnotationAction: Binding<Bool> {
+    Binding(
+      get: { pendingAnnotationAction != nil },
+      set: { isPresented in
+        if !isPresented {
+          pendingAnnotationAction = nil
+        }
+      }
+    )
+  }
+
+  private func requestDeleteAnnotation(_ entry: NotesBrowserEntry) {
+    guard let annotationGroupID = entry.annotationGroupID else {
+      errorMessage = NotesBrowserServiceError.annotationNotFound.localizedDescription
+      return
+    }
+    pendingAnnotationAction = PendingAnnotationAction(
+      annotationGroupID: annotationGroupID,
+      entryTitle: entry.title,
+      kind: .deleteAnnotation
+    )
+  }
+
+  private func requestRemoveAnnotationFromNote(_ entry: NotesBrowserEntry) {
+    guard let annotationGroupID = entry.annotationGroupID else {
+      errorMessage = NotesBrowserServiceError.annotationNotFound.localizedDescription
+      return
+    }
+    guard case let .note(noteID) = viewModel.output.selectedMiddleItem else {
+      errorMessage = NotesBrowserServiceError.noteNotFound.localizedDescription
+      return
+    }
+    pendingAnnotationAction = PendingAnnotationAction(
+      annotationGroupID: annotationGroupID,
+      entryTitle: entry.title,
+      kind: .removeFromNote(noteID: noteID)
+    )
+  }
+
+  private func applyPendingAnnotationAction(_ action: PendingAnnotationAction) {
+    pendingAnnotationAction = nil
+    switch action.kind {
+    case .deleteAnnotation:
+      applyOutput(viewModel.transform(input: .init(event: .deleteAnnotation(
+        annotationGroupID: action.annotationGroupID
+      ))))
+    case let .removeFromNote(noteID):
+      applyOutput(viewModel.transform(input: .init(event: .removeAnnotationFromNote(
+        annotationGroupID: action.annotationGroupID,
+        noteID: noteID
+      ))))
+    }
+  }
+}
+
+private struct PendingAnnotationAction {
+  enum Kind {
+    case removeFromNote(noteID: UUID)
+    case deleteAnnotation
+  }
+
+  let annotationGroupID: UUID
+  let entryTitle: String
+  let kind: Kind
+
+  var title: String {
+    switch kind {
+    case .removeFromNote:
+      return "Remove from Note"
+    case .deleteAnnotation:
+      return "Delete Annotation"
+    }
+  }
+
+  var confirmButtonTitle: String {
+    switch kind {
+    case .removeFromNote:
+      return "Remove"
+    case .deleteAnnotation:
+      return "Delete"
+    }
+  }
+
+  var message: String {
+    let escapedTitle = entryTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    let displayTitle = escapedTitle.isEmpty ? "this annotation" : "\"\(escapedTitle)\""
+    switch kind {
+    case .removeFromNote:
+      return "\(displayTitle) will be removed from this note only."
+    case .deleteAnnotation:
+      return "\(displayTitle) will be deleted from media and all linked notes. This cannot be undone."
+    }
   }
 }

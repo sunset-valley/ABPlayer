@@ -114,7 +114,7 @@ struct SubtitleView: View {
 
               popoverContent(output: output)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(minWidth: 320, maxWidth: 420, alignment: .leading)
+                .frame(width: 340, alignment: .leading)
                 .background {
                   GeometryReader { proxy in
                     Color.clear

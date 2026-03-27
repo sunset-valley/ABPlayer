@@ -131,6 +131,12 @@ final class AnnotationService {
       groupsByID.removeValue(forKey: groupID)
     }
 
+    do {
+      try modelContext.save()
+    } catch {
+      assertionFailure("Failed to save annotation deletion: \(error)")
+    }
+
     version += 1
   }
 
