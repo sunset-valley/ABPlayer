@@ -95,7 +95,7 @@ struct AnnotationMenuView: View {
           }
           .accessibilityIdentifier("annotation-edit-comment")
 
-          actionPill("Remove Annotation", systemImage: "trash", role: .destructive) {
+          actionPill("", systemImage: "trash", role: .destructive) {
             onDelete()
             onDismiss()
           }
@@ -243,22 +243,26 @@ struct AnnotationMenuView: View {
     action: @escaping () -> Void
   ) -> some View {
     Button(role: role, action: action) {
-      Label(title, systemImage: systemImage)
-        .font(.caption)
-        .fontWeight(.semibold)
-        .lineLimit(1)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .foregroundStyle(role == .destructive ? Color.red : Color.primary)
-        .background(
-          Capsule(style: .continuous)
-            .fill(
-              role == .destructive
-                ? Color.red.opacity(0.13)
-                : Color(nsColor: .controlBackgroundColor).opacity(0.82)
-            )
-        )
+      if title.isEmpty {
+        Image(systemName: systemImage)
+      } else {
+        Label(title, systemImage: systemImage)
+      }
     }
+    .font(.caption)
+    .fontWeight(.semibold)
+    .lineLimit(1)
+    .padding(.horizontal, 10)
+    .padding(.vertical, 6)
+    .foregroundStyle(role == .destructive ? Color.red : Color.primary)
+    .background(
+      Capsule(style: .continuous)
+        .fill(
+          role == .destructive
+          ? Color.red.opacity(0.13)
+          : Color(nsColor: .controlBackgroundColor).opacity(0.82)
+        )
+    )
     .buttonStyle(.plain)
     .contentShape(Capsule(style: .continuous))
   }

@@ -53,6 +53,5 @@ struct CommentEditorView: View {
       }
     }
     .padding(12)
-    .frame(width: 260)
   }
 }
