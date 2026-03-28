@@ -4,7 +4,6 @@ enum UserDefaultsKey {
   static let subtitleFontSize = "subtitleFontSize"
   static let folderNavigationSortOrder = "folderNavigationSortOrder"
   static let playerPreventSleep = "player_prevent_sleep"
-  static let counterPluginAlwaysOnTop = "counterPlugin.alwaysOnTop"
 
   static let proxyEnabled = "proxy_enabled"
   static let proxyHost = "proxy_host"

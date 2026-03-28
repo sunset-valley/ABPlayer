@@ -272,24 +272,6 @@ struct ABPlayerApp: App {
         }
       }
 
-      KeyboardShortcuts.onKeyUp(for: .counterIncrement) {
-        Task { @MainActor in
-          CounterPlugin.shared.increment()
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .counterDecrement) {
-        Task { @MainActor in
-          CounterPlugin.shared.decrement()
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .counterReset) {
-        Task { @MainActor in
-          CounterPlugin.shared.reset()
-        }
-      }
-
     } catch {
       fatalError("Failed to create model container: \(error)")
     }
@@ -380,7 +362,6 @@ struct ABPlayerApp: App {
     .commands {
       SettingsCommands()
       NotesBrowserCommands()
-      PluginCommands()
       CommandGroup(replacing: .appInfo) {
         Button("About ABPlayer") {
           NSApp.orderFrontStandardAboutPanel(options: [
@@ -436,20 +417,6 @@ struct ABPlayerApp: App {
     .defaultSize(width: 1280, height: 820)
     .defaultPosition(.center)
     .commandsRemoved()
-  }
-}
-
-// MARK: - Plugin Commands
-
-struct PluginCommands: Commands {
-  var body: some Commands {
-    CommandMenu("Plugins") {
-      ForEach(PluginManager.shared.plugins, id: \.id) { plugin in
-        Button(plugin.name) {
-          plugin.open()
-        }
-      }
-    }
   }
 }
 

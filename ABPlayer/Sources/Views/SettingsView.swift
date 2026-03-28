@@ -32,8 +32,6 @@ struct SettingsView: View {
             ShortcutsSettingsView()
           case .transcription:
             TranscriptionSettingsView()
-          case .plugins:
-            PluginsSettingsView()
           }
         } else {
           ContentUnavailableView("Select a setting", systemImage: "gear")

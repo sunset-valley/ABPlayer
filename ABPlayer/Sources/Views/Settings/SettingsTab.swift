@@ -6,7 +6,6 @@ enum SettingsTab: String, CaseIterable, Identifiable {
   case update = "Update"
   case shortcuts = "Shortcuts"
   case transcription = "Transcription"
-  case plugins = "Plugins"
 
   var id: Self { self }
 
@@ -17,7 +16,6 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case .update: return "arrow.triangle.2.circlepath"
     case .shortcuts: return "keyboard"
     case .transcription: return "text.bubble"
-    case .plugins: return "puzzlepiece.extension"
     }
   }
 }
