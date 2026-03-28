@@ -89,6 +89,7 @@ struct ABPlayerApp: App {
   private let annotationStyleService: AnnotationStyleService
   private let annotationService: AnnotationService
   private let notesBrowserService: NotesBrowserService
+  private let listeningStatsService: ListeningStatsService
   private let subtitleLoader = SubtitleLoader()
 
   private let queueManager: TranscriptionQueueManager
@@ -117,6 +118,11 @@ struct ABPlayerApp: App {
   private var isNotesExportUITesting: Bool {
     Self.hasLaunchArgument("--ui-testing-notes-export")
       || Self.hasLaunchEnvironment("ABP_UI_TESTING_NOTES_EXPORT")
+  }
+
+  private var isListeningStatsUITesting: Bool {
+    Self.hasLaunchArgument("--ui-testing-listening-stats")
+      || Self.hasLaunchEnvironment("ABP_UI_TESTING_LISTENING_STATS")
   }
 
   private static func hasLaunchArgument(_ argument: String) -> Bool {
@@ -210,6 +216,7 @@ struct ABPlayerApp: App {
         styleService: annotationStyleService
       )
       notesBrowserService = NotesBrowserService(modelContext: modelContainer.mainContext)
+      listeningStatsService = ListeningStatsService(modelContext: modelContainer.mainContext)
 
       queueManager = TranscriptionQueueManager(
         transcriptionManager: transcriptionManager,
@@ -272,24 +279,6 @@ struct ABPlayerApp: App {
         }
       }
 
-      KeyboardShortcuts.onKeyUp(for: .counterIncrement) {
-        Task { @MainActor in
-          CounterPlugin.shared.increment()
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .counterDecrement) {
-        Task { @MainActor in
-          CounterPlugin.shared.decrement()
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .counterReset) {
-        Task { @MainActor in
-          CounterPlugin.shared.reset()
-        }
-      }
-
     } catch {
       fatalError("Failed to create model container: \(error)")
     }
@@ -336,6 +325,7 @@ struct ABPlayerApp: App {
       settingsWindowScene
       annotationStyleManagerWindowScene
       notesBrowserWindowScene
+      listeningStatsWindowScene
     #endif
   }
 
@@ -349,6 +339,8 @@ struct ABPlayerApp: App {
       AnnotationMenuDemoView()
     } else if isNotesExportUITesting {
       NotesBrowserExportDemoView()
+    } else if isListeningStatsUITesting {
+      ListeningStatsDemoView()
     } else {
       MainSplitView()
     }
@@ -372,6 +364,7 @@ struct ABPlayerApp: App {
         .environment(annotationStyleService)
         .environment(annotationService)
         .environment(notesBrowserService)
+        .environment(listeningStatsService)
         .environment(subtitleLoader)
     }
     .defaultSize(width: 1600, height: 900)
@@ -380,7 +373,6 @@ struct ABPlayerApp: App {
     .commands {
       SettingsCommands()
       NotesBrowserCommands()
-      PluginCommands()
       CommandGroup(replacing: .appInfo) {
         Button("About ABPlayer") {
           NSApp.orderFrontStandardAboutPanel(options: [
@@ -437,19 +429,15 @@ struct ABPlayerApp: App {
     .defaultPosition(.center)
     .commandsRemoved()
   }
-}
 
-// MARK: - Plugin Commands
-
-struct PluginCommands: Commands {
-  var body: some Commands {
-    CommandMenu("Plugins") {
-      ForEach(PluginManager.shared.plugins, id: \.id) { plugin in
-        Button(plugin.name) {
-          plugin.open()
-        }
-      }
+  private var listeningStatsWindowScene: some Scene {
+    Window("Daily Listening Time", id: "listening-stats") {
+      ListeningStatsView()
+        .environment(listeningStatsService)
     }
+    .defaultSize(width: 980, height: 620)
+    .defaultPosition(.center)
+    .commandsRemoved()
   }
 }
 
@@ -464,6 +452,10 @@ struct NotesBrowserCommands: Commands {
         openWindow(id: "notes-browser")
       }
       .keyboardShortcut("n", modifiers: [.command, .shift])
+
+      Button("Daily Listening Time") {
+        openWindow(id: "listening-stats")
+      }
     }
   }
 }

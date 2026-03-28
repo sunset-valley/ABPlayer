@@ -68,8 +68,5 @@ struct ShortcutsSettingsView: View {
     KeyboardShortcuts.reset(.saveSegment)
     KeyboardShortcuts.reset(.previousSegment)
     KeyboardShortcuts.reset(.nextSegment)
-    KeyboardShortcuts.reset(.counterIncrement)
-    KeyboardShortcuts.reset(.counterDecrement)
-    KeyboardShortcuts.reset(.counterReset)
   }
 }

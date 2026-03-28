@@ -1,3 +1,12 @@
+## [0.2.30.112] - 2026-03-28
+
+### Features
+- add service, vm, and views
+
+### Improvements
+- remove built-in plugin surface from app shell
+
+
 ## [0.2.29.111] - 2026-03-27
 
 ### Features
