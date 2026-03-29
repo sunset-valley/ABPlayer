@@ -5,6 +5,7 @@ on:
         branches: [main]
     pull_request:
         branches: [main]
+    workflow_dispatch:
 
 jobs:
     # Tests job - runs only on pull requests
@@ -99,11 +100,11 @@ jobs:
                     --data-urlencode text="$MESSAGE" \
                     -d disable_web_page_preview=true
 
-    # Build and Release job - runs only on push to main (merge)
+    # Build and Release job - runs on push to main or manual dispatch
     build-and-release:
         name: Build and Release
         runs-on: macos-26
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
         permissions:
             contents: write
 
@@ -249,7 +250,9 @@ jobs:
                     -destination 'generic/platform=macOS' \
                     -archivePath build/ABPlayer.xcarchive \
                     CODE_SIGN_IDENTITY="Developer ID Application" \
-                    DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
+                    CODE_SIGN_STYLE=Manual \
+                    DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+                    PROVISIONING_PROFILE_SPECIFIER=""
 
             - name: Export Archive
               if: steps.compare_versions.outputs.should_release == 'true'
