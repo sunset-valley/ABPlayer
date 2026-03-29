@@ -39,13 +39,13 @@ jobs:
                   mise install tuist@4.95.0
                   mise use -g tuist@4.95.0
 
-            # ffmpeg binary is not committed; create a placeholder so the
-            # CopyFiles build phase does not fail during tests.
+            # ffmpeg binary is not committed; compile a minimal Mach-O placeholder
+            # and ad-hoc sign it so the app bundle deep-sign succeeds during tests.
             - name: Create placeholder ffmpeg for tests
               run: |
                   mkdir -p Binaries
-                  touch Binaries/ffmpeg
-                  chmod +x Binaries/ffmpeg
+                  echo 'int main(){return 0;}' | cc -x c - -o Binaries/ffmpeg
+                  codesign --force --sign - Binaries/ffmpeg
 
             - name: Generate Xcode Project
               env:
@@ -67,7 +67,7 @@ jobs:
                     -enableCodeCoverage YES \
                     -derivedDataPath DerivedData \
                     CODE_SIGNING_REQUIRED=NO \
-                    CODE_SIGN_IDENTITY=""
+                    CODE_SIGN_IDENTITY="-"
 
             - name: Send Telegram Notification (Tests Failed)
               if: ${{ failure() && github.event.pull_request.head.repo.full_name == github.repository }}
