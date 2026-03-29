@@ -1,0 +1,96 @@
+name: Tests
+
+on:
+    pull_request:
+        branches: [main]
+
+jobs:
+    tests:
+        name: Run Tests
+        runs-on: macos-26
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Setup Xcode
+              uses: maxim-lobanov/setup-xcode@v1
+              with:
+                  xcode-version: latest
+
+            - name: Setup Swift
+              uses: swift-actions/setup-swift@v2
+              with:
+                  swift-version: "6.2"
+
+            - name: Install mise
+              uses: jdx/mise-action@v3
+              with:
+                  github_token: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Install Tuist via mise
+              run: |
+                  mise install tuist@4.95.0
+                  mise use -g tuist@4.95.0
+
+            # ffmpeg binary is not committed; compile a minimal Mach-O placeholder
+            # and ad-hoc sign it so the app bundle deep-sign succeeds during tests.
+            - name: Create placeholder ffmpeg for tests
+              run: |
+                  mkdir -p Binaries
+                  echo 'int main(){return 0;}' | cc -x c - -o Binaries/ffmpeg
+                  codesign --force --sign - Binaries/ffmpeg
+
+            - name: Generate Xcode Project
+              env:
+                  TUIST_CONFIG_TOKEN: ${{ secrets.TUIST_CONFIG_TOKEN }}
+                  CI: 1
+              run: |
+                  tuist clean
+                  tuist install
+                  tuist generate
+                  echo "Generated Xcode project"
+
+            - name: Run Tests
+              run: |
+                  xcodebuild test \
+                    -workspace ABPlayer.xcworkspace \
+                    -scheme ABPlayer \
+                    -destination 'platform=macOS' \
+                    -skip-testing:ABPlayerUITests \
+                    -enableCodeCoverage YES \
+                    -derivedDataPath DerivedData \
+                    CODE_SIGNING_REQUIRED=NO \
+                    CODE_SIGN_IDENTITY="-"
+
+            - name: Send Telegram Notification (Tests Failed)
+              if: ${{ failure() && github.event.pull_request.head.repo.full_name == github.repository }}
+              env:
+                  TELEGRAM_TO: ${{ secrets.TELEGRAM_TO }}
+                  TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+              run: |
+                  REPO="${{ github.repository }}"
+                  ACTOR="${{ github.actor }}"
+                  REF="${{ github.ref }}"
+                  SHA="${{ github.sha }}"
+                  RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  PR_NUMBER="${{ github.event.pull_request.number }}"
+                  PR_URL="${{ github.event.pull_request.html_url }}"
+
+                  MESSAGE="$(cat <<EOF
+                  CI tests failed
+                  Repo: $REPO
+                  Actor: $ACTOR
+                  PR: #$PR_NUMBER $PR_URL
+                  Ref: $REF
+                  SHA: $SHA
+                  Run: $RUN_URL
+                  EOF
+                  )"
+
+                  curl -sS -X POST "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" \
+                    -d chat_id="$TELEGRAM_TO" \
+                    --data-urlencode text="$MESSAGE" \
+                    -d disable_web_page_preview=true

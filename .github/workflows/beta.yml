@@ -1,110 +1,13 @@
-name: CI
+name: Beta
 
 on:
     push:
         branches: [main]
-    pull_request:
-        branches: [main]
-    workflow_dispatch:
 
 jobs:
-    # Tests job - runs only on pull requests
-    tests:
-        name: Run Tests
+    beta:
+        name: Beta Build
         runs-on: macos-26
-        if: github.event_name == 'pull_request'
-
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
-
-            - name: Setup Xcode
-              uses: maxim-lobanov/setup-xcode@v1
-              with:
-                  xcode-version: latest
-
-            - name: Setup Swift
-              uses: swift-actions/setup-swift@v2
-              with:
-                  swift-version: "6.2"
-
-            - name: Install mise
-              uses: jdx/mise-action@v3
-              with:
-                  github_token: ${{ secrets.GITHUB_TOKEN }}
-
-            - name: Install Tuist via mise
-              run: |
-                  mise install tuist@4.95.0
-                  mise use -g tuist@4.95.0
-
-            # ffmpeg binary is not committed; compile a minimal Mach-O placeholder
-            # and ad-hoc sign it so the app bundle deep-sign succeeds during tests.
-            - name: Create placeholder ffmpeg for tests
-              run: |
-                  mkdir -p Binaries
-                  echo 'int main(){return 0;}' | cc -x c - -o Binaries/ffmpeg
-                  codesign --force --sign - Binaries/ffmpeg
-
-            - name: Generate Xcode Project
-              env:
-                  TUIST_CONFIG_TOKEN: ${{ secrets.TUIST_CONFIG_TOKEN }}
-                  CI: 1
-              run: |
-                  tuist clean
-                  tuist install
-                  tuist generate
-                  echo "Generated Xcode project"
-
-            - name: Run Tests
-              run: |
-                  xcodebuild test \
-                    -workspace ABPlayer.xcworkspace \
-                    -scheme ABPlayer \
-                    -destination 'platform=macOS' \
-                    -skip-testing:ABPlayerUITests \
-                    -enableCodeCoverage YES \
-                    -derivedDataPath DerivedData \
-                    CODE_SIGNING_REQUIRED=NO \
-                    CODE_SIGN_IDENTITY="-"
-
-            - name: Send Telegram Notification (Tests Failed)
-              if: ${{ failure() && github.event.pull_request.head.repo.full_name == github.repository }}
-              env:
-                  TELEGRAM_TO: ${{ secrets.TELEGRAM_TO }}
-                  TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-              run: |
-                  REPO="${{ github.repository }}"
-                  ACTOR="${{ github.actor }}"
-                  REF="${{ github.ref }}"
-                  SHA="${{ github.sha }}"
-                  RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                  PR_NUMBER="${{ github.event.pull_request.number }}"
-                  PR_URL="${{ github.event.pull_request.html_url }}"
-
-                  MESSAGE="$(cat <<EOF
-                  CI tests failed
-                  Repo: $REPO
-                  Actor: $ACTOR
-                  PR: #$PR_NUMBER $PR_URL
-                  Ref: $REF
-                  SHA: $SHA
-                  Run: $RUN_URL
-                  EOF
-                  )"
-
-                  curl -sS -X POST "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" \
-                    -d chat_id="$TELEGRAM_TO" \
-                    --data-urlencode text="$MESSAGE" \
-                    -d disable_web_page_preview=true
-
-    # Build and Release job - runs on push to main or manual dispatch
-    build-and-release:
-        name: Build and Release
-        runs-on: macos-26
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
         permissions:
             contents: write
 
@@ -139,20 +42,19 @@ jobs:
                   CURRENT="${{ steps.get_version.outputs.version }}"
                   LATEST="${{ steps.get_latest_release.outputs.latest_tag }}"
 
-                  # Remove 'v' prefix if exists for comparison
                   CURRENT_CLEAN=$(echo $CURRENT | sed 's/^v//')
                   LATEST_CLEAN=$(echo $LATEST | sed 's/^v//')
 
                   if [ "$CURRENT_CLEAN" = "$LATEST_CLEAN" ]; then
-                    echo "Versions are the same. Skipping release."
+                    echo "Versions are the same. Skipping beta."
                     echo "should_release=false" >> $GITHUB_OUTPUT
                   else
                     HIGHER=$(printf "$CURRENT_CLEAN\n$LATEST_CLEAN" | sort -V | tail -n1)
                     if [ "$HIGHER" = "$CURRENT_CLEAN" ] && [ "$CURRENT_CLEAN" != "$LATEST_CLEAN" ]; then
-                      echo "Current version $CURRENT is higher than latest $LATEST. Proceeding with release."
+                      echo "Current version $CURRENT is higher than latest $LATEST. Proceeding with beta."
                       echo "should_release=true" >> $GITHUB_OUTPUT
                     else
-                      echo "Current version $CURRENT is NOT higher than latest $LATEST. Skipping release."
+                      echo "Current version $CURRENT is NOT higher than latest $LATEST. Skipping beta."
                       echo "should_release=false" >> $GITHUB_OUTPUT
                     fi
                   fi
@@ -180,9 +82,6 @@ jobs:
                   mise install tuist@4.95.0
                   mise use -g tuist@4.95.0
 
-            # Import Developer ID Application certificate into a temporary keychain
-            # so that codesign (for ffmpeg) and xcodebuild (for the app) can sign.
-            # Required secrets: APPLE_SIGNING_CERTIFICATE (base64 .p12), APPLE_SIGNING_CERTIFICATE_PASSWORD
             - name: Setup Signing Certificate
               if: steps.compare_versions.outputs.should_release == 'true'
               env:
@@ -204,21 +103,17 @@ jobs:
                     -T /usr/bin/security
                   rm /tmp/cert.p12
 
-                  # Allow codesign to access the key without a prompt
                   security set-key-partition-list \
                     -S apple-tool:,apple: \
                     -s -k "$KEYCHAIN_PASSWORD" \
                     "$KEYCHAIN_PATH"
 
-                  # Add the new keychain to the search list (preserve existing)
                   security list-keychain -d user -s "$KEYCHAIN_PATH" \
                     $(security list-keychains -d user | tr -d '"' | xargs)
 
                   echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
                   echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
 
-            # Download ffmpeg from evermeet.cx and sign with Hardened Runtime.
-            # Must run before tuist generate so the CopyFiles build phase finds the binary.
             - name: Prepare ffmpeg
               if: steps.compare_versions.outputs.should_release == 'true'
               env:
@@ -262,28 +157,6 @@ jobs:
                     -exportPath build/export \
                     -exportOptionsPlist scripts/ExportOptions.plist
 
-            # Notarize the exported app and staple the ticket so Gatekeeper
-            # accepts it on launch without a network check.
-            # Required secrets: APPLE_ID, APPLE_ID_PASSWORD (app-specific), APPLE_TEAM_ID
-            - name: Notarize and Staple
-              if: steps.compare_versions.outputs.should_release == 'true'
-              env:
-                  APPLE_ID: ${{ secrets.APPLE_ID }}
-                  APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-                  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-              run: |
-                  # Zip app for submission (notarytool requires a zip/dmg, not .app directly)
-                  ditto -c -k --keepParent build/export/ABPlayer.app build/ABPlayer-notarize.zip
-
-                  xcrun notarytool submit build/ABPlayer-notarize.zip \
-                    --apple-id "$APPLE_ID" \
-                    --password "$APPLE_ID_PASSWORD" \
-                    --team-id "$APPLE_TEAM_ID" \
-                    --wait
-
-                  xcrun stapler staple build/export/ABPlayer.app
-                  rm build/ABPlayer-notarize.zip
-
             - name: Prepare Release Artifact
               if: steps.compare_versions.outputs.should_release == 'true'
               env:
@@ -291,19 +164,15 @@ jobs:
               run: |
                   cd build/export
 
-                  # Create zip for Sparkle
                   zip -r ABPlayer.zip ABPlayer.app
 
                   SPARKLE_BIN="../../Tuist/.build/artifacts/sparkle/Sparkle/bin"
 
-                  # Create a temporary file for the key
                   echo "$SPARKLE_PRIVATE_KEY" > sparkle_key
 
-                  # Generate signature
                   SIGNATURE=$("$SPARKLE_BIN/sign_update" ABPlayer.zip --ed-key-file sparkle_key)
                   echo "Signature: $SIGNATURE"
 
-                  # Generate Appcast
                   "$SPARKLE_BIN/generate_appcast" . \
                     --ed-key-file sparkle_key \
                     --download-url-prefix "http://s3.kcoding.cn/d/ABPlayerRelease/"
@@ -313,10 +182,8 @@ jobs:
                     exit 1
                   fi
 
-                  # Cleanup key
                   rm sparkle_key
 
-                  # Move artifacts to project root
                   mv ABPlayer.zip ../../
                   mv appcast.xml ../../
                   cd ../../
@@ -330,12 +197,11 @@ jobs:
                   NOTES_FILE="release_notes.txt"
 
                   if [ -f "CHANGELOG.md" ]; then
-                    # Extract release notes for the current version
                     awk "/^## \[$VERSION\]/{p=1; print; next} /^## \[/{p=0} p" CHANGELOG.md > "$NOTES_FILE"
                   fi
 
                   if [ ! -s "$NOTES_FILE" ]; then
-                    echo "Automated release for version $VERSION" > "$NOTES_FILE"
+                    echo "Automated beta release for version $VERSION" > "$NOTES_FILE"
                   fi
 
                   gh release create "$VERSION" ABPlayer.zip appcast.xml --title "$VERSION" --notes-file "$NOTES_FILE"
@@ -359,51 +225,6 @@ jobs:
               run: |
                   security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
 
-            - name: Refresh S3
-              if: steps.compare_versions.outputs.should_release == 'true'
-              env:
-                  OPENLIST_TOKEN: ${{ secrets.OPENLIST_TOKEN }}
-              run: |
-                  MODIFIED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-                  COMMON_ADDITION='{"root_folder_path":"","repo_structure":"sunset-valley/ABPlayer","show_readme":false,"token":"","show_source_code":false,"show_all_version":false,"gh_proxy":"https://gh-proxy.com/github.com"}'
-
-                  build_payload() {
-                    local mount_path="$1"
-                    jq -cn \
-                      --arg mount_path "$mount_path" \
-                      --arg modified "$MODIFIED_AT" \
-                      --arg addition "$COMMON_ADDITION" \
-                      '{
-                        id: 1,
-                        mount_path: $mount_path,
-                        order: 0,
-                        driver: "GitHub Releases",
-                        cache_expiration: 30,
-                        custom_cache_policies: "",
-                        status: "work",
-                        addition: $addition,
-                        remark: "",
-                        modified: $modified,
-                        disabled: false,
-                        disable_index: true,
-                        enable_sign: false,
-                        order_by: "",
-                        order_direction: "",
-                        extract_folder: "front",
-                        web_proxy: false,
-                        webdav_policy: "302_redirect",
-                        proxy_range: false,
-                        down_proxy_url: "",
-                        disable_proxy_sign: false
-                      }'
-                  }
-
-                  PAYLOAD_RELEASE_1="$(build_payload "/ABPlayerRelease1")"
-                  PAYLOAD_RELEASE="$(build_payload "/ABPlayerRelease")"
-
-                  curl -s -X POST https://s3.kcoding.cn/api/admin/storage/update -H "Authorization: $OPENLIST_TOKEN" -H "Content-Type: application/json;charset=UTF-8" --data-raw "$PAYLOAD_RELEASE_1"
-                  curl -s -X POST https://s3.kcoding.cn/api/admin/storage/update -H "Authorization: $OPENLIST_TOKEN" -H "Content-Type: application/json;charset=UTF-8" --data-raw "$PAYLOAD_RELEASE"
-
             - name: Send Telegram Notification
               if: steps.compare_versions.outputs.should_release == 'true'
               env:
@@ -411,5 +232,5 @@ jobs:
                   TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
               run: |
                   VERSION="${{ steps.get_version.outputs.version }}"
-                  MESSAGE="Release Success: $VERSION"
+                  MESSAGE="Beta Build: $VERSION"
                   curl -s -X POST https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage -d chat_id=$TELEGRAM_TO -d text="$MESSAGE"
