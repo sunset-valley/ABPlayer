@@ -43,9 +43,9 @@ jobs:
             # CopyFiles build phase does not fail during tests.
             - name: Create placeholder ffmpeg for tests
               run: |
-                  mkdir -p ABPlayer/Binaries
-                  touch ABPlayer/Binaries/ffmpeg
-                  chmod +x ABPlayer/Binaries/ffmpeg
+                  mkdir -p Binaries
+                  touch Binaries/ffmpeg
+                  chmod +x Binaries/ffmpeg
 
             - name: Generate Xcode Project
               env:
@@ -65,7 +65,9 @@ jobs:
                     -destination 'platform=macOS' \
                     -skip-testing:ABPlayerUITests \
                     -enableCodeCoverage YES \
-                    -derivedDataPath DerivedData
+                    -derivedDataPath DerivedData \
+                    CODE_SIGNING_REQUIRED=NO \
+                    CODE_SIGN_IDENTITY=""
 
             - name: Send Telegram Notification (Tests Failed)
               if: ${{ failure() && github.event.pull_request.head.repo.full_name == github.repository }}
