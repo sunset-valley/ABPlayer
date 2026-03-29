@@ -2,11 +2,24 @@ import ProjectDescription
 
 let buildVersionString = "112"
 let shortVersionString = "0.2.30"
+
+let signingSettings: SettingsDictionary = [
+  "CODE_SIGN_IDENTITY": "Apple Development",
+  "CODE_SIGN_IDENTITY[sdk=macosx*]": "Developer ID Application",
+  "CODE_SIGN_STYLE": "Manual",
+  "DEVELOPMENT_TEAM": "",
+  "DEVELOPMENT_TEAM[sdk=macosx*]": "Z7SKC87T6Q",
+  "PROVISIONING_PROFILE_SPECIFIER": "",
+  "PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]": "ABPlayer-ID",
+]
+
 let project = Project(
   name: "ABPlayer",
   settings: .settings(
     base: [
       "SWIFT_VERSION": "6.2",
+      "ENABLE_HARDENED_RUNTIME": "YES",
+      "CODE_SIGN_ENTITLEMENTS": "ABPlayer/Resources/ABPlayer.entitlements",
     ],
     configurations: [
       .debug(name: "Debug"),
@@ -41,6 +54,9 @@ let project = Project(
         "ABPlayer/Sources",
         "ABPlayer/Resources",
       ],
+      copyFiles: [
+        .executables(name: "ffmpeg", files: [.glob(pattern: "ABPlayer/Resources/Helpers/ffmpeg")]),
+      ],
       dependencies: [
         .sdk(name: "AppIntents", type: .framework, status: .optional),
         .external(name: "Sentry"),
@@ -48,7 +64,8 @@ let project = Project(
         .external(name: "KeyboardShortcuts"),
         .external(name: "Sparkle"),
         .external(name: "TelemetryDeck"),
-      ]
+      ],
+      settings: .settings(base: signingSettings)
     ),
     .target(
       name: "ABPlayerDev",
@@ -76,6 +93,9 @@ let project = Project(
       buildableFolders: [
         "ABPlayer/Sources",
         "ABPlayer/Resources",
+      ],
+      copyFiles: [
+        .executables(name: "ffmpeg", files: [.glob(pattern: "ABPlayer/Resources/Helpers/ffmpeg")]),
       ],
       dependencies: [
         .sdk(name: "AppIntents", type: .framework, status: .optional),
@@ -119,6 +139,6 @@ let project = Project(
       testAction: .targets(["ABPlayerTests", "ABPlayerUITests"]),
       runAction: .runAction(executable: "ABPlayerDev"),
       archiveAction: .archiveAction(configuration: .release)
-    )
+    ),
   ]
 )

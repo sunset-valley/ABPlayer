@@ -69,14 +69,6 @@ final class TranscriptionSettings {
     set { withMutation(keyPath: \.downloadEndpoint) { _downloadEndpoint = newValue } }
   }
 
-  /// Custom ffmpeg download mirror URL (empty = evermeet.cx official)
-  @ObservationIgnored
-  @AppStorage("transcription_ffmpeg_mirror") private var _ffmpegMirror: String = ""
-  var ffmpegMirror: String {
-    get { access(keyPath: \.ffmpegMirror); return _ffmpegMirror }
-    set { withMutation(keyPath: \.ffmpegMirror) { _ffmpegMirror = newValue } }
-  }
-
   // MARK: - Computed Properties
 
   /// Effective HuggingFace endpoint passed to WhisperKit downloads
@@ -97,104 +89,6 @@ final class TranscriptionSettings {
   static var defaultModelDirectory: URL {
     let homeDir = FileManager.default.homeDirectoryForCurrentUser
     return homeDir.appendingPathComponent(".abplayer", isDirectory: true)
-  }
-
-  // MARK: - FFmpeg Download
-
-  /// Path where the app stores a downloaded ffmpeg binary
-  var downloadedFFmpegPath: String {
-    modelDirectoryURL.appendingPathComponent("bin/ffmpeg").path
-  }
-
-  /// Whether ffmpeg was downloaded by the app and exists at the expected path
-  var isFFmpegDownloaded: Bool {
-    Self.isFFmpegValid(at: downloadedFFmpegPath)
-  }
-
-  /// Effective ffmpeg download URL (mirror or official)
-  var effectiveFFmpegDownloadURL: String {
-    let trimmed = ffmpegMirror.trimmingCharacters(in: .whitespaces)
-    return trimmed.isEmpty ? "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" : trimmed
-  }
-
-  /// Delete the app-downloaded ffmpeg binary
-  func deleteDownloadedFFmpeg() throws {
-    let path = downloadedFFmpegPath
-    guard FileManager.default.fileExists(atPath: path) else { return }
-    try FileManager.default.removeItem(atPath: path)
-  }
-
-  /// Download ffmpeg from the configured URL, unzip, and install to bin/ffmpeg.
-  /// Reports progress in 0.0–1.0 range via the `progress` closure.
-  func downloadFFmpeg(progress: @escaping @Sendable (Double) -> Void) async throws {
-    guard let url = URL(string: effectiveFFmpegDownloadURL) else {
-      throw URLError(.badURL)
-    }
-
-    let fm = FileManager.default
-    let binDir = modelDirectoryURL.appendingPathComponent("bin", isDirectory: true)
-    if !fm.fileExists(atPath: binDir.path) {
-      try fm.createDirectory(at: binDir, withIntermediateDirectories: true)
-    }
-
-    // Stream download with progress
-    let (asyncBytes, response) = try await URLSession.shared.bytes(from: url)
-    let total = response.expectedContentLength
-    var received: Int64 = 0
-
-    let tempZip = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString + ".zip")
-    defer { try? fm.removeItem(at: tempZip) }
-
-    fm.createFile(atPath: tempZip.path, contents: nil)
-    let handle = try FileHandle(forWritingTo: tempZip)
-    defer { try? handle.close() }
-
-    var buffer = Data()
-    buffer.reserveCapacity(65536)
-    for try await byte in asyncBytes {
-      buffer.append(byte)
-      if buffer.count >= 65536 {
-        handle.write(buffer)
-        received += Int64(buffer.count)
-        buffer.removeAll(keepingCapacity: true)
-        if total > 0 {
-          progress(Double(received) / Double(total))
-        }
-      }
-    }
-    if !buffer.isEmpty {
-      handle.write(buffer)
-      received += Int64(buffer.count)
-    }
-    progress(1.0)
-
-    // Unzip to temp directory
-    let tempDir = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString, isDirectory: true)
-    defer { try? fm.removeItem(at: tempDir) }
-    try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
-
-    let unzip = Process()
-    unzip.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-    unzip.arguments = ["-o", tempZip.path, "-d", tempDir.path]
-    try unzip.run()
-    unzip.waitUntilExit()
-
-    // Find the ffmpeg binary in the unzipped contents
-    let contents = try fm.contentsOfDirectory(atPath: tempDir.path)
-    guard let binary = contents.first(where: { $0 == "ffmpeg" || !$0.contains(".") }) else {
-      throw CocoaError(.fileNoSuchFile)
-    }
-
-    let srcURL = tempDir.appendingPathComponent(binary)
-    let destURL = binDir.appendingPathComponent("ffmpeg")
-
-    if fm.fileExists(atPath: destURL.path) {
-      try fm.removeItem(at: destURL)
-    }
-    try fm.copyItem(at: srcURL, to: destURL)
-    try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destURL.path)
   }
 
   // MARK: - Available Options
@@ -405,15 +299,18 @@ final class TranscriptionSettings {
 
   // MARK: - FFmpeg Path Management
 
-  /// Get the effective ffmpeg path (custom → bundled → auto-detected)
+  /// Get the effective ffmpeg path (custom → bundled → system)
   func effectiveFFmpegPath() -> String? {
+    // 1. User override
     if !ffmpegPath.isEmpty, Self.isFFmpegValid(at: ffmpegPath) {
       return ffmpegPath
     }
-    let downloaded = downloadedFFmpegPath
-    if Self.isFFmpegValid(at: downloaded) {
-      return downloaded
+    // 2. Bundled binary (primary — notarization-safe)
+    if let bundledURL = Bundle.main.url(forAuxiliaryExecutable: "ffmpeg"),
+       Self.isFFmpegValid(at: bundledURL.path) {
+      return bundledURL.path
     }
+    // 3. System install (Homebrew fallback)
     return Self.autoDetectFFmpegPath()
   }
 
