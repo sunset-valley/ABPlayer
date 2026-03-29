@@ -1,3 +1,14 @@
+## [0.3.0.113] - 2026-03-29
+
+### Features
+- bundle signed ffmpeg
+
+### Other
+- fix ci for including ffmpeg
+- update app icon
+- add docs for notarization
+
+
 ## [0.2.30.112] - 2026-03-28
 
 ### Features

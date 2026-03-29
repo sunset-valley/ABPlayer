@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- URLSession: Sparkle updates, Sentry, TelemetryDeck, HuggingFace model downloads -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <!-- User-opened media files (open panel) -->
+  <key>com.apple.security.files.user-selected.read-only</key>
+  <true/>
+  <!-- Read files the user drags or opens from arbitrary locations -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+</dict>
+</plist>

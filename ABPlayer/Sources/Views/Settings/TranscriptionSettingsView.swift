@@ -13,20 +13,12 @@ struct TranscriptionSettingsView: View {
   @State private var migrationError: String?
   @State private var previousDirectory: String = ""
   @State private var ffmpegPathStatus: FFmpegStatus = .unchecked
-  @State private var isDownloadingFFmpeg = false
-  @State private var ffmpegDownloadProgress: Double = 0
-  @State private var ffmpegDownloadTask: Task<Void, Never>?
-  @State private var showFFmpegDeleteConfirmation = false
   @State private var mirrorSelection: String = ""
-  @State private var ffmpegMirrorSelection: String = ""
   @State private var showManualDownload: Bool = false
   @State private var modelEndpointTestTask: Task<Void, Never>?
-  @State private var ffmpegEndpointTestTask: Task<Void, Never>?
   @State private var modelEndpointTestStatus: EndpointTestStatus = .idle
-  @State private var ffmpegEndpointTestStatus: EndpointTestStatus = .idle
   @State private var modelDownloadStatus: ModelDownloadStatus = .unknown
 
-  private static let kcodingFFmpegMirror = "https://s3.kcoding.cn/d/aliyun/ffmpeg/ffmpeg-8.1.zip"
   private static let hfMirror = "https://hf-mirror.com"
   private static let hfCDNMirror = "https://hf-cdn.sufy.com"
   private static let customMirrorSentinel = "__custom__"
@@ -251,70 +243,16 @@ struct TranscriptionSettingsView: View {
       // FFmpeg Path
       LabeledContent("FFmpeg") {
         HStack(spacing: 8) {
-          if isDownloadingFFmpeg {
-            HStack(spacing: 8) {
-              ProgressView(value: ffmpegDownloadProgress)
-                .progressViewStyle(.linear)
-                .frame(width: 60)
+          Text(displayFFmpegPath)
+            .foregroundStyle(ffmpegStatusColor)
+            .lineLimit(1)
+            .truncationMode(.middle)
 
-              Text("\(Int(ffmpegDownloadProgress * 100))%")
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .font(.caption)
-
-              Button {
-                ffmpegDownloadTask?.cancel()
-              } label: {
-                Image(systemName: "xmark.circle.fill")
-                  .foregroundStyle(.secondary)
-              }
-              .buttonStyle(.plain)
-              .help("Cancel download")
-            }
-          } else {
-            Text(displayFFmpegPath)
-              .foregroundStyle(ffmpegStatusColor)
-              .lineLimit(1)
-              .truncationMode(.middle)
-          }
-
-          if !isDownloadingFFmpeg {
-            if ffmpegPathStatus != .valid {
-              Button("Download") {
-                ffmpegDownloadTask = Task { await downloadFFmpeg() }
-              }
-              .buttonStyle(.borderedProminent)
-              .controlSize(.small)
-            }
-
-            if settings.isFFmpegDownloaded {
-              Button {
-                showFFmpegDeleteConfirmation = true
-              } label: {
-                Image(systemName: "trash")
-              }
-              .buttonStyle(.plain)
-              .foregroundStyle(.red)
-            }
-
-            Button("Choose...") {
-              fileImportType = .ffmpegPath
-              isFileImporterPresented = true
-            }
+          Button("Choose...") {
+            fileImportType = .ffmpegPath
+            isFileImporterPresented = true
           }
         }
-      }
-      .confirmationDialog(
-        "Delete FFmpeg",
-        isPresented: $showFFmpegDeleteConfirmation
-      ) {
-        Button("Delete", role: .destructive) {
-          try? settings.deleteDownloadedFFmpeg()
-          refreshFFmpegStatus()
-        }
-        Button("Cancel", role: .cancel) {}
-      } message: {
-        Text("Delete the downloaded FFmpeg binary?")
       }
 
     } header: {
@@ -359,7 +297,7 @@ struct TranscriptionSettingsView: View {
         .captionStyle()
 
         if ffmpegPathStatus != .valid {
-          Text("Use the Download button to install FFmpeg, or install manually with: brew install ffmpeg")
+          Text("FFmpeg not found. Install manually with: brew install ffmpeg")
             .captionStyle()
         }
       }
@@ -408,41 +346,6 @@ struct TranscriptionSettingsView: View {
       }
 
       endpointStatusRow(modelEndpointTestStatus)
-
-      LabeledContent("FFmpeg Mirror") {
-        HStack {
-          Picker("", selection: $ffmpegMirrorSelection) {
-            Text("evermeet.cx (Official)").tag("")
-            Text("kcoding.cn").tag(Self.kcodingFFmpegMirror)
-            Text("Custom").tag(Self.customMirrorSentinel)
-          }
-          .labelsHidden()
-          .fixedSize()
-          if ffmpegMirrorSelection == Self.customMirrorSentinel {
-            TextField(
-              "",
-              text: Binding(
-                get: { settings.ffmpegMirror },
-                set: { settings.ffmpegMirror = $0 }
-              )
-            )
-            .textFieldStyle(.roundedBorder)
-            .frame(minWidth: 180)
-          }
-        }
-      }
-      .onChange(of: ffmpegMirrorSelection) { _, newValue in
-        if newValue != Self.customMirrorSentinel {
-          settings.ffmpegMirror = newValue
-        }
-        if settings.ffmpegMirror.isEmpty {
-          return
-        }
-        ffmpegEndpointTestTask?.cancel()
-        ffmpegEndpointTestTask = Task { await testFFmpegEndpoint() }
-      }
-
-      endpointStatusRow(ffmpegEndpointTestStatus)
     } header: {
       Label("Download Mirror", systemImage: "network")
     } footer: {
@@ -459,20 +362,10 @@ struct TranscriptionSettingsView: View {
       } else {
         mirrorSelection = Self.customMirrorSentinel
       }
-      // Sync ffmpeg mirror state
-      if settings.ffmpegMirror.isEmpty ||
-        settings.ffmpegMirror == Self.kcodingFFmpegMirror
-      {
-        ffmpegMirrorSelection = settings.ffmpegMirror
-      } else {
-        ffmpegMirrorSelection = Self.customMirrorSentinel
-      }
 
-      // Auto-test endpoints on appear
+      // Auto-test endpoint on appear
       modelEndpointTestTask?.cancel()
       modelEndpointTestTask = Task { await testModelEndpoint() }
-      ffmpegEndpointTestTask?.cancel()
-      ffmpegEndpointTestTask = Task { await testFFmpegEndpoint() }
     }
   }
 
@@ -539,8 +432,8 @@ struct TranscriptionSettingsView: View {
     if !settings.ffmpegPath.isEmpty, ffmpegPathStatus == .valid {
       return settings.ffmpegPath
     }
-    if settings.isFFmpegDownloaded {
-      return "Downloaded"
+    if Bundle.main.url(forAuxiliaryExecutable: "ffmpeg") != nil {
+      return "Bundled"
     }
     if let detected = TranscriptionSettings.autoDetectFFmpegPath() {
       return "Auto-detected: \(detected)"
@@ -569,32 +462,10 @@ struct TranscriptionSettingsView: View {
   private func refreshFFmpegStatus() {
     if !settings.ffmpegPath.isEmpty {
       ffmpegPathStatus = TranscriptionSettings.isFFmpegValid(at: settings.ffmpegPath) ? .valid : .invalid
-    } else if settings.isFFmpegDownloaded || TranscriptionSettings.autoDetectFFmpegPath() != nil {
+    } else if settings.effectiveFFmpegPath() != nil {
       ffmpegPathStatus = .valid
     } else {
       ffmpegPathStatus = .notFound
-    }
-  }
-
-  @MainActor
-  private func downloadFFmpeg() async {
-    isDownloadingFFmpeg = true
-    ffmpegDownloadProgress = 0
-    defer {
-      isDownloadingFFmpeg = false
-      ffmpegDownloadTask = nil
-    }
-    do {
-      try await settings.downloadFFmpeg { progress in
-        Task { @MainActor in
-          self.ffmpegDownloadProgress = progress
-        }
-      }
-      refreshFFmpegStatus()
-    } catch is CancellationError {
-      ffmpegDownloadProgress = 0
-    } catch {
-      // Leave status as-is; user can retry
     }
   }
 
@@ -750,11 +621,6 @@ struct TranscriptionSettingsView: View {
   private func testModelEndpoint() async {
     modelEndpointTestStatus = .testing
     modelEndpointTestStatus = await performEndpointTest(urlString: settings.effectiveDownloadEndpoint)
-  }
-
-  private func testFFmpegEndpoint() async {
-    ffmpegEndpointTestStatus = .testing
-    ffmpegEndpointTestStatus = await performEndpointTest(urlString: settings.effectiveFFmpegDownloadURL)
   }
 
   private func performEndpointTest(urlString: String) async -> EndpointTestStatus {

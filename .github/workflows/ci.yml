@@ -39,6 +39,14 @@ jobs:
                   mise install tuist@4.95.0
                   mise use -g tuist@4.95.0
 
+            # ffmpeg binary is not committed; compile a minimal Mach-O placeholder
+            # and ad-hoc sign it so the app bundle deep-sign succeeds during tests.
+            - name: Create placeholder ffmpeg for tests
+              run: |
+                  mkdir -p Binaries
+                  echo 'int main(){return 0;}' | cc -x c - -o Binaries/ffmpeg
+                  codesign --force --sign - Binaries/ffmpeg
+
             - name: Generate Xcode Project
               env:
                   TUIST_CONFIG_TOKEN: ${{ secrets.TUIST_CONFIG_TOKEN }}
@@ -57,7 +65,9 @@ jobs:
                     -destination 'platform=macOS' \
                     -skip-testing:ABPlayerUITests \
                     -enableCodeCoverage YES \
-                    -derivedDataPath DerivedData
+                    -derivedDataPath DerivedData \
+                    CODE_SIGNING_REQUIRED=NO \
+                    CODE_SIGN_IDENTITY="-"
 
             - name: Send Telegram Notification (Tests Failed)
               if: ${{ failure() && github.event.pull_request.head.repo.full_name == github.repository }}
@@ -169,6 +179,52 @@ jobs:
                   mise install tuist@4.95.0
                   mise use -g tuist@4.95.0
 
+            # Import Developer ID Application certificate into a temporary keychain
+            # so that codesign (for ffmpeg) and xcodebuild (for the app) can sign.
+            # Required secrets: APPLE_SIGNING_CERTIFICATE (base64 .p12), APPLE_SIGNING_CERTIFICATE_PASSWORD
+            - name: Setup Signing Certificate
+              if: steps.compare_versions.outputs.should_release == 'true'
+              env:
+                  APPLE_SIGNING_CERTIFICATE: ${{ secrets.APPLE_SIGNING_CERTIFICATE }}
+                  APPLE_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_SIGNING_CERTIFICATE_PASSWORD }}
+              run: |
+                  KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+                  KEYCHAIN_PASSWORD=$(openssl rand -hex 20)
+
+                  security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+                  security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+                  security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+                  echo "$APPLE_SIGNING_CERTIFICATE" | base64 --decode > /tmp/cert.p12
+                  security import /tmp/cert.p12 \
+                    -k "$KEYCHAIN_PATH" \
+                    -P "$APPLE_SIGNING_CERTIFICATE_PASSWORD" \
+                    -T /usr/bin/codesign \
+                    -T /usr/bin/security
+                  rm /tmp/cert.p12
+
+                  # Allow codesign to access the key without a prompt
+                  security set-key-partition-list \
+                    -S apple-tool:,apple: \
+                    -s -k "$KEYCHAIN_PASSWORD" \
+                    "$KEYCHAIN_PATH"
+
+                  # Add the new keychain to the search list (preserve existing)
+                  security list-keychain -d user -s "$KEYCHAIN_PATH" \
+                    $(security list-keychains -d user | tr -d '"' | xargs)
+
+                  echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+                  echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
+
+            # Download ffmpeg from evermeet.cx and sign with Hardened Runtime.
+            # Must run before tuist generate so the CopyFiles build phase finds the binary.
+            - name: Prepare ffmpeg
+              if: steps.compare_versions.outputs.should_release == 'true'
+              env:
+                  APPLE_IDENTITY: "Developer ID Application"
+              run: |
+                  ./scripts/prepare-ffmpeg.sh
+
             - name: Generate Xcode Project
               if: steps.compare_versions.outputs.should_release == 'true'
               env:
@@ -180,37 +236,62 @@ jobs:
                   tuist generate
                   echo "Generated Xcode project"
 
-            - name: Build App
+            - name: Archive App
               if: steps.compare_versions.outputs.should_release == 'true'
+              env:
+                  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
               run: |
-                  xcodebuild build \
+                  mkdir -p build
+                  xcodebuild archive \
                     -workspace ABPlayer.xcworkspace \
                     -scheme ABPlayer \
                     -configuration Release \
-                    -destination 'platform=macOS' \
-                    -derivedDataPath DerivedData
+                    -destination 'generic/platform=macOS' \
+                    -archivePath build/ABPlayer.xcarchive \
+                    CODE_SIGN_IDENTITY="Developer ID Application" \
+                    DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
+
+            - name: Export Archive
+              if: steps.compare_versions.outputs.should_release == 'true'
+              run: |
+                  xcodebuild -exportArchive \
+                    -archivePath build/ABPlayer.xcarchive \
+                    -exportPath build/export \
+                    -exportOptionsPlist scripts/ExportOptions.plist
+
+            # Notarize the exported app and staple the ticket so Gatekeeper
+            # accepts it on launch without a network check.
+            # Required secrets: APPLE_ID, APPLE_ID_PASSWORD (app-specific), APPLE_TEAM_ID
+            - name: Notarize and Staple
+              if: steps.compare_versions.outputs.should_release == 'true'
+              env:
+                  APPLE_ID: ${{ secrets.APPLE_ID }}
+                  APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+                  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+              run: |
+                  # Zip app for submission (notarytool requires a zip/dmg, not .app directly)
+                  ditto -c -k --keepParent build/export/ABPlayer.app build/ABPlayer-notarize.zip
+
+                  xcrun notarytool submit build/ABPlayer-notarize.zip \
+                    --apple-id "$APPLE_ID" \
+                    --password "$APPLE_ID_PASSWORD" \
+                    --team-id "$APPLE_TEAM_ID" \
+                    --wait
+
+                  xcrun stapler staple build/export/ABPlayer.app
+                  rm build/ABPlayer-notarize.zip
 
             - name: Prepare Release Artifact
               if: steps.compare_versions.outputs.should_release == 'true'
               env:
                   SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
               run: |
-                  cd DerivedData/Build/Products/Release
+                  cd build/export
 
                   # Create zip for Sparkle
                   zip -r ABPlayer.zip ABPlayer.app
 
-                  # Download Sparkle tools (Not needed, we rely on the Tuist dependency which should have downloaded it)
-                  # The user indicated the path is Tuist/.build/artifacts/sparkle/Sparkle/bin/
-                  # Since 'tuist install' and 'tuist generate' ran earlier, this path should exist if the artifact is cached/downloaded.
-                  # However, artifacts might be in a different spot depending on Tuist version/cache. 
-                  # But based on user input, we will use that relative path from project root.
-
-                  # We need to go back to project root to find the tools, or reference them relatively
-                  # Current dir: DerivedData/Build/Products/Release
-                  # Project root: ../../../../
-
-                  SPARKLE_BIN="../../../../Tuist/.build/artifacts/sparkle/Sparkle/bin"
+                  SPARKLE_BIN="../../Tuist/.build/artifacts/sparkle/Sparkle/bin"
 
                   # Create a temporary file for the key
                   echo "$SPARKLE_PRIVATE_KEY" > sparkle_key
@@ -220,9 +301,9 @@ jobs:
                   echo "Signature: $SIGNATURE"
 
                   # Generate Appcast
-                  # We need to construct the appcast manually or use the tool. 
-                  # Using generate_appcast tool:
-                  "$SPARKLE_BIN/generate_appcast" . --ed-key-file sparkle_key --download-url-prefix "http://s3.kcoding.cn/d/ABPlayerRelease/"
+                  "$SPARKLE_BIN/generate_appcast" . \
+                    --ed-key-file sparkle_key \
+                    --download-url-prefix "http://s3.kcoding.cn/d/ABPlayerRelease/"
 
                   if ! grep -q 'url="http://s3.kcoding.cn/d/ABPlayerRelease/ABPlayer.zip"' appcast.xml; then
                     echo "Generated appcast.xml does not point to expected S3 URL"
@@ -232,10 +313,10 @@ jobs:
                   # Cleanup key
                   rm sparkle_key
 
-                  # Move artifacts to root
-                  mv ABPlayer.zip ../../../../
-                  mv appcast.xml ../../../../
-                  cd ../../../../
+                  # Move artifacts to project root
+                  mv ABPlayer.zip ../../
+                  mv appcast.xml ../../
+                  cd ../../
 
             - name: Create GitHub Release
               if: steps.compare_versions.outputs.should_release == 'true'
@@ -268,7 +349,12 @@ jobs:
                     --auth-token "$SENTRY_AUTH_TOKEN" \
                     --org "$SENTRY_ORG" \
                     --project "$SENTRY_PROJECT" \
-                    DerivedData/Build/Products/Release/ABPlayer.app.dSYM
+                    build/ABPlayer.xcarchive/dSYMs/ABPlayer.app.dSYM
+
+            - name: Cleanup Keychain
+              if: steps.compare_versions.outputs.should_release == 'true' && always()
+              run: |
+                  security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
 
             - name: Refresh S3
               if: steps.compare_versions.outputs.should_release == 'true'
