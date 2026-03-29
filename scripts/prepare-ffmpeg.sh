@@ -6,7 +6,7 @@
 # Output:   ABPlayer/Resources/Helpers/ffmpeg  (universal binary, codesigned)
 set -euo pipefail
 
-DEST="ABPlayer/Resources/Helpers/ffmpeg"
+DEST="ABPlayer/Binaries/ffmpeg"
 FFMPEG_VERSION="${FFMPEG_VERSION:-7.1}"
 
 ARM_URL="https://evermeet.cx/ffmpeg/ffmpeg-${FFMPEG_VERSION}.zip"

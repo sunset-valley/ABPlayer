@@ -43,9 +43,9 @@ jobs:
             # CopyFiles build phase does not fail during tests.
             - name: Create placeholder ffmpeg for tests
               run: |
-                  mkdir -p ABPlayer/Resources/Helpers
-                  touch ABPlayer/Resources/Helpers/ffmpeg
-                  chmod +x ABPlayer/Resources/Helpers/ffmpeg
+                  mkdir -p ABPlayer/Binaries
+                  touch ABPlayer/Binaries/ffmpeg
+                  chmod +x ABPlayer/Binaries/ffmpeg
 
             - name: Generate Xcode Project
               env:

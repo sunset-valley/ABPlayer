@@ -55,7 +55,7 @@ let project = Project(
         "ABPlayer/Resources",
       ],
       copyFiles: [
-        .executables(name: "ffmpeg", files: [.glob(pattern: "ABPlayer/Resources/Helpers/ffmpeg")]),
+        .executables(name: "ffmpeg", files: [.glob(pattern: "ABPlayer/Binaries/ffmpeg")]),
       ],
       dependencies: [
         .sdk(name: "AppIntents", type: .framework, status: .optional),
@@ -95,7 +95,7 @@ let project = Project(
         "ABPlayer/Resources",
       ],
       copyFiles: [
-        .executables(name: "ffmpeg", files: [.glob(pattern: "ABPlayer/Resources/Helpers/ffmpeg")]),
+        .executables(name: "ffmpeg", files: [.glob(pattern: "ABPlayer/Binaries/ffmpeg")]),
       ],
       dependencies: [
         .sdk(name: "AppIntents", type: .framework, status: .optional),
