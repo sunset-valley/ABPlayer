@@ -32,8 +32,8 @@ jobs:
 
             - name: Install Tuist via mise
               run: |
-                  mise install tuist@4.95.0
-                  mise use -g tuist@4.95.0
+                  mise install tuist@4.171.2
+                  mise use -g tuist@4.171.2
 
             # ffmpeg binary is not committed; compile a minimal Mach-O placeholder
             # and ad-hoc sign it so the app bundle deep-sign succeeds during tests.

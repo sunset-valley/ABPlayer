@@ -42,8 +42,8 @@ jobs:
 
             - name: Install Tuist via mise
               run: |
-                  mise install tuist@4.95.0
-                  mise use -g tuist@4.95.0
+                  mise install tuist@4.171.2
+                  mise use -g tuist@4.171.2
 
             - name: Setup Signing Certificate
               env:

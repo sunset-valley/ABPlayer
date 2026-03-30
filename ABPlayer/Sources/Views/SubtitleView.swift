@@ -13,17 +13,20 @@ struct SubtitleView: View {
   let cues: [SubtitleCue]
   let fontSize: Double
   let onEditSubtitle: (UUID, String) -> Void
+  let onActiveCueChanged: (UUID?) -> Void
   let onScrollMetricsChanged: (TranscriptTextView.ScrollMetrics) -> Void
 
   init(
     cues: [SubtitleCue],
     fontSize: Double,
     onEditSubtitle: @escaping (UUID, String) -> Void,
+    onActiveCueChanged: @escaping (UUID?) -> Void = { _ in },
     onScrollMetricsChanged: @escaping (TranscriptTextView.ScrollMetrics) -> Void = { _ in }
   ) {
     self.cues = cues
     self.fontSize = fontSize
     self.onEditSubtitle = onEditSubtitle
+    self.onActiveCueChanged = onActiveCueChanged
     self.onScrollMetricsChanged = onScrollMetricsChanged
   }
 
@@ -42,7 +45,7 @@ struct SubtitleView: View {
     let fileID = playerManager.currentFile?.id.uuidString ?? "nil"
     let firstCueID = cues.first?.id.uuidString ?? "nil"
     let lastCueID = cues.last?.id.uuidString ?? "nil"
-    return "\(playerManager.isPlaying)-\(fileID)-\(cues.count)-\(firstCueID)-\(lastCueID)"
+    return "\(fileID)-\(cues.count)-\(firstCueID)-\(lastCueID)"
   }
 
   // MARK: - Body
@@ -155,6 +158,7 @@ struct SubtitleView: View {
         } label: {
           Label("跟随播放", systemImage: "arrow.down.circle.fill")
         }
+        .accessibilityIdentifier("subtitle-follow-playback-button")
         .buttonStyle(.borderedProminent)
         .controlSize(.small)
         .padding(12)
@@ -165,18 +169,14 @@ struct SubtitleView: View {
     // Playback tracking
     .task(id: playbackTrackingID) {
       viewModel.setPlayerManager(playerManager)
-
-      await withTaskCancellationHandler {
-        await viewModel.trackPlayback(cues: cues)
-      } onCancel: {
-        Task { @MainActor in
-          viewModel.stopTrackingPlayback()
-        }
-      }
+      await viewModel.trackPlayback(cues: cues)
     }
     // Reset when cues change (new file / re-transcription)
     .onChange(of: cues) { _, _ in
       Task { viewModel.reset() }
+    }
+    .onChange(of: output.currentCueID) { _, newCueID in
+      onActiveCueChanged(newCueID)
     }
     .onChange(of: output.textSelection) { _, newSelection in
       guard !newSelection.isActive else { return }

@@ -79,8 +79,8 @@ jobs:
             - name: Install Tuist via mise
               if: steps.compare_versions.outputs.should_release == 'true'
               run: |
-                  mise install tuist@4.95.0
-                  mise use -g tuist@4.95.0
+                  mise install tuist@4.171.2
+                  mise use -g tuist@4.171.2
 
             - name: Setup Signing Certificate
               if: steps.compare_versions.outputs.should_release == 'true'

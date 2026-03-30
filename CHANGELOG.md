@@ -1,3 +1,13 @@
+## [0.3.1.114] - 2026-03-30
+
+### Bug Fixes
+- automatically scroll and highlight subtitles
+
+### Other
+- Ci/build and relase (#161)
+- test export archive (#160)
+
+
 ## [0.3.0.113] - 2026-03-29
 
 ### Features
