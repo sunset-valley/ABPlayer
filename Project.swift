@@ -1,7 +1,7 @@
 import ProjectDescription
 
-let buildVersionString = "113"
-let shortVersionString = "0.3.0"
+let buildVersionString = "114"
+let shortVersionString = "0.3.1"
 
 let signingSettings: SettingsDictionary = [
   "CODE_SIGN_IDENTITY": "Apple Development",
