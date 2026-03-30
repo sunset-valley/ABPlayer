@@ -1,3 +1,13 @@
+## [0.3.2.115] - 2026-03-30
+
+### Features
+- polish playback controls and divider feedback
+
+### Other
+- refactor ci flow
+- add pre/next buttons for audio player
+
+
 ## [0.3.1.114] - 2026-03-30
 
 ### Bug Fixes
