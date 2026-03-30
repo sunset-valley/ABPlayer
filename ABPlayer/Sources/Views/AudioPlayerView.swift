@@ -133,15 +133,14 @@ struct AudioPlayerView: View {
   }
 
   private var playbackControls: some View {
-    HStack(spacing: 8) {
+    HStack(spacing: 16) {
       Button {
         Task {
           await playerManager.playPrev()
         }
       } label: {
         Image(systemName: "backward.end")
-          .resizable()
-          .frame(width: 24, height: 24)
+          .font(.title)
       }
       .buttonStyle(.plain)
 
@@ -149,8 +148,7 @@ struct AudioPlayerView: View {
         viewModel.seekBack()
       } label: {
         Image(systemName: "gobackward.5")
-          .resizable()
-          .frame(width: 28, height: 28)
+          .font(.title)
       }
       .buttonStyle(.plain)
       .keyboardShortcut("f", modifiers: [])
@@ -159,8 +157,7 @@ struct AudioPlayerView: View {
         viewModel.togglePlayPause()
       } label: {
         Image(systemName: playerManager.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-          .resizable()
-          .frame(width: 40, height: 40)
+          .font(.system(size: 36))
       }
       .buttonStyle(.plain)
       .keyboardShortcut(.space, modifiers: [])
@@ -169,8 +166,7 @@ struct AudioPlayerView: View {
         viewModel.seekForward()
       } label: {
         Image(systemName: "goforward.10")
-          .resizable()
-          .frame(width: 28, height: 28)
+          .font(.title)
       }
       .buttonStyle(.plain)
       .keyboardShortcut("g", modifiers: [])
@@ -181,8 +177,7 @@ struct AudioPlayerView: View {
         }
       } label: {
         Image(systemName: "forward.end")
-          .resizable()
-          .frame(width: 24, height: 24)
+          .font(.title)
       }
       .buttonStyle(.plain)
     }
