@@ -7,10 +7,6 @@ let signingSettings: SettingsDictionary = [
   "CODE_SIGN_IDENTITY": "Apple Development",
   "CODE_SIGN_IDENTITY[sdk=macosx*]": "Developer ID Application",
   "CODE_SIGN_STYLE": "Manual",
-  "DEVELOPMENT_TEAM": "",
-  "DEVELOPMENT_TEAM[sdk=macosx*]": "Z7SKC87T6Q",
-  "PROVISIONING_PROFILE_SPECIFIER": "",
-  "PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]": "ABPlayer-ID",
 ]
 
 let project = Project(
@@ -18,7 +14,6 @@ let project = Project(
   settings: .settings(
     base: [
       "SWIFT_VERSION": "6.2",
-      "ENABLE_HARDENED_RUNTIME": "YES",
       "CODE_SIGN_ENTITLEMENTS": "ABPlayer/Resources/ABPlayer.entitlements",
     ],
     configurations: [

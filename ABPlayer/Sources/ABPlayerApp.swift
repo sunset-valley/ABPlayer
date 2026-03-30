@@ -110,6 +110,11 @@ struct ABPlayerApp: App {
       || Self.hasLaunchEnvironment("ABP_UI_TESTING_SUBTITLE_EDIT")
   }
 
+  private var isSubtitlePlaybackAnnotationUITesting: Bool {
+    Self.hasLaunchArgument("--ui-testing-subtitle-playback-annotation")
+      || Self.hasLaunchEnvironment("ABP_UI_TESTING_SUBTITLE_PLAYBACK_ANNOTATION")
+  }
+
   private var isTranscriptScrollUITesting: Bool {
     Self.hasLaunchArgument("--ui-testing-transcript-scroll")
       || Self.hasLaunchEnvironment("ABP_UI_TESTING_TRANSCRIPT_SCROLL")
@@ -335,6 +340,8 @@ struct ABPlayerApp: App {
       TranscriptScrollDemoView()
     } else if isSubtitleEditUITesting {
       SubtitleEditDemoView()
+    } else if isSubtitlePlaybackAnnotationUITesting {
+      SubtitlePlaybackAnnotationDemoView()
     } else if isAnnotationDemoUITesting {
       AnnotationMenuDemoView()
     } else if isNotesExportUITesting {
