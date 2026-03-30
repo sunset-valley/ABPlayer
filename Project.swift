@@ -1,13 +1,7 @@
 import ProjectDescription
 
-let buildVersionString = "114"
-let shortVersionString = "0.3.1"
-
-let signingSettings: SettingsDictionary = [
-  "CODE_SIGN_IDENTITY": "Apple Development",
-  "CODE_SIGN_IDENTITY[sdk=macosx*]": "Developer ID Application",
-  "CODE_SIGN_STYLE": "Manual",
-]
+let buildVersionString = "115"
+let shortVersionString = "0.3.2"
 
 let project = Project(
   name: "ABPlayer",
@@ -59,8 +53,7 @@ let project = Project(
         .external(name: "KeyboardShortcuts"),
         .external(name: "Sparkle"),
         .external(name: "TelemetryDeck"),
-      ],
-      settings: .settings(base: signingSettings)
+      ]
     ),
     .target(
       name: "ABPlayerDev",

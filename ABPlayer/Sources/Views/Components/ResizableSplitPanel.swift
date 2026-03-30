@@ -40,6 +40,7 @@ struct ResizableSplitPanel<Primary: View, Secondary: View>: View {
   @ViewBuilder let secondary: () -> Secondary
 
   @State private var isDragging = false
+  @State private var isHoveringDivider = false
   
   // MARK: - Initializer
   
@@ -159,39 +160,61 @@ struct ResizableSplitPanel<Primary: View, Secondary: View>: View {
   private func translationDelta(_ value: DragGesture.Value) -> Double {
     axis == .horizontal ? value.translation.width : value.translation.height
   }
+
+  private var resizeCursor: NSCursor {
+    axis == .horizontal ? .resizeLeftRight : .resizeUpDown
+  }
   
   private func divider(availablePrimaryAxis: CGFloat) -> some View {
-    Rectangle()
-      .fill(Color.gray.opacity(0.01))
+    ZStack {
+      Rectangle()
+        .fill(
+          isHoveringDivider || isDragging
+            ? Color.accentColor.opacity(0.10)
+            : Color.gray.opacity(0.01)
+        )
+
+      Rectangle()
+        .fill(Color(nsColor: .separatorColor))
+        .frame(
+          width: axis == .horizontal ? 1 : nil,
+          height: axis == .vertical ? 1 : nil
+        )
+
+      Capsule()
+        .fill(Color.secondary.opacity(isHoveringDivider || isDragging ? 0.8 : 0.35))
+        .frame(
+          width: axis == .horizontal ? 4 : 28,
+          height: axis == .horizontal ? 28 : 4
+        )
+
+      Image(systemName: axis == .horizontal ? "arrow.left.and.right" : "arrow.up.and.down")
+        .font(.system(size: 8, weight: .semibold))
+        .foregroundStyle(.secondary)
+        .opacity(isHoveringDivider || isDragging ? 1 : 0)
+    }
       .frame(
         width: axis == .horizontal ? dividerThickness : nil,
         height: axis == .vertical ? dividerThickness : nil
       )
       .contentShape(Rectangle())
-      .overlay(
-        Rectangle()
-          .fill(Color(nsColor: .separatorColor))
-          .frame(
-            width: axis == .horizontal ? 1 : nil,
-            height: axis == .vertical ? 1 : nil
-          )
-      )
-      .onHover { hovering in
-        if hovering {
-          switch axis {
-          case .horizontal:
-            NSCursor.resizeLeftRight.push()
-          case .vertical:
-            NSCursor.resizeUpDown.push()
+      .onContinuousHover { phase in
+        switch phase {
+        case .active:
+          isHoveringDivider = true
+          resizeCursor.set()
+        case .ended:
+          isHoveringDivider = false
+          if !isDragging {
+            NSCursor.arrow.set()
           }
-        } else {
-          NSCursor.pop()
         }
       }
       .gesture(
         DragGesture(minimumDistance: 1, coordinateSpace: .global)
           .onChanged { value in
             setDragging(true)
+            resizeCursor.set()
             let delta = translationDelta(value)
             let newSize = primarySize + delta
             draggingPrimarySize = clampPrimarySize(newSize, available: availablePrimaryAxis)
@@ -202,6 +225,9 @@ struct ResizableSplitPanel<Primary: View, Secondary: View>: View {
             }
             draggingPrimarySize = nil
             setDragging(false)
+            if !isHoveringDivider {
+              NSCursor.arrow.set()
+            }
           }
       )
   }
