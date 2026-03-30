@@ -81,7 +81,6 @@ struct VideoControlsView: View {
           .font(.title)
       }
       .buttonStyle(.plain)
-      .keyboardShortcut("f", modifiers: [])
       
       Button {
         viewModel.seekBack()
@@ -119,7 +118,6 @@ struct VideoControlsView: View {
           .font(.title)
       }
       .buttonStyle(.plain)
-      .keyboardShortcut("f", modifiers: [])
     }
   }
 }
