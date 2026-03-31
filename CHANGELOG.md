@@ -1,3 +1,9 @@
+## [0.3.4.117] - 2026-03-31
+
+### Bug Fixes
+- stabilize split divider cursor behavior
+
+
 ## [0.3.3.116] - 2026-03-30
 
 ### Other
