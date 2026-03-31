@@ -7,6 +7,54 @@ enum SplitAxis {
   case vertical    // top/bottom
 }
 
+private struct SplitDividerCursorRect: NSViewRepresentable {
+  let axis: SplitAxis
+
+  func makeNSView(context: Context) -> SplitDividerCursorRectView {
+    SplitDividerCursorRectView(axis: axis)
+  }
+
+  func updateNSView(_ nsView: SplitDividerCursorRectView, context: Context) {
+    nsView.axis = axis
+  }
+}
+
+private final class SplitDividerCursorRectView: NSView {
+  private var trackingArea: NSTrackingArea?
+
+  var axis: SplitAxis
+
+  init(axis: SplitAxis) {
+    self.axis = axis
+    super.init(frame: .zero)
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) has not been implemented")
+  }
+
+  override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    if let trackingArea {
+      removeTrackingArea(trackingArea)
+    }
+
+    let options: NSTrackingArea.Options = [
+      .inVisibleRect,
+      .activeInKeyWindow,
+      .cursorUpdate,
+    ]
+    let newArea = NSTrackingArea(rect: .zero, options: options, owner: self, userInfo: nil)
+    addTrackingArea(newArea)
+    trackingArea = newArea
+  }
+
+  override func cursorUpdate(with event: NSEvent) {
+    (axis == .horizontal ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).set()
+  }
+}
+
 // MARK: - Resizable Split Panel
 
 struct ResizableSplitPanel<Primary: View, Secondary: View>: View {
@@ -129,6 +177,7 @@ struct ResizableSplitPanel<Primary: View, Secondary: View>: View {
       .onChange(of: isSecondaryVisible) { _, isShowing in
         if !isShowing {
           setDragging(false)
+          isHoveringDivider = false
         }
         if isShowing {
           commitPrimarySize(clampPrimarySize(primarySize, available: availablePrimaryAxis))
@@ -137,6 +186,10 @@ struct ResizableSplitPanel<Primary: View, Secondary: View>: View {
       .onChange(of: persistenceKey) { _, newKey in
         let stored = UserDefaults.standard.double(forKey: newKey)
         primarySize = stored > 0 ? stored : defaultPrimarySize
+      }
+      .onDisappear {
+        setDragging(false)
+        isHoveringDivider = false
       }
     }
   }
@@ -161,10 +214,6 @@ struct ResizableSplitPanel<Primary: View, Secondary: View>: View {
     axis == .horizontal ? value.translation.width : value.translation.height
   }
 
-  private var resizeCursor: NSCursor {
-    axis == .horizontal ? .resizeLeftRight : .resizeUpDown
-  }
-  
   private func divider(availablePrimaryAxis: CGFloat) -> some View {
     ZStack {
       Rectangle()
@@ -197,24 +246,18 @@ struct ResizableSplitPanel<Primary: View, Secondary: View>: View {
         width: axis == .horizontal ? dividerThickness : nil,
         height: axis == .vertical ? dividerThickness : nil
       )
+      .background(
+        SplitDividerCursorRect(axis: axis)
+          .allowsHitTesting(false)
+      )
       .contentShape(Rectangle())
-      .onContinuousHover { phase in
-        switch phase {
-        case .active:
-          isHoveringDivider = true
-          resizeCursor.set()
-        case .ended:
-          isHoveringDivider = false
-          if !isDragging {
-            NSCursor.arrow.set()
-          }
-        }
+      .onHover { isHovering in
+        isHoveringDivider = isHovering
       }
       .gesture(
         DragGesture(minimumDistance: 1, coordinateSpace: .global)
           .onChanged { value in
             setDragging(true)
-            resizeCursor.set()
             let delta = translationDelta(value)
             let newSize = primarySize + delta
             draggingPrimarySize = clampPrimarySize(newSize, available: availablePrimaryAxis)
@@ -225,9 +268,6 @@ struct ResizableSplitPanel<Primary: View, Secondary: View>: View {
             }
             draggingPrimarySize = nil
             setDragging(false)
-            if !isHoveringDivider {
-              NSCursor.arrow.set()
-            }
           }
       )
   }
