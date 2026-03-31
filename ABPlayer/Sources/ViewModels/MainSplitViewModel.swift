@@ -105,18 +105,45 @@ final class MainSplitViewModel {
     setupPlaybackEndedHandler()
   }
 
-  func updatePlaybackQueueForCurrentFolder() {
-    guard let playerManager else { return }
+  func handleFileSelection(_ file: ABFile) async {
+    guard let playerManager, let folderNavigationViewModel else { return }
 
-    guard let folderNavigationViewModel else {
-      playerManager.playbackQueue.updateQueue([])
-      return
+    let sourceFolderID = folderNavigationViewModel.currentFolder?.id
+    let currentFiles = folderNavigationViewModel.currentAudioFiles()
+    let playbackQueue = playerManager.playbackQueue
+
+    if !playbackQueue.hasQueue {
+      playbackQueue.replaceQueue(
+        files: currentFiles,
+        currentFile: file,
+        sourceFolderID: sourceFolderID
+      )
+    } else if playbackQueue.sourceFolderID == sourceFolderID {
+      playbackQueue.syncQueue(files: currentFiles, sourceFolderID: sourceFolderID)
+      playbackQueue.setCurrentFile(file)
+    } else {
+      playbackQueue.replaceQueue(
+        files: currentFiles,
+        currentFile: file,
+        sourceFolderID: sourceFolderID
+      )
     }
 
-    playerManager.playbackQueue.updateQueue(folderNavigationViewModel.currentAudioFiles())
+    await playerManager.selectFile(file, fromStart: false, debounce: true)
   }
 
-  func restoreLastSelectionIfNeeded() {
+  func syncQueueIfCurrentListMatchesSource() {
+    guard let playerManager, let folderNavigationViewModel else { return }
+
+    let sourceFolderID = folderNavigationViewModel.currentFolder?.id
+    let currentFiles = folderNavigationViewModel.currentAudioFiles()
+    playerManager.playbackQueue.syncQueue(
+      files: currentFiles,
+      sourceFolderID: sourceFolderID
+    )
+  }
+
+  func restorePlaybackQueueIfNeeded() {
     guard
       let folderNavigationViewModel,
       let playerManager
@@ -126,27 +153,19 @@ final class MainSplitViewModel {
 
     restoreNavigationPathIfNeeded(folderNavigationViewModel: folderNavigationViewModel)
 
-    if let currentFile = playerManager.currentFile,
-       let matchedFile = fetchAudioFile(withID: currentFile.id)
-    {
-      folderNavigationViewModel.selectedFile = matchedFile
-      playerManager.currentFile = matchedFile
+    let restored = playerManager.playbackQueue.restorePersistedSnapshot { [weak self] ids in
+      self?.fetchAudioFiles(withIDs: ids) ?? [:]
+    }
+
+    guard restored, let restoredCurrentFile = playerManager.playbackQueue.currentFile else {
+      playerManager.playbackQueue.clearQueue()
+      folderNavigationViewModel.selectedFile = nil
+      playerManager.currentFile = nil
       return
     }
 
-    if let selectedFile = folderNavigationViewModel.selectedFile {
-      if playerManager.currentFile?.id != selectedFile.id {
-        Task { await playerManager.selectFile(selectedFile, fromStart: false, debounce: true) }
-      }
-      return
-    }
-
-    if let lastSelectedAudioFileID = folderNavigationViewModel.lastSelectedAudioFileID,
-       let lastID = UUID(uuidString: lastSelectedAudioFileID),
-       let file = fetchAudioFile(withID: lastID)
-    {
-      Task { await playerManager.selectFile(file, fromStart: false, debounce: true) }
-    }
+    folderNavigationViewModel.selectedFile = restoredCurrentFile
+    Task { await playerManager.selectFile(restoredCurrentFile, fromStart: false, debounce: true) }
   }
 
   private func restoreNavigationPathIfNeeded(folderNavigationViewModel: FolderNavigationViewModel) {
@@ -198,6 +217,17 @@ final class MainSplitViewModel {
       predicate: #Predicate<ABFile> { $0.id == id }
     )
     return try? modelContext.fetch(descriptor).first
+  }
+
+  private func fetchAudioFiles(withIDs ids: [UUID]) -> [UUID: ABFile] {
+    guard let modelContext else { return [:] }
+    let idSet = Set(ids)
+    let files = (try? modelContext.fetch(FetchDescriptor<ABFile>())) ?? []
+    var filesByID: [UUID: ABFile] = [:]
+    for file in files where idSet.contains(file.id) {
+      filesByID[file.id] = file
+    }
+    return filesByID
   }
 
   private func fetchFolder(withID id: UUID) -> Folder? {
@@ -256,6 +286,7 @@ final class MainSplitViewModel {
     folderNavigationViewModel?.selectedFile = nil
     folderNavigationViewModel?.currentFolder = nil
     folderNavigationViewModel?.navigationPath = []
+    playerManager.playbackQueue.clearQueue()
     playerManager.currentFile = nil
   }
 

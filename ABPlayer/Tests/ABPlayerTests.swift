@@ -166,8 +166,14 @@ private func makeQueueTestContext() throws -> (ModelContainer, ModelContext) {
   return (container, context)
 }
 
-private func makeFile(_ name: String, in context: ModelContext) -> ABFile {
-  let file = ABFile(displayName: name, bookmarkData: Data())
+private func makeFolder(_ name: String, in context: ModelContext, parent: Folder? = nil) -> Folder {
+  let folder = Folder(name: name, parent: parent)
+  context.insert(folder)
+  return folder
+}
+
+private func makeFile(_ name: String, in context: ModelContext, folder: Folder? = nil) -> ABFile {
+  let file = ABFile(displayName: name, bookmarkData: Data(), folder: folder)
   context.insert(file)
   return file
 }
@@ -393,5 +399,89 @@ struct PlaybackQueueCurrentFileTrackingTests {
     // currentFileID should be nil now, so navigateNext starts from beginning
     let next = queue.navigateNext()
     #expect(next?.id == f1.id)
+  }
+}
+
+@Suite("PlaybackQueue — snapshot and source context")
+@MainActor
+struct PlaybackQueueSnapshotTests {
+
+  @Test("restore keeps exact saved queue order")
+  func restoreKeepsSavedOrder() throws {
+    let (_, ctx) = try makeQueueTestContext()
+    let f1 = makeFile("ep1.mp3", in: ctx)
+    let f2 = makeFile("ep2.mp3", in: ctx)
+    let f3 = makeFile("ep3.mp3", in: ctx)
+    let sourceFolderID = UUID()
+
+    let writerQueue = PlaybackQueue()
+    writerQueue.clearPersistedSnapshot()
+    defer { writerQueue.clearPersistedSnapshot() }
+
+    writerQueue.replaceQueue(
+      files: [f2, f1, f3],
+      currentFile: f1,
+      sourceFolderID: sourceFolderID
+    )
+
+    let readerQueue = PlaybackQueue()
+    let restored = readerQueue.restorePersistedSnapshot { ids in
+      var filesByID: [UUID: ABFile] = [:]
+      for file in [f1, f2, f3] where ids.contains(file.id) {
+        filesByID[file.id] = file
+      }
+      return filesByID
+    }
+
+    #expect(restored)
+    #expect(readerQueue.queuedFiles.map(\.id) == [f2.id, f1.id, f3.id])
+    #expect(readerQueue.currentFile?.id == f1.id)
+    #expect(readerQueue.sourceFolderID == sourceFolderID)
+  }
+
+  @Test("restore fails when persisted current file is missing")
+  func restoreFailsWhenCurrentFileMissing() throws {
+    let (_, ctx) = try makeQueueTestContext()
+    let f1 = makeFile("ep1.mp3", in: ctx)
+    let f2 = makeFile("ep2.mp3", in: ctx)
+
+    let writerQueue = PlaybackQueue()
+    writerQueue.clearPersistedSnapshot()
+    defer { writerQueue.clearPersistedSnapshot() }
+
+    writerQueue.replaceQueue(files: [f1, f2], currentFile: f2, sourceFolderID: nil)
+
+    let readerQueue = PlaybackQueue()
+    let restored = readerQueue.restorePersistedSnapshot { _ in
+      [f1.id: f1]
+    }
+
+    #expect(restored == false)
+    #expect(readerQueue.hasQueue == false)
+    #expect(readerQueue.queuedFiles.isEmpty)
+    #expect(readerQueue.currentFile == nil)
+  }
+
+  @Test("syncQueue only applies when source folder matches")
+  func syncOnlyAppliesToMatchingSource() throws {
+    let (_, ctx) = try makeQueueTestContext()
+    let folderA = makeFolder("A", in: ctx)
+    let folderB = makeFolder("B", in: ctx)
+
+    let a1 = makeFile("a1.mp3", in: ctx, folder: folderA)
+    let a2 = makeFile("a2.mp3", in: ctx, folder: folderA)
+    let b1 = makeFile("b1.mp3", in: ctx, folder: folderB)
+    let b2 = makeFile("b2.mp3", in: ctx, folder: folderB)
+
+    let queue = PlaybackQueue()
+    queue.clearPersistedSnapshot()
+    defer { queue.clearPersistedSnapshot() }
+
+    queue.replaceQueue(files: [a1, a2], currentFile: a1, sourceFolderID: folderA.id)
+    queue.syncQueue(files: [b2, b1], sourceFolderID: folderB.id)
+
+    #expect(queue.queuedFiles.map(\.id) == [a1.id, a2.id])
+    #expect(queue.currentFile?.id == a1.id)
+    #expect(queue.sourceFolderID == folderA.id)
   }
 }

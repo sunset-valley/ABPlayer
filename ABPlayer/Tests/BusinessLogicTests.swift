@@ -866,6 +866,30 @@ struct PlayerManagerIntegrationTests {
   }
 
   @Test
+  func testPlayWithoutCurrentFileDoesNotStartPlayback() async {
+    let mockEngine = MockAudioPlayerEngine()
+    let manager = PlayerManager(engine: mockEngine)
+
+    await manager.play()
+
+    #expect(manager.isPlaying == false)
+    let playCount = await mockEngine.playCallCount
+    #expect(playCount == 0)
+  }
+
+  @Test
+  func testTogglePlayPauseWithoutCurrentFileDoesNothing() async {
+    let mockEngine = MockAudioPlayerEngine()
+    let manager = PlayerManager(engine: mockEngine)
+
+    await manager.togglePlayPause()
+
+    #expect(manager.isPlaying == false)
+    let playCount = await mockEngine.playCallCount
+    #expect(playCount == 0)
+  }
+
+  @Test
   func testRapidFileSwitchingCancelsOldLoad() async {
     // Given
     let mockEngine = MockAudioPlayerEngine()

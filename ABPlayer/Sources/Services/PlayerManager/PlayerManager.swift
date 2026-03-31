@@ -163,6 +163,7 @@ final class PlayerManager {
 
   func play(fromStart: Bool = false) async {
     guard !isPlaying else { return }
+    guard currentFile != nil else { return }
 
     if fromStart {
       await seek(to: 0)
@@ -185,6 +186,8 @@ final class PlayerManager {
   }
 
   func togglePlayPause() async {
+    guard isPlaying || currentFile != nil else { return }
+
     let startTime = CFAbsoluteTimeGetCurrent()
     Logger.audio.debug("[Performance] togglePlayPause() called, isPlaying: \(self.isPlaying)")
 

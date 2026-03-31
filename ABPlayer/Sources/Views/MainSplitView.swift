@@ -61,16 +61,13 @@ public struct MainSplitView: View {
       )
     }
     .task {
-      mainSplitViewModel.restoreLastSelectionIfNeeded()
-    }
-    .onChange(of: mainSplitViewModel.folderNavigationViewModel?.currentFolder?.id, initial: true) { _, _ in
-      mainSplitViewModel.updatePlaybackQueueForCurrentFolder()
+      mainSplitViewModel.restorePlaybackQueueIfNeeded()
     }
     .onChange(of: mainSplitViewModel.folderNavigationViewModel?.sortOrder) { _, _ in
-      mainSplitViewModel.updatePlaybackQueueForCurrentFolder()
+      mainSplitViewModel.syncQueueIfCurrentListMatchesSource()
     }
     .onChange(of: mainSplitViewModel.folderNavigationViewModel?.refreshToken) { _, _ in
-      mainSplitViewModel.updatePlaybackQueueForCurrentFolder()
+      mainSplitViewModel.syncQueueIfCurrentListMatchesSource()
     }
     .onChange(of: mainSplitViewModel.folderNavigationViewModel?.selectedFile?.isVideo) { _, isVideo in
       guard let isVideo else { return }
@@ -122,7 +119,7 @@ public struct MainSplitView: View {
           viewModel: folderNavigationViewModel,
           isClearingData: mainSplitViewModel.isClearingData,
           onSelectFile: { file in
-            await playerManager.selectFile(file, fromStart: false, debounce: true)
+            await mainSplitViewModel.handleFileSelection(file)
           },
           onImportFile: {
             mainSplitViewModel.folderNavigationViewModel?.importType = .file
@@ -134,7 +131,7 @@ public struct MainSplitView: View {
           },
           onRefresh: {
             await mainSplitViewModel.folderNavigationViewModel?.refreshCurrentFolder()
-            mainSplitViewModel.updatePlaybackQueueForCurrentFolder()
+            mainSplitViewModel.syncQueueIfCurrentListMatchesSource()
           },
           onClearAllData: {
             mainSplitViewModel.isClearingData = true
