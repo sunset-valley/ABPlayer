@@ -239,7 +239,7 @@ struct ListeningStatsView: View {
   private func nearestDayStart(for hoveredDate: Date) -> Date? {
     guard !viewModel.output.chartStats.isEmpty else { return nil }
 
-    let calendar = Calendar.current
+    let calendar = viewModel.activeCalendar
     let targetStart = calendar.startOfDay(for: hoveredDate)
 
     if let exact = viewModel.output.chartStats.first(where: { calendar.isDate($0.dayStart, inSameDayAs: targetStart) }) {

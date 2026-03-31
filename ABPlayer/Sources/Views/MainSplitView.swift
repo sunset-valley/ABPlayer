@@ -78,8 +78,7 @@ public struct MainSplitView: View {
     }
     #if os(macOS)
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
-      sessionTracker.persistProgress()
-      sessionTracker.endSessionIfIdle()
+      sessionTracker.endSession()
     }
     #endif
     .fileImporter(

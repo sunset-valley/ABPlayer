@@ -273,7 +273,7 @@ final class MainSplitViewModel {
       try deleteAllEntities(of: ABFile.self, in: modelContext)
       try deleteAllEntities(of: Folder.self, in: modelContext)
 
-      sessionTracker.endSessionIfIdle()
+      sessionTracker.endSession()
 
       try deleteAllEntities(of: ListeningSession.self, in: modelContext)
       try modelContext.save()

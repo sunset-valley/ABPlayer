@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import SwiftData
 import Testing
 
 @testable import ABPlayerDev
@@ -254,6 +255,96 @@ struct PlaybackQueueLogicTests {
 // MARK: - SessionTracker Logic Tests
 
 struct SessionTrackerLogicTests {
+
+  private func makeSessionContainer() throws -> ModelContainer {
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    return try ModelContainer(for: ListeningSession.self, configurations: config)
+  }
+
+  @MainActor
+  private func makeTracker(
+    warmupThreshold: Double = 5,
+    idleTimeout: TimeInterval = 5
+  ) throws -> (SessionTracker, ModelContext) {
+    let container = try makeSessionContainer()
+    let tracker = SessionTracker(
+      modelContainer: container,
+      warmupThreshold: warmupThreshold,
+      idleTimeout: idleTimeout
+    )
+    return (tracker, ModelContext(container))
+  }
+
+  @Test
+  @MainActor
+  func testWarmupLessThanThresholdDoesNotStartSession() async throws {
+    let (tracker, context) = try makeTracker(warmupThreshold: 5, idleTimeout: 0.05)
+
+    tracker.handlePlaybackStateChanged(isPlaying: true)
+    tracker.recordPlaybackTick(4.9)
+    tracker.handlePlaybackStateChanged(isPlaying: false)
+    try? await Task.sleep(nanoseconds: 70_000_000)
+    await tracker.waitForRecorderTasksForTesting()
+
+    let sessions = (try? context.fetch(FetchDescriptor<ListeningSession>())) ?? []
+    #expect(sessions.isEmpty)
+    #expect(tracker.displaySeconds == 0)
+  }
+
+  @Test
+  @MainActor
+  func testWarmupThresholdCountsInitialFiveSecondsInSchemeB() async throws {
+    let (tracker, context) = try makeTracker(warmupThreshold: 5, idleTimeout: 0.05)
+
+    tracker.handlePlaybackStateChanged(isPlaying: true)
+    tracker.recordPlaybackTick(5.1)
+    tracker.handlePlaybackStateChanged(isPlaying: false)
+    tracker.endSession()
+    await tracker.waitForRecorderTasksForTesting()
+
+    let sessions = (try? context.fetch(FetchDescriptor<ListeningSession>())) ?? []
+    #expect(sessions.count == 1)
+    #expect(abs((sessions.first?.duration ?? 0) - 5.1) < 0.001)
+    #expect(tracker.displaySeconds == 0)
+  }
+
+  @Test
+  @MainActor
+  func testIdleUnderTimeoutKeepsSameSession() async throws {
+    let (tracker, context) = try makeTracker(warmupThreshold: 5, idleTimeout: 0.15)
+
+    tracker.handlePlaybackStateChanged(isPlaying: true)
+    tracker.recordPlaybackTick(5.0)
+    tracker.recordPlaybackTick(2.0)
+    tracker.handlePlaybackStateChanged(isPlaying: false)
+    try? await Task.sleep(nanoseconds: 80_000_000)
+    tracker.handlePlaybackStateChanged(isPlaying: true)
+    tracker.recordPlaybackTick(1.0)
+    tracker.endSession()
+    await tracker.waitForRecorderTasksForTesting()
+
+    let sessions = (try? context.fetch(FetchDescriptor<ListeningSession>())) ?? []
+    #expect(sessions.count == 1)
+    #expect(abs((sessions.first?.duration ?? 0) - 8.0) < 0.001)
+  }
+
+  @Test
+  @MainActor
+  func testIdleTimeoutEndsSessionAndResetsCounter() async throws {
+    let (tracker, context) = try makeTracker(warmupThreshold: 5, idleTimeout: 0.05)
+
+    tracker.handlePlaybackStateChanged(isPlaying: true)
+    tracker.recordPlaybackTick(5.0)
+    tracker.recordPlaybackTick(1.0)
+    tracker.handlePlaybackStateChanged(isPlaying: false)
+    try? await Task.sleep(nanoseconds: 80_000_000)
+    await tracker.waitForRecorderTasksForTesting()
+
+    let sessions = (try? context.fetch(FetchDescriptor<ListeningSession>())) ?? []
+    #expect(sessions.count == 1)
+    #expect(abs((sessions.first?.duration ?? 0) - 6.0) < 0.001)
+    #expect(tracker.displaySeconds == 0)
+  }
 
   @Test
   func testListeningTimeAccumulation() {

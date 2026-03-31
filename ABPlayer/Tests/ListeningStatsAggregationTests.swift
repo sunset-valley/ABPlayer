@@ -4,9 +4,9 @@ import Testing
 @testable import ABPlayerDev
 
 struct ListeningStatsAggregationTests {
-  private func makeCalendar() -> Calendar {
+  private func makeCalendar(timeZone: TimeZone = TimeZone(secondsFromGMT: 0) ?? .gmt) -> Calendar {
     var calendar = Calendar(identifier: .gregorian)
-    calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+    calendar.timeZone = timeZone
     return calendar
   }
 
@@ -213,5 +213,40 @@ struct ListeningStatsAggregationTests {
 
     #expect(abs((marchStats.last?.duration ?? 0) - 600) < 0.001)
     #expect(abs((aprilStats.first?.duration ?? 0) - 600) < 0.001)
+  }
+
+  @Test
+  func aggregateUsesCalendarTimeZoneForDayBucketing() {
+    let utcCalendar = makeCalendar(timeZone: TimeZone(secondsFromGMT: 0) ?? .gmt)
+    let plus8Calendar = makeCalendar(timeZone: TimeZone(secondsFromGMT: 8 * 3_600) ?? .gmt)
+
+    let sessionStart = makeDate(year: 2026, month: 3, day: 28, hour: 23, minute: 30, calendar: utcCalendar)
+    let sessionEnd = makeDate(year: 2026, month: 3, day: 29, hour: 0, minute: 30, calendar: utcCalendar)
+    let now = makeDate(year: 2026, month: 3, day: 29, hour: 12, minute: 0, calendar: utcCalendar)
+
+    let session = ListeningSession(startedAt: sessionStart, endedAt: sessionEnd, duration: 3_600)
+
+    let utcStats = ListeningStatsAggregation.aggregate(
+      sessions: [session],
+      days: 2,
+      now: now,
+      calendar: utcCalendar
+    )
+
+    let plus8Stats = ListeningStatsAggregation.aggregate(
+      sessions: [session],
+      days: 2,
+      now: now,
+      calendar: plus8Calendar
+    )
+
+    #expect(utcStats.count == 2)
+    #expect(plus8Stats.count == 2)
+
+    #expect(abs(utcStats[0].duration - 1_800) < 0.001)
+    #expect(abs(utcStats[1].duration - 1_800) < 0.001)
+
+    #expect(abs(plus8Stats[0].duration - 0) < 0.001)
+    #expect(abs(plus8Stats[1].duration - 3_600) < 0.001)
   }
 }

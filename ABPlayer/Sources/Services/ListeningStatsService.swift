@@ -121,7 +121,7 @@ final class ListeningStatsService {
   func dailyStats(
     days: Int,
     now: Date = Date(),
-    calendar: Calendar = .current
+    calendar: Calendar = .autoupdatingCurrent
   ) -> [DailyListeningStat] {
     guard days > 0 else { return [] }
 
@@ -137,7 +137,7 @@ final class ListeningStatsService {
   func monthlyStats(
     for monthDate: Date,
     now: Date = Date(),
-    calendar: Calendar = .current
+    calendar: Calendar = .autoupdatingCurrent
   ) -> [DailyListeningStat] {
     guard let monthInterval = calendar.dateInterval(of: .month, for: monthDate) else {
       return []
