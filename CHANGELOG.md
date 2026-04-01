@@ -1,3 +1,13 @@
+## [0.3.5.118] - 2026-03-31
+
+### Features
+- enforce warmup idle windows for sessions
+- persist playback context state
+
+### Bug Fixes
+- keep playback after edit
+
+
 ## [0.3.4.117] - 2026-03-31
 
 ### Bug Fixes
