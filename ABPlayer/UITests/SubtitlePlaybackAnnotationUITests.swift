@@ -82,6 +82,82 @@ final class SubtitlePlaybackAnnotationUITests: XCTestCase {
   }
 
   @MainActor
+  func testPlaybackKeepsAdvancingAfterSubtitleEdit() {
+    let app = launchApp()
+
+    let activeCueLabel = app.staticTexts["subtitle-playback-active-cue"]
+    XCTAssertTrue(
+      activeCueLabel.waitForExistence(timeout: 6),
+      "Active cue label not found. UI tree:\n\(app.debugDescription)"
+    )
+
+    XCTAssertNotNil(
+      waitForActiveCueIndex(in: app, timeout: 6),
+      "Expected active cue to become available before edit"
+    )
+
+    let transcriptInteraction = transcriptInteractionElement(in: app)
+    XCTAssertTrue(
+      transcriptInteraction.waitForExistence(timeout: 6),
+      "Transcript interaction element not found. UI tree:\n\(app.debugDescription)"
+    )
+
+    let clickPoint = transcriptInteraction.coordinate(withNormalizedOffset: CGVector(dx: 0.24, dy: 0.18))
+    clickPoint.rightClick()
+
+    let editMenuItem = app.menuItems["Edit Subtitle"]
+    XCTAssertTrue(
+      editMenuItem.waitForExistence(timeout: 3),
+      "Edit Subtitle menu item not found. UI tree:\n\(app.debugDescription)"
+    )
+    editMenuItem.click()
+
+    let editor = app.textViews["subtitle-edit-text-editor"]
+    XCTAssertTrue(
+      editor.waitForExistence(timeout: 4),
+      "Subtitle editor did not appear. UI tree:\n\(app.debugDescription)"
+    )
+
+    replaceText(in: app, with: "Edited during playback")
+
+    let confirmButton = app.buttons["subtitle-edit-confirm"]
+    XCTAssertTrue(confirmButton.waitForExistence(timeout: 2), "Confirm button not found")
+    XCTAssertTrue(confirmButton.isEnabled, "Confirm button should be enabled after editing")
+    confirmButton.click()
+
+    XCTAssertFalse(editor.waitForExistence(timeout: 3), "Editor sheet did not close after confirm")
+
+    let seekPoint = transcriptInteraction.coordinate(withNormalizedOffset: CGVector(dx: 0.24, dy: 0.18))
+    seekPoint.click()
+
+    XCTAssertTrue(
+      waitForCondition(timeout: 3) { self.activeCueIndex(in: app) == 1 },
+      "Expected tapping cue row to seek playback to cue 1"
+    )
+
+    XCTAssertTrue(
+      waitForCondition(timeout: 6) {
+        guard let nextCueIndex = self.activeCueIndex(in: app) else { return false }
+        return nextCueIndex > 1
+      },
+      "Active cue did not advance after subtitle edit. active=\((activeCueLabel.value as? String) ?? activeCueLabel.label)"
+    )
+
+    let followingLabel = app.staticTexts["subtitle-playback-following"]
+    XCTAssertTrue(
+      followingLabel.waitForExistence(timeout: 3),
+      "Following state label not found"
+    )
+    XCTAssertTrue(
+      waitForCondition(timeout: 4) {
+        let followingValue = (followingLabel.value as? String) ?? followingLabel.label
+        return followingValue.contains("true")
+      },
+      "Playback should stay in following state after subtitle edit, got: \((followingLabel.value as? String) ?? followingLabel.label)"
+    )
+  }
+
+  @MainActor
   private func launchApp() -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments += [
@@ -113,6 +189,30 @@ final class SubtitlePlaybackAnnotationUITests: XCTestCase {
     }
 
     return app.scrollViews["subtitle-playback-annotation-demo-subtitle-view"]
+  }
+
+  @MainActor
+  private func transcriptInteractionElement(in app: XCUIApplication) -> XCUIElement {
+    let transcriptTextView = app.textViews["subtitle-transcript-text-view"]
+    if transcriptTextView.exists {
+      return transcriptTextView
+    }
+
+    let transcriptScrollView = app.scrollViews["subtitle-transcript-scroll-view"]
+    if transcriptScrollView.exists {
+      return transcriptScrollView
+    }
+
+    return app.scrollViews["subtitle-playback-annotation-demo-subtitle-view"]
+  }
+
+  @MainActor
+  private func replaceText(in app: XCUIApplication, with value: String) {
+    let textView = app.textViews["subtitle-edit-text-editor"]
+    XCTAssertTrue(textView.waitForExistence(timeout: 2), "Subtitle editor text view not found")
+    textView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+    textView.typeKey("a", modifierFlags: .command)
+    textView.typeText(value)
   }
 
   @MainActor
