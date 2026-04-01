@@ -1,3 +1,9 @@
+## [0.3.7.121] - 2026-04-01
+
+### Improvements
+- extract app dependency container
+
+
 ## [0.3.6.120] - 2026-04-01
 
 ### Features
