@@ -49,5 +49,8 @@ struct SubtitleEditView: View {
     }
     .padding(16)
     .frame(minWidth: 420, minHeight: 240)
+    .onAppear {
+      _ = KeyboardInputSourceManager.selectEnglishInputSource()
+    }
   }
 }

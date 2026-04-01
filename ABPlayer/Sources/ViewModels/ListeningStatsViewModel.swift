@@ -62,7 +62,7 @@ final class ListeningStatsViewModel {
   private var selectedRange: Range = .last7Days
   private(set) var output: Output
 
-  init(calendar: Calendar = .current) {
+  init(calendar: Calendar = .autoupdatingCurrent) {
     self.calendar = calendar
     if let interval = calendar.dateInterval(of: .month, for: Date()) {
       selectedMonthStart = interval.start
@@ -83,6 +83,10 @@ final class ListeningStatsViewModel {
     if self.statsService == nil {
       self.statsService = statsService
     }
+  }
+
+  var activeCalendar: Calendar {
+    calendar
   }
 
   @discardableResult

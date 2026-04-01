@@ -12,6 +12,7 @@ enum UserDefaultsKey {
   static let updateFeedSource = "update_feed_source"
   static let sparkleFeedURL = "SUFeedURL"
   static let legacyPersistentStoreResetCompleted = "legacy_persistent_store_reset_completed"
+  static let playbackQueueSnapshot = "playback_queue_snapshot"
 
   enum MainSplitSuffix: String {
     case showContentPanel = "ShowContentPanel"

@@ -163,6 +163,7 @@ final class PlayerManager {
 
   func play(fromStart: Bool = false) async {
     guard !isPlaying else { return }
+    guard currentFile != nil else { return }
 
     if fromStart {
       await seek(to: 0)
@@ -170,6 +171,7 @@ final class PlayerManager {
     let success = await _engine.play()
     if success {
       self.isPlaying = true
+      sessionTracker?.handlePlaybackStateChanged(isPlaying: true)
       if let file = self.currentFile {
         touchPlaybackRecord(for: file)
       }
@@ -181,16 +183,19 @@ final class PlayerManager {
 
     await _engine.pause()
     self.isPlaying = false
-    self.sessionTracker?.persistProgress()
+    self.sessionTracker?.handlePlaybackStateChanged(isPlaying: false)
   }
 
   func togglePlayPause() async {
+    guard isPlaying || currentFile != nil else { return }
+
     let startTime = CFAbsoluteTimeGetCurrent()
     Logger.audio.debug("[Performance] togglePlayPause() called, isPlaying: \(self.isPlaying)")
 
     if isPlaying {
       isPlaying = false
       updateSleepPrevention()
+      sessionTracker?.handlePlaybackStateChanged(isPlaying: false)
       let uiUpdateTime = CFAbsoluteTimeGetCurrent()
       Logger.audio.debug(
         "[Performance] isPlaying = false (immediate) after \((uiUpdateTime - startTime) * 1000)ms")
@@ -206,13 +211,13 @@ final class PlayerManager {
       )
 
       await _engine.syncPauseState()
-      self.sessionTracker?.persistProgress()
       Logger.audio.debug(
         "[Performance] Background sync completed after \((CFAbsoluteTimeGetCurrent() - startTime) * 1000)ms"
       )
     } else {
       isPlaying = true
       updateSleepPrevention()
+      sessionTracker?.handlePlaybackStateChanged(isPlaying: true)
       let uiUpdateTime = CFAbsoluteTimeGetCurrent()
       Logger.audio.debug(
         "[Performance] isPlaying = true (immediate) after \((uiUpdateTime - startTime) * 1000)ms")
@@ -298,7 +303,7 @@ final class PlayerManager {
 
     if isPlaying {
       notifyPlaybackTimeObservers(seconds)
-      sessionTracker?.addListeningTime(0.1)
+      sessionTracker?.recordPlaybackTick(0.1)
     }
   }
 
@@ -318,14 +323,12 @@ final class PlayerManager {
   fileprivate func handlePlaybackStateUpdate(_ isPlaying: Bool) {
     self.isPlaying = isPlaying
     updateSleepPrevention()
+    sessionTracker?.handlePlaybackStateChanged(isPlaying: isPlaying)
 
     if isPlaying {
-      sessionTracker?.startSessionIfNeeded()
       if let file = currentFile {
         touchPlaybackRecord(for: file)
       }
-    } else {
-      sessionTracker?.persistProgress()
     }
   }
 
@@ -351,9 +354,11 @@ final class PlayerManager {
     switch playbackQueue.loopMode {
     case .none:
       isPlaying = false
+      sessionTracker?.handlePlaybackStateChanged(isPlaying: false)
 
     case .repeatOne:
       isPlaying = false
+      sessionTracker?.handlePlaybackStateChanged(isPlaying: false)
       await seek(to: 0)
       await play()
 

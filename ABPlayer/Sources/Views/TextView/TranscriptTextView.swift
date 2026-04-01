@@ -106,6 +106,7 @@ struct TranscriptTextView: NSViewRepresentable {
 
     // Snapshot old state before mutating
     let oldActiveCueID = coordinator.activeCueID
+    let cuesChanged = coordinator.cues != cues
     let activeCueChanged = oldActiveCueID != activeCueID
     let wasUserScrolling = coordinator.isUserScrolling
     let resumingAutoScroll = wasUserScrolling && !isUserScrolling
@@ -116,12 +117,11 @@ struct TranscriptTextView: NSViewRepresentable {
     // path below so the entire string is not reconstructed every second.
     let needsFullRebuild =
       coordinator.cachedAttributedString == nil
-      || coordinator.cueIDs != cues.map(\.id)
+      || cuesChanged
       || coordinator.fontSize != fontSize
       || coordinator.annotationVersion != annotationVersion
 
     coordinator.cues = cues
-    coordinator.cueIDs = cues.map(\.id)
     coordinator.fontSize = fontSize
     coordinator.activeCueID = activeCueID
     coordinator.isUserScrolling = isUserScrolling
@@ -193,7 +193,6 @@ struct TranscriptTextView: NSViewRepresentable {
   final class Coordinator: NSObject {
     // Inputs (mirrored from the struct so we can diff)
     var cues: [SubtitleCue]
-    var cueIDs: [UUID]
     var fontSize: Double
     var activeCueID: UUID?
     var isUserScrolling = false
@@ -249,7 +248,6 @@ struct TranscriptTextView: NSViewRepresentable {
       onScrollMetricsChanged: @escaping (ScrollMetrics) -> Void
     ) {
       self.cues = cues
-      self.cueIDs = cues.map(\.id)
       self.fontSize = fontSize
       self.activeCueID = activeCueID
       self.annotationVersion = annotationVersion

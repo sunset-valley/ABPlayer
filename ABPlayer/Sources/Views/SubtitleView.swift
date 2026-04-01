@@ -43,9 +43,15 @@ struct SubtitleView: View {
 
   private var playbackTrackingID: String {
     let fileID = playerManager.currentFile?.id.uuidString ?? "nil"
-    let firstCueID = cues.first?.id.uuidString ?? "nil"
-    let lastCueID = cues.last?.id.uuidString ?? "nil"
-    return "\(fileID)-\(cues.count)-\(firstCueID)-\(lastCueID)"
+    return "\(fileID)-\(cueStructureTrackingSignature)"
+  }
+
+  private var cueStructureTrackingSignature: String {
+    cues
+      .map { cue in
+        "\(cue.id.uuidString):\(cue.startTime):\(cue.endTime)"
+      }
+      .joined(separator: "|")
   }
 
   // MARK: - Body
@@ -172,7 +178,15 @@ struct SubtitleView: View {
       await viewModel.trackPlayback(cues: cues)
     }
     // Reset when cues change (new file / re-transcription)
-    .onChange(of: cues) { _, _ in
+    .onChange(of: cues) { oldCues, newCues in
+      let structureChanged =
+        oldCues.count != newCues.count
+        || zip(oldCues, newCues).contains { oldCue, newCue in
+          oldCue.id != newCue.id
+            || oldCue.startTime != newCue.startTime
+            || oldCue.endTime != newCue.endTime
+        }
+      guard structureChanged else { return }
       Task { viewModel.reset() }
     }
     .onChange(of: output.currentCueID) { _, newCueID in

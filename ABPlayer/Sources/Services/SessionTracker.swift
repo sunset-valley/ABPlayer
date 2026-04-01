@@ -9,49 +9,39 @@ import SwiftData
 actor SessionRecorder {
   private var currentSessionID: PersistentIdentifier?
 
-  /// Start a new session on the background context
-  func startNewSession() {
+  /// Start a new session on the background context.
+  @discardableResult
+  private func createSession() -> ListeningSession? {
     let session = ListeningSession()
     modelContext.insert(session)
     do {
       try modelContext.save()
       currentSessionID = session.persistentModelID
+      return session
     } catch {
       Logger.data.error("[SessionRecorder] Failed to start session: \(error)")
       currentSessionID = nil
+      return nil
     }
+  }
+
+  /// Start a new session on the background context.
+  func startNewSession() {
+    _ = createSession()
   }
 
   /// Add listening time to the current session
   func addTime(_ delta: Double) {
-    // If no active session, start one
-    guard let id = currentSessionID else {
-      Logger.data.info("[SessionRecorder] No active session, starting new one")
-      startNewSession()
+    guard delta > 0 else { return }
+
+    guard let id = currentSessionID,
+      let session = modelContext.model(for: id) as? ListeningSession,
+      !session.isDeleted
+    else {
+      Logger.data.warning("[SessionRecorder] No active session, skipping addTime")
       return
     }
 
-    // Try to fetch the session - it may have been invalidated
-    guard let session = modelContext.model(for: id) as? ListeningSession else {
-      Logger.data.warning(
-        "[SessionRecorder] Session invalidated (ID: \(String(describing: id))), starting fresh session"
-      )
-      currentSessionID = nil
-      startNewSession()
-      return
-    }
-
-    if session.isDeleted {
-      Logger.data.warning(
-        "[SessionRecorder] Session invalidated (ID: \(String(describing: id))), starting fresh session"
-      )
-      currentSessionID = nil
-      startNewSession()
-      return
-    }
-
-    // Autosave will handle this eventually, but we save periodically
-    // to ensure data isn't lost if app crashes
     do {
       session.duration += delta
       try modelContext.save()
@@ -74,11 +64,8 @@ actor SessionRecorder {
     }
 
     if session.isDeleted {
-      Logger.data.warning(
-        "[SessionRecorder] Session invalidated (ID: \(String(describing: id))), starting fresh session"
-      )
+      Logger.data.warning("[SessionRecorder] Cannot end session - already invalidated")
       currentSessionID = nil
-      startNewSession()
       return
     }
 
@@ -98,20 +85,45 @@ actor SessionRecorder {
 @Observable
 final class SessionTracker {
   private var recorder: SessionRecorder?
+  private var recorderTask: Task<Void, Never>?
 
-  // Buffered state
+  private let warmupThreshold: Double
+  private let idleTimeout: TimeInterval
+
+  // Buffered state.
   private var bufferedListeningTime: Double = 0
   private var lastCommitTime: Date = Date()
   private let commitInterval: TimeInterval = 5
 
-  // UI State (throttled to 1-second precision for display)
+  // UI state.
   private var _totalSeconds: Double = 0
   private(set) var displaySeconds: Int = 0
   private var isSessionActive = false
+  private var isCurrentlyPlaying = false
+  private var warmupPlayedSeconds: Double = 0
+  private var idleEndTask: Task<Void, Never>?
 
-  init() {}
+  init(
+    warmupThreshold: Double = 5,
+    idleTimeout: TimeInterval = 5
+  ) {
+    self.warmupThreshold = warmupThreshold
+    self.idleTimeout = idleTimeout
+  }
 
   init(modelContainer: ModelContainer) {
+    warmupThreshold = 5
+    idleTimeout = 5
+    self.recorder = SessionRecorder(modelContainer: modelContainer)
+  }
+
+  init(
+    modelContainer: ModelContainer,
+    warmupThreshold: Double,
+    idleTimeout: TimeInterval
+  ) {
+    self.warmupThreshold = warmupThreshold
+    self.idleTimeout = idleTimeout
     self.recorder = SessionRecorder(modelContainer: modelContainer)
   }
 
@@ -120,46 +132,53 @@ final class SessionTracker {
     self.recorder = SessionRecorder(modelContainer: container)
   }
 
-  /// Start a new listening session if one isn't already active
-  func startSessionIfNeeded() {
-    guard !isSessionActive else { return }
-    isSessionActive = true
+  /// Drive session state from playback state changes.
+  func handlePlaybackStateChanged(isPlaying: Bool) {
+    guard isCurrentlyPlaying != isPlaying else { return }
 
-    // Reset local state
-    _totalSeconds = 0
-    displaySeconds = 0
-    bufferedListeningTime = 0
-    lastCommitTime = Date()
+    isCurrentlyPlaying = isPlaying
 
-    // Start session in background
-    Task {
-      await recorder?.startNewSession()
+    if isPlaying {
+      idleEndTask?.cancel()
+      idleEndTask = nil
+      return
     }
+
+    persistProgress()
+    scheduleIdleSessionEnd()
   }
 
-  /// Reset the current session and start a new one immediately
-  func resetSession() {
+  /// Record one playback tick in seconds while media is playing.
+  func recordPlaybackTick(_ delta: Double) {
+    guard isCurrentlyPlaying else { return }
+    guard delta > 0 else { return }
+
     if isSessionActive {
-      commitPendingTime()
-      Task {
-        await recorder?.endSession()
-      }
+      appendRecordedDuration(delta)
+      return
     }
-    
-    isSessionActive = true
-    _totalSeconds = 0
-    displaySeconds = 0
-    bufferedListeningTime = 0
-    lastCommitTime = Date()
-    
-    Task {
-      await recorder?.startNewSession()
+
+    warmupPlayedSeconds += delta
+    if warmupPlayedSeconds >= warmupThreshold {
+      startSession(withInitialDuration: warmupPlayedSeconds)
+      warmupPlayedSeconds = 0
     }
   }
 
-  /// Add listening time (called frequently during playback)
-  func addListeningTime(_ delta: Double) {
-    guard isSessionActive else { return }
+  private func startSession(withInitialDuration initialDuration: Double) {
+    guard !isSessionActive else { return }
+    guard initialDuration > 0 else { return }
+
+    isSessionActive = true
+    bufferedListeningTime = 0
+    lastCommitTime = Date()
+    enqueueRecorderOperation { recorder in
+      await recorder?.startNewSession()
+    }
+    appendRecordedDuration(initialDuration)
+  }
+
+  private func appendRecordedDuration(_ delta: Double) {
     guard delta > 0 else { return }
 
     _totalSeconds += delta
@@ -179,16 +198,20 @@ final class SessionTracker {
 
   /// Commit currently buffered time to the background actor
   private func commitPendingTime() {
-    guard bufferedListeningTime > 0 else { return }
+    let amountToCommit = drainBufferedTime()
+    guard amountToCommit > 0 else { return }
 
-    let amountToCommit = bufferedListeningTime
-    // Reset buffer immediately on main thread to prevent double-commit
-    bufferedListeningTime = 0
-    lastCommitTime = Date()
-
-    Task {
+    enqueueRecorderOperation { recorder in
       await recorder?.addTime(amountToCommit)
     }
+  }
+
+  private func drainBufferedTime() -> Double {
+    guard bufferedListeningTime > 0 else { return 0 }
+    let amount = bufferedListeningTime
+    bufferedListeningTime = 0
+    lastCommitTime = Date()
+    return amount
   }
 
   /// Persist current playback progress (called on pause/stop/background)
@@ -196,17 +219,69 @@ final class SessionTracker {
     commitPendingTime()
   }
 
-  /// End the current session if one is active
+  /// End the current session if playback is currently idle.
   func endSessionIfIdle() {
+    guard !isCurrentlyPlaying else { return }
+    endSession()
+  }
+
+  /// End the current session immediately.
+  func endSession() {
+    idleEndTask?.cancel()
+    idleEndTask = nil
+    warmupPlayedSeconds = 0
+
     guard isSessionActive else { return }
 
-    // Flush any remaining time
-    commitPendingTime()
-
+    let amountToCommit = drainBufferedTime()
     isSessionActive = false
+    warmupPlayedSeconds = 0
+    _totalSeconds = 0
+    displaySeconds = 0
 
-    Task {
+    enqueueRecorderOperation { recorder in
+      if amountToCommit > 0 {
+        await recorder?.addTime(amountToCommit)
+      }
       await recorder?.endSession()
+    }
+  }
+
+  func waitForRecorderTasksForTesting() async {
+    await recorderTask?.value
+  }
+
+  private func scheduleIdleSessionEnd() {
+    idleEndTask?.cancel()
+    idleEndTask = Task { [weak self] in
+      guard let self else { return }
+
+      let nanos = UInt64(self.idleTimeout * 1_000_000_000)
+      do {
+        try await Task.sleep(nanoseconds: nanos)
+      } catch {
+        return
+      }
+      self.handleIdleTimeout()
+    }
+  }
+
+  private func handleIdleTimeout() {
+    guard !isCurrentlyPlaying else { return }
+    warmupPlayedSeconds = 0
+    endSession()
+  }
+
+  private func enqueueRecorderOperation(
+    _ operation: @escaping @Sendable (SessionRecorder?) async -> Void
+  ) {
+    let previousTask = recorderTask
+    let recorder = self.recorder
+    recorderTask = Task {
+      if let previousTask {
+        await previousTask.value
+      }
+      await operation(recorder)
     }
   }
 }
