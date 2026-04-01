@@ -1,3 +1,9 @@
+## [0.3.6.120] - 2026-04-01
+
+### Features
+- add subtitle toggle and sync updates
+
+
 ## [0.3.5.118] - 2026-03-31
 
 ### Features

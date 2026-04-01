@@ -142,28 +142,14 @@ final class TranscriptionViewModel {
   }
 
   func updateSubtitle(cueID: UUID, subtitle: String) async {
-    guard let audioFile = audioFile else { return }
-    guard let index = cachedCues.firstIndex(where: { $0.id == cueID }) else { return }
+    guard let audioFile = audioFile, let subtitleLoader = subtitleLoader else { return }
 
-    let updatedCue = SubtitleCue(
-      id: cachedCues[index].id,
-      startTime: cachedCues[index].startTime,
-      endTime: cachedCues[index].endTime,
-      text: subtitle
-    )
-
-    var updatedCues = cachedCues
-    updatedCues[index] = updatedCue
-
-    guard let srtURL = audioFile.srtFileURL else { return }
-
-    withSecurityScopedAccess(to: audioFile.bookmarkData) {
-      do {
-        try SubtitleParser.writeSRT(cues: updatedCues, to: srtURL)
-        cachedCues = updatedCues
-      } catch {
-        Logger.data.error("⚠️ Failed to update subtitle at \(srtURL.path): \(error.localizedDescription)")
-      }
+    if let updatedCues = await subtitleLoader.updateSubtitle(
+      for: audioFile,
+      cueID: cueID,
+      subtitle: subtitle
+    ) {
+      cachedCues = updatedCues
     }
   }
 

@@ -33,6 +33,36 @@ struct SubtitleCue: Codable, Identifiable, Equatable {
   }
 }
 
+extension [SubtitleCue] {
+  /// Binary search for the active cue at `time`. Assumes the array is sorted by `startTime`.
+  func findActiveCue(at time: Double, epsilon: Double = 0.001) -> SubtitleCue? {
+    guard time.isFinite, time >= 0, !isEmpty else { return nil }
+
+    var low = 0
+    var high = count - 1
+    var resultIndex: Int?
+
+    while low <= high {
+      let mid = (low + high) / 2
+      if self[mid].startTime <= time + epsilon {
+        resultIndex = mid
+        low = mid + 1
+      } else {
+        high = mid - 1
+      }
+    }
+
+    guard let resultIndex else { return nil }
+
+    let cue = self[resultIndex]
+    if time >= cue.startTime - epsilon, time < cue.endTime {
+      return cue
+    }
+
+    return nil
+  }
+}
+
 @Model
 final class SubtitleFile {
   var id: UUID

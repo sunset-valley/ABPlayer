@@ -8,6 +8,7 @@ import SwiftUI
 
 struct VideoPlayerView: View {
   @Environment(PlayerManager.self) private var playerManager
+  @Environment(SubtitleLoader.self) private var subtitleLoader
   @Environment(SessionTracker.self) private var sessionTracker
   @Environment(\.modelContext) private var modelContext
 
@@ -22,6 +23,8 @@ struct VideoPlayerView: View {
       .focusEffectDisabled()
       .task {
         viewModel.setup(with: playerManager)
+        viewModel.beginSubtitleReload()
+        await viewModel.loadSubtitles(for: audioFile, using: subtitleLoader)
         if playerManager.currentFile?.id != audioFile.id,
            playerManager.currentFile != nil
         {
@@ -30,10 +33,19 @@ struct VideoPlayerView: View {
       }
       .onChange(of: audioFile) { _, newFile in
         Task {
+          viewModel.beginSubtitleReload()
+          await viewModel.loadSubtitles(for: newFile, using: subtitleLoader)
+
           if playerManager.currentFile?.id != newFile.id {
             await playerManager.selectFile(newFile, fromStart: false, debounce: false)
           }
         }
+      }
+      .onChange(of: subtitleLoader.revisionMap[audioFile.id]) { _, _ in
+        viewModel.refreshSubtitles(for: audioFile.id, using: subtitleLoader)
+      }
+      .onDisappear {
+        viewModel.stopSubtitleTracking()
       }
   }
 
@@ -70,11 +82,20 @@ struct VideoPlayerView: View {
             .opacity(viewModel.isHudVisible ? 1 : 0)
             .scaleEffect(viewModel.isHudVisible ? 1 : 0.5)
         }
+
+        if viewModel.isSubtitleEnabled, let subtitleText = viewModel.currentSubtitleText {
+          VStack {
+            Spacer()
+            VideoSubtitleOverlay(text: subtitleText)
+              .padding(.horizontal, 20)
+              .padding(.bottom, 24)
+          }
+        }
       }
       .contentShape(Rectangle())
       .onTapGesture(count: 2) {
         pendingSingleTap?.cancel()
-        fullscreenPresenter.toggle(playerManager: playerManager, onSingleTap: viewModel.togglePlayPause)
+        toggleFullscreen()
       }
       .onTapGesture(count: 1) {
         pendingSingleTap?.cancel()
@@ -96,9 +117,7 @@ struct VideoPlayerView: View {
         VideoControlsView(
           viewModel: viewModel,
           isFullscreen: fullscreenPresenter.isPresented,
-          onToggleFullscreen: {
-            fullscreenPresenter.toggle(playerManager: playerManager, onSingleTap: viewModel.togglePlayPause)
-          }
+          onToggleFullscreen: { toggleFullscreen() }
         )
         .padding(.horizontal)
 
@@ -110,5 +129,15 @@ struct VideoPlayerView: View {
           .padding(.horizontal)
       }
     }
+  }
+
+  private func toggleFullscreen() {
+    fullscreenPresenter.toggle(
+      playerManager: playerManager,
+      subtitleText: { [viewModel] in
+        viewModel.isSubtitleEnabled ? viewModel.currentSubtitleText : nil
+      },
+      onSingleTap: viewModel.togglePlayPause
+    )
   }
 }

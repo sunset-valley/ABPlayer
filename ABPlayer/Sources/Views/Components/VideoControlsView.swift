@@ -4,7 +4,6 @@ import Observation
 struct VideoControlsView: View {
   @Bindable var viewModel: VideoPlayerViewModel
   @Environment(PlayerManager.self) private var playerManager
-  @State private var showSubtitle = false
 
   var isFullscreen: Bool = false
   var onToggleFullscreen: (() -> Void)? = nil
@@ -18,14 +17,22 @@ struct VideoControlsView: View {
         
         HStack {
           loopModeMenu
-          
+
           Button {
-            showSubtitle.toggle()
+            viewModel.toggleSubtitle()
           } label: {
             Image(.closedCaption).renderingMode(.template).resizable().aspectRatio(contentMode: .fit).frame(width: 24)
           }
           .buttonStyle(.plain)
-          .foregroundStyle(showSubtitle ? Color.accentColor : .primary)
+          .accessibilityIdentifier("video-controls-subtitle-toggle")
+          .disabled(!viewModel.hasAvailableSubtitles)
+          .opacity(viewModel.hasAvailableSubtitles ? 1.0 : 0.45)
+          .foregroundStyle(
+            viewModel.hasAvailableSubtitles
+              ? (viewModel.isSubtitleEnabled ? Color.accentColor : .primary)
+              : .secondary
+          )
+          .help(viewModel.hasAvailableSubtitles ? "Toggle subtitles" : "No subtitles available / 没有可用字幕")
           
           if let onToggleFullscreen {
             Button(action: onToggleFullscreen) {

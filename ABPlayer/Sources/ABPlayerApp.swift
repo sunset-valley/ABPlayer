@@ -120,6 +120,11 @@ struct ABPlayerApp: App {
       || Self.hasLaunchEnvironment("ABP_UI_TESTING_TRANSCRIPT_SCROLL")
   }
 
+  private var isVideoSubtitleToggleUITesting: Bool {
+    Self.hasLaunchArgument("--ui-testing-video-subtitle-toggle")
+      || Self.hasLaunchEnvironment("ABP_UI_TESTING_VIDEO_SUBTITLE_TOGGLE")
+  }
+
   private var isNotesExportUITesting: Bool {
     Self.hasLaunchArgument("--ui-testing-notes-export")
       || Self.hasLaunchEnvironment("ABP_UI_TESTING_NOTES_EXPORT")
@@ -338,6 +343,8 @@ struct ABPlayerApp: App {
   private var mainWindowRootView: some View {
     if isTranscriptScrollUITesting {
       TranscriptScrollDemoView()
+    } else if isVideoSubtitleToggleUITesting {
+      VideoSubtitleToggleDemoView()
     } else if isSubtitleEditUITesting {
       SubtitleEditDemoView()
     } else if isSubtitlePlaybackAnnotationUITesting {

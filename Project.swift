@@ -1,7 +1,7 @@
 import ProjectDescription
 
-let buildVersionString = "118"
-let shortVersionString = "0.3.5"
+let buildVersionString = "120"
+let shortVersionString = "0.3.6"
 
 let project = Project(
   name: "ABPlayer",
