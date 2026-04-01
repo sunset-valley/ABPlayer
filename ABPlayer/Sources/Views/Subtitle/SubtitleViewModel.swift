@@ -126,7 +126,7 @@ final class SubtitleViewModel {
     assert(time.isFinite, "Time must be finite")
 
     guard !scrollState.isUserScrolling else { return }
-    currentCueID = findActiveCue(at: time, in: cues)?.id
+    currentCueID = cues.findActiveCue(at: time)?.id
   }
 
   @MainActor
@@ -203,7 +203,7 @@ final class SubtitleViewModel {
   private func trackCurrentCue(at currentTime: Double, in cues: [SubtitleCue], epsilon: Double) {
     guard !scrollState.isUserScrolling else { return }
 
-    let activeCue = findActiveCue(at: currentTime, in: cues, epsilon: epsilon)
+    let activeCue = cues.findActiveCue(at: currentTime, epsilon: epsilon)
     if activeCue?.id != currentCueID {
       currentCueID = activeCue?.id
       if let cue = activeCue {
@@ -212,36 +212,4 @@ final class SubtitleViewModel {
     }
   }
 
-  private func findActiveCue(
-    at time: Double, in cues: [SubtitleCue], epsilon: Double = 0.001
-  ) -> SubtitleCue? {
-    assert(epsilon > 0, "Epsilon must be positive")
-    assert(time.isFinite, "Time must be finite")
-
-    guard !cues.isEmpty else { return nil }
-
-    var low = 0
-    var high = cues.count - 1
-    var result: Int? = nil
-
-    while low <= high {
-      let mid = (low + high) / 2
-      if cues[mid].startTime <= time + epsilon {
-        result = mid
-        low = mid + 1
-      } else {
-        high = mid - 1
-      }
-    }
-
-    if let index = result {
-      assert(index >= 0 && index < cues.count, "Binary search produced invalid index")
-      let cue = cues[index]
-      if time >= cue.startTime - epsilon, time < cue.endTime {
-        return cue
-      }
-    }
-
-    return nil
-  }
 }

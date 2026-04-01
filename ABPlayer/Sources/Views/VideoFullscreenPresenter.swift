@@ -27,15 +27,23 @@ final class VideoFullscreenPresenter {
 
   private(set) var isPresented: Bool = false
 
-  func toggle(playerManager: PlayerManager, onSingleTap: @escaping () -> Void) {
+  func toggle(
+    playerManager: PlayerManager,
+    subtitleText: @escaping @MainActor () -> String?,
+    onSingleTap: @escaping () -> Void
+  ) {
     if isPresented {
       dismiss()
     } else {
-      present(playerManager: playerManager, onSingleTap: onSingleTap)
+      present(playerManager: playerManager, subtitleText: subtitleText, onSingleTap: onSingleTap)
     }
   }
 
-  private func present(playerManager: PlayerManager, onSingleTap: @escaping () -> Void) {
+  private func present(
+    playerManager: PlayerManager,
+    subtitleText: @escaping @MainActor () -> String?,
+    onSingleTap: @escaping () -> Void
+  ) {
     guard let screen = NSScreen.main else { return }
 
     let w = FullscreenWindow(
@@ -51,6 +59,7 @@ final class VideoFullscreenPresenter {
 
     let content = FullscreenVideoContent(
       playerManager: playerManager,
+      subtitleText: subtitleText,
       onSingleTap: onSingleTap,
       onDismiss: { [weak self] in self?.dismiss() }
     )
@@ -73,6 +82,7 @@ final class VideoFullscreenPresenter {
 
 private struct FullscreenVideoContent: View {
   let playerManager: PlayerManager
+  let subtitleText: @MainActor () -> String?
   let onSingleTap: () -> Void
   let onDismiss: () -> Void
 
@@ -87,6 +97,16 @@ private struct FullscreenVideoContent: View {
       if let player = playerManager.player {
         NativeVideoPlayer(player: player)
       }
+
+      if let text = subtitleText() {
+        VStack {
+          Spacer()
+          VideoSubtitleOverlay(text: text)
+            .padding(.horizontal, 28)
+            .padding(.bottom, 34)
+        }
+      }
+
       hudOverlay
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
