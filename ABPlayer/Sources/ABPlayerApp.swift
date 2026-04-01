@@ -1,332 +1,25 @@
-import KeyboardShortcuts
-import OSLog
-import Sentry
-import Sparkle
-import SwiftData
 import SwiftUI
-import TelemetryDeck
-
-extension Logger {
-  private static let subsystem = Bundle.main.bundleIdentifier ?? "cc.ihugo.ABPlayer"
-
-  static let audio = Logger(subsystem: subsystem, category: "audio")
-  static let ui = Logger(subsystem: subsystem, category: "ui")
-  static let data = Logger(subsystem: subsystem, category: "data")
-  static let general = Logger(subsystem: subsystem, category: "general")
-}
-
-enum UpdateFeedSource: String, CaseIterable, Identifiable {
-  case kcoding
-
-  var id: Self {
-    self
-  }
-
-  var appcastURL: String {
-    switch self {
-    case .kcoding:
-      return "https://s3.kcoding.cn/d/ABPlayerRelease/appcast.xml"
-    }
-  }
-}
-
-@MainActor
-@Observable
-final class SparkleUpdater {
-  @ObservationIgnored
-  private let controller: SPUStandardUpdaterController
-
-  @ObservationIgnored
-  @AppStorage(UserDefaultsKey.updateFeedSource) private var _selectedFeedSourceRawValue: String =
-    UpdateFeedSource.kcoding.rawValue
-
-  var selectedFeedSource: UpdateFeedSource {
-    get {
-      access(keyPath: \.selectedFeedSource)
-      return UpdateFeedSource(rawValue: _selectedFeedSourceRawValue) ?? .kcoding
-    }
-    set {
-      withMutation(keyPath: \.selectedFeedSource) {
-        _selectedFeedSourceRawValue = newValue.rawValue
-        applyFeedURLOverride(for: newValue)
-      }
-    }
-  }
-
-  var selectedFeedURL: String {
-    selectedFeedSource.appcastURL
-  }
-
-  init() {
-    controller = SPUStandardUpdaterController(
-      startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil
-    )
-    applyFeedURLOverride(for: selectedFeedSource)
-  }
-
-  func checkForUpdates() {
-    applyFeedURLOverride(for: selectedFeedSource)
-    controller.checkForUpdates(nil)
-  }
-
-  private func applyFeedURLOverride(for source: UpdateFeedSource) {
-    UserDefaults.standard.set(source.appcastURL, forKey: UserDefaultsKey.sparkleFeedURL)
-  }
-}
 
 @main
 struct ABPlayerApp: App {
   @Environment(\.scenePhase) private var scenePhase
 
-  private let modelContainer: ModelContainer
-  private let playerManager = PlayerManager()
-  private let sessionTracker: SessionTracker
-  private let transcriptionManager = TranscriptionManager()
-  private let transcriptionSettings = TranscriptionSettings()
-  private let librarySettings = LibrarySettings()
-  private let playerSettings = PlayerSettings()
-  private let proxySettings = ProxySettings()
-  private let annotationStyleService: AnnotationStyleService
-  private let annotationService: AnnotationService
-  private let notesBrowserService: NotesBrowserService
-  private let listeningStatsService: ListeningStatsService
-  private let subtitleLoader = SubtitleLoader()
-
-  private let queueManager: TranscriptionQueueManager
-  private let updater = SparkleUpdater()
-
-  private var isAnnotationDemoUITesting: Bool {
-    Self.hasLaunchArgument("--ui-testing-annotation-demo")
-      || Self.hasLaunchEnvironment("ABP_UI_TESTING_ANNOTATION_DEMO")
-  }
-
-  private var isUITesting: Bool {
-    Self.hasLaunchArgument("--ui-testing")
-      || Self.hasLaunchEnvironment("ABP_UI_TESTING")
-  }
-
-  private var isSubtitleEditUITesting: Bool {
-    Self.hasLaunchArgument("--ui-testing-subtitle-edit")
-      || Self.hasLaunchEnvironment("ABP_UI_TESTING_SUBTITLE_EDIT")
-  }
-
-  private var isSubtitlePlaybackAnnotationUITesting: Bool {
-    Self.hasLaunchArgument("--ui-testing-subtitle-playback-annotation")
-      || Self.hasLaunchEnvironment("ABP_UI_TESTING_SUBTITLE_PLAYBACK_ANNOTATION")
-  }
-
-  private var isTranscriptScrollUITesting: Bool {
-    Self.hasLaunchArgument("--ui-testing-transcript-scroll")
-      || Self.hasLaunchEnvironment("ABP_UI_TESTING_TRANSCRIPT_SCROLL")
-  }
-
-  private var isVideoSubtitleToggleUITesting: Bool {
-    Self.hasLaunchArgument("--ui-testing-video-subtitle-toggle")
-      || Self.hasLaunchEnvironment("ABP_UI_TESTING_VIDEO_SUBTITLE_TOGGLE")
-  }
-
-  private var isNotesExportUITesting: Bool {
-    Self.hasLaunchArgument("--ui-testing-notes-export")
-      || Self.hasLaunchEnvironment("ABP_UI_TESTING_NOTES_EXPORT")
-  }
-
-  private var isListeningStatsUITesting: Bool {
-    Self.hasLaunchArgument("--ui-testing-listening-stats")
-      || Self.hasLaunchEnvironment("ABP_UI_TESTING_LISTENING_STATS")
-  }
-
-  private static func hasLaunchArgument(_ argument: String) -> Bool {
-    ProcessInfo.processInfo.arguments.contains(argument)
-  }
-
-  private static func hasLaunchEnvironment(_ key: String) -> Bool {
-    guard let value = ProcessInfo.processInfo.environment[key] else { return false }
-    return value == "1" || value.lowercased() == "true"
-  }
+  private let container: AppDependencyContainer
+  private let uiFlags: UITestingFlags
 
   init() {
-    let isSubtitleEditUITesting =
-      Self.hasLaunchArgument("--ui-testing-subtitle-edit")
-        || Self.hasLaunchEnvironment("ABP_UI_TESTING_SUBTITLE_EDIT")
-    let isUITesting =
-      Self.hasLaunchArgument("--ui-testing")
-        || Self.hasLaunchEnvironment("ABP_UI_TESTING")
+    let uiFlags = UITestingFlags()
+    self.uiFlags = uiFlags
 
-    if isSubtitleEditUITesting {
+    if uiFlags.isSubtitleEdit {
       _ = KeyboardInputSourceManager.selectEnglishInputSource()
     }
 
-    URLSessionProxyInjector.install(settings: proxySettings)
-
-    if !isUITesting {
-      let config = TelemetryDeck.Config(appID: "A4A99FD4-3F84-49FA-AF97-0806D61D0539")
-      TelemetryDeck.initialize(config: config)
-    }
-
     do {
-      if !isUITesting {
-        SentrySDK.start { (options: Sentry.Options) in
-          options.dsn =
-            "https://0e00826ef2b3fbc195fb428a468fd995@o4504292283580416.ingest.us.sentry.io/4510502660341760"
-          options.debug = false
-          options.enableAppHangTracking = false
-          options.sendDefaultPii = true
-        }
-      }
-
-      let schema = Schema([
-        ABFile.self,
-        LoopSegment.self,
-        ListeningSession.self,
-        PlaybackRecord.self,
-        Folder.self,
-        SubtitleFile.self,
-        Transcription.self,
-        Vocabulary.self,
-        AnnotationStylePreset.self,
-        TextAnnotationGroup.self,
-        TextAnnotationSpan.self,
-        TextAnnotationGroupV2.self,
-        TextAnnotationSpanV2.self,
-        NoteCollection.self,
-        Note.self,
-        NoteEntry.self,
-        NoteAnnotationLink.self,
-      ])
-
-      guard let appSupportDir = FileManager.default.urls(
-        for: .applicationSupportDirectory, in: .userDomainMask
-      ).first else {
-        throw CocoaError(.fileNoSuchFile, userInfo: [
-          NSLocalizedDescriptionKey: "Application Support directory not found",
-        ])
-      }
-      let folderName = Bundle.main.bundleIdentifier ?? "cc.ihugo.app.ABPlayer"
-
-      let storeURL = appSupportDir.appendingPathComponent(
-        folderName, isDirectory: true
-      )
-      .appendingPathComponent("ABPlayer.sqlite")
-
-      if isUITesting {
-        try Self.deletePersistentStoreIfNeeded(at: storeURL)
-      } else if Self.shouldResetLegacyPersistentStoreForCurrentVersion() {
-        try Self.deletePersistentStoreIfNeeded(at: storeURL)
-        Self.markLegacyPersistentStoreResetCompleted()
-      }
-
-      let modelConfiguration = ModelConfiguration(url: storeURL)
-      modelContainer = try ModelContainer(for: schema, configurations: modelConfiguration)
-      modelContainer.mainContext.autosaveEnabled = true
-
-      sessionTracker = SessionTracker(modelContainer: modelContainer)
-      annotationStyleService = AnnotationStyleService(modelContext: modelContainer.mainContext)
-      annotationService = AnnotationService(
-        modelContext: modelContainer.mainContext,
-        styleService: annotationStyleService
-      )
-      notesBrowserService = NotesBrowserService(modelContext: modelContainer.mainContext)
-      listeningStatsService = ListeningStatsService(modelContext: modelContainer.mainContext)
-
-      queueManager = TranscriptionQueueManager(
-        transcriptionManager: transcriptionManager,
-        settings: transcriptionSettings
-      )
-      queueManager.modelContext = modelContainer.mainContext
-      playerManager.playerSettings = playerSettings
-
-      KeyboardShortcuts.onKeyUp(for: .playPause) { [playerManager] in
-        Task { @MainActor in
-          await playerManager.togglePlayPause()
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .rewind5s) { [playerManager] in
-        Task { @MainActor in
-          await playerManager.seek(to: -5)
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .forward10s) { [playerManager] in
-        Task { @MainActor in
-          await playerManager.seek(to: 10)
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .setPointA) { [playerManager] in
-        Task { @MainActor in
-          playerManager.setPointA()
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .setPointB) { [playerManager] in
-        Task { @MainActor in
-          playerManager.setPointB()
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .clearLoop) { [playerManager] in
-        Task { @MainActor in
-          playerManager.clearLoop()
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .saveSegment) { [playerManager] in
-        Task { @MainActor in
-          _ = playerManager.saveCurrentSegment()
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .previousSegment) { [playerManager] in
-        Task { @MainActor in
-          playerManager.selectPreviousSegment()
-        }
-      }
-
-      KeyboardShortcuts.onKeyUp(for: .nextSegment) { [playerManager] in
-        Task { @MainActor in
-          playerManager.selectNextSegment()
-        }
-      }
-
+      container = try AppDependencyContainer(isUITesting: uiFlags.isAny)
     } catch {
-      fatalError("Failed to create model container: \(error)")
+      fatalError("Failed to initialize app dependencies: \(error)")
     }
-  }
-
-  private static func deletePersistentStoreIfNeeded(at storeURL: URL) throws {
-    let fileManager = FileManager.default
-    let storeDirectoryURL = storeURL.deletingLastPathComponent()
-    try fileManager.createDirectory(
-      at: storeDirectoryURL,
-      withIntermediateDirectories: true
-    )
-
-    let storeFiles = ["", "-wal", "-shm"]
-    for suffix in storeFiles {
-      let fileURL = URL(fileURLWithPath: storeURL.path + suffix)
-      guard fileManager.fileExists(atPath: fileURL.path) else { continue }
-      try fileManager.removeItem(at: fileURL)
-      Logger.data.notice("Removed persistent store file: \(fileURL.lastPathComponent, privacy: .public)")
-    }
-  }
-
-  private static func shouldResetLegacyPersistentStoreForCurrentVersion() -> Bool {
-    let hasReset = UserDefaults.standard.bool(
-      forKey: UserDefaultsKey.legacyPersistentStoreResetCompleted
-    )
-    guard !hasReset else { return false }
-
-    let targetVersion = "0.2.17"
-    let currentVersion =
-      (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
-        ?? "0.0.0"
-
-    return currentVersion.compare(targetVersion, options: .numeric) == .orderedAscending
-  }
-
-  private static func markLegacyPersistentStoreResetCompleted() {
-    UserDefaults.standard.set(true, forKey: UserDefaultsKey.legacyPersistentStoreResetCompleted)
   }
 
   var body: some Scene {
@@ -341,19 +34,19 @@ struct ABPlayerApp: App {
 
   @ViewBuilder
   private var mainWindowRootView: some View {
-    if isTranscriptScrollUITesting {
+    if uiFlags.isTranscriptScroll {
       TranscriptScrollDemoView()
-    } else if isVideoSubtitleToggleUITesting {
+    } else if uiFlags.isVideoSubtitleToggle {
       VideoSubtitleToggleDemoView()
-    } else if isSubtitleEditUITesting {
+    } else if uiFlags.isSubtitleEdit {
       SubtitleEditDemoView()
-    } else if isSubtitlePlaybackAnnotationUITesting {
+    } else if uiFlags.isSubtitlePlaybackAnnotation {
       SubtitlePlaybackAnnotationDemoView()
-    } else if isAnnotationDemoUITesting {
+    } else if uiFlags.isAnnotationDemo {
       AnnotationMenuDemoView()
-    } else if isNotesExportUITesting {
+    } else if uiFlags.isNotesExport {
       NotesBrowserExportDemoView()
-    } else if isListeningStatsUITesting {
+    } else if uiFlags.isListeningStats {
       ListeningStatsDemoView()
     } else {
       MainSplitView()
@@ -364,26 +57,26 @@ struct ABPlayerApp: App {
     WindowGroup {
       mainWindowRootView
         .focusEffectDisabled()
-        .onChange(of: playerSettings.preventSleep) {
-          playerManager.updateSleepPrevention()
+        .onChange(of: container.playerSettings.preventSleep) {
+          container.playerManager.updateSleepPrevention()
         }
-        .environment(playerManager)
-        .environment(sessionTracker)
-        .environment(transcriptionManager)
-        .environment(transcriptionSettings)
-        .environment(librarySettings)
-        .environment(playerSettings)
-        .environment(proxySettings)
-        .environment(queueManager)
-        .environment(annotationStyleService)
-        .environment(annotationService)
-        .environment(notesBrowserService)
-        .environment(listeningStatsService)
-        .environment(subtitleLoader)
+        .environment(container.playerManager)
+        .environment(container.sessionTracker)
+        .environment(container.transcriptionManager)
+        .environment(container.transcriptionSettings)
+        .environment(container.librarySettings)
+        .environment(container.playerSettings)
+        .environment(container.proxySettings)
+        .environment(container.queueManager)
+        .environment(container.annotationStyleService)
+        .environment(container.annotationService)
+        .environment(container.notesBrowserService)
+        .environment(container.listeningStatsService)
+        .environment(container.subtitleLoader)
     }
     .defaultSize(width: 1600, height: 900)
     .windowResizability(.contentSize)
-    .modelContainer(modelContainer)
+    .modelContainer(container.modelContainer)
     .commands {
       SettingsCommands()
       NotesBrowserCommands()
@@ -400,7 +93,7 @@ struct ABPlayerApp: App {
         }
 
         Button("Check for Updates...") {
-          updater.checkForUpdates()
+          container.updater.checkForUpdates()
         }
       }
     }
@@ -409,13 +102,13 @@ struct ABPlayerApp: App {
   private var settingsWindowScene: some Scene {
     WindowGroup(id: "settings-window") {
       SettingsView()
-        .environment(transcriptionSettings)
-        .environment(librarySettings)
-        .environment(playerSettings)
-        .environment(proxySettings)
-        .environment(annotationStyleService)
-        .environment(transcriptionManager)
-        .environment(updater)
+        .environment(container.transcriptionSettings)
+        .environment(container.librarySettings)
+        .environment(container.playerSettings)
+        .environment(container.proxySettings)
+        .environment(container.annotationStyleService)
+        .environment(container.transcriptionManager)
+        .environment(container.updater)
     }
     .defaultPosition(.center)
     .commandsRemoved()
@@ -424,8 +117,8 @@ struct ABPlayerApp: App {
   private var annotationStyleManagerWindowScene: some Scene {
     WindowGroup(id: "annotation-style-manager") {
       AnnotationStyleManagerView()
-        .environment(annotationStyleService)
-        .environment(annotationService)
+        .environment(container.annotationStyleService)
+        .environment(container.annotationService)
     }
     .defaultSize(width: 640, height: 480)
     .defaultPosition(.center)
@@ -435,9 +128,9 @@ struct ABPlayerApp: App {
   private var notesBrowserWindowScene: some Scene {
     Window("Notes Browser", id: "notes-browser") {
       NotesBrowserView()
-        .environment(annotationStyleService)
-        .environment(annotationService)
-        .environment(notesBrowserService)
+        .environment(container.annotationStyleService)
+        .environment(container.annotationService)
+        .environment(container.notesBrowserService)
     }
     .defaultSize(width: 1280, height: 820)
     .defaultPosition(.center)
@@ -447,11 +140,48 @@ struct ABPlayerApp: App {
   private var listeningStatsWindowScene: some Scene {
     Window("Daily Listening Time", id: "listening-stats") {
       ListeningStatsView()
-        .environment(listeningStatsService)
+        .environment(container.listeningStatsService)
     }
     .defaultSize(width: 980, height: 620)
     .defaultPosition(.center)
     .commandsRemoved()
+  }
+}
+
+// MARK: - UI Testing Flags
+
+private struct UITestingFlags {
+  let isAny: Bool
+  let isAnnotationDemo: Bool
+  let isSubtitleEdit: Bool
+  let isSubtitlePlaybackAnnotation: Bool
+  let isTranscriptScroll: Bool
+  let isVideoSubtitleToggle: Bool
+  let isNotesExport: Bool
+  let isListeningStats: Bool
+
+  init() {
+    let args = ProcessInfo.processInfo.arguments
+    let env = ProcessInfo.processInfo.environment
+    isAny = Self.check(args, env, "--ui-testing", "ABP_UI_TESTING")
+    isAnnotationDemo = Self.check(args, env, "--ui-testing-annotation-demo", "ABP_UI_TESTING_ANNOTATION_DEMO")
+    isSubtitleEdit = Self.check(args, env, "--ui-testing-subtitle-edit", "ABP_UI_TESTING_SUBTITLE_EDIT")
+    isSubtitlePlaybackAnnotation = Self.check(
+      args, env,
+      "--ui-testing-subtitle-playback-annotation",
+      "ABP_UI_TESTING_SUBTITLE_PLAYBACK_ANNOTATION")
+    isTranscriptScroll = Self.check(args, env, "--ui-testing-transcript-scroll", "ABP_UI_TESTING_TRANSCRIPT_SCROLL")
+    isVideoSubtitleToggle = Self.check(args, env, "--ui-testing-video-subtitle-toggle", "ABP_UI_TESTING_VIDEO_SUBTITLE_TOGGLE")
+    isNotesExport = Self.check(args, env, "--ui-testing-notes-export", "ABP_UI_TESTING_NOTES_EXPORT")
+    isListeningStats = Self.check(args, env, "--ui-testing-listening-stats", "ABP_UI_TESTING_LISTENING_STATS")
+  }
+
+  private static func check(
+    _ args: [String], _ env: [String: String], _ argument: String, _ envKey: String
+  ) -> Bool {
+    if args.contains(argument) { return true }
+    guard let value = env[envKey] else { return false }
+    return value == "1" || value.lowercased() == "true"
   }
 }
 
