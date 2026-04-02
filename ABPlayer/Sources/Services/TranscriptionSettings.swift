@@ -69,6 +69,15 @@ final class TranscriptionSettings {
     set { withMutation(keyPath: \.downloadEndpoint) { _downloadEndpoint = newValue } }
   }
 
+  /// Last applied custom mirror endpoint
+  @ObservationIgnored
+  @AppStorage("transcription_last_custom_download_endpoint")
+  private var _lastCustomDownloadEndpoint: String = ""
+  var lastCustomDownloadEndpoint: String {
+    get { access(keyPath: \.lastCustomDownloadEndpoint); return _lastCustomDownloadEndpoint }
+    set { withMutation(keyPath: \.lastCustomDownloadEndpoint) { _lastCustomDownloadEndpoint = newValue } }
+  }
+
   // MARK: - Computed Properties
 
   /// Effective HuggingFace endpoint passed to WhisperKit downloads
