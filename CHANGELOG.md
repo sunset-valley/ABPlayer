@@ -1,3 +1,9 @@
+## [0.3.8.124] - 2026-04-02
+
+### Chores
+- cover session slice aggregation edge cases
+
+
 ## [0.3.7.123] - 2026-04-02
 
 - No significant changes.
