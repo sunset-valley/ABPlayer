@@ -144,9 +144,18 @@ struct TranscriptionSettingsTests {
   }
 
   @Test
+  func testIsModelDownloadedAsyncReturnsFalseForNonexistentDirectory() async {
+    let settings = TranscriptionSettings()
+    settings.modelDirectory = "/nonexistent/path/that/does/not/exist"
+
+    let isDownloaded = await settings.isModelDownloadedAsync(modelName: "tiny")
+
+    #expect(!isDownloaded, "Should return false for non-existent directory")
+  }
+
+  @Test
   func testListDownloadedModelsReturnsEmptyForNonexistentDirectory() async {
     let settings = TranscriptionSettings()
-    // Set to a non-existent directory
     settings.modelDirectory = "/nonexistent/path/that/does/not/exist"
 
     let models = await settings.listDownloadedModelsAsync()
@@ -157,8 +166,7 @@ struct TranscriptionSettingsTests {
   @Test
   func testListDownloadedModelsReturnsEmptyForEmptyDirectory() async throws {
     let settings = TranscriptionSettings()
-    let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(
-      UUID().uuidString)
+    let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
     defer {
@@ -174,9 +182,7 @@ struct TranscriptionSettingsTests {
   @Test(.enabled(if: ProcessInfo.processInfo.environment["CI"] == nil))
   func testListDownloadedModelsDetectsModelDirectory() async throws {
     let settings = TranscriptionSettings()
-    let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(
-      UUID().uuidString)
-    // Create WhisperKit-compatible model structure: models/argmaxinc/whisperkit-coreml/<model-name>/
+    let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let modelDir =
       tempDir
       .appendingPathComponent("models")
@@ -184,11 +190,12 @@ struct TranscriptionSettingsTests {
       .appendingPathComponent("whisperkit-coreml")
       .appendingPathComponent("openai_whisper-tiny")
 
-    // Create mock model structure with required indicator file
     try FileManager.default.createDirectory(at: modelDir, withIntermediateDirectories: true)
     try "{}".write(
       to: modelDir.appendingPathComponent("config.json"),
-      atomically: true, encoding: .utf8)
+      atomically: true,
+      encoding: .utf8
+    )
 
     defer {
       try? FileManager.default.removeItem(at: tempDir)
@@ -202,23 +209,125 @@ struct TranscriptionSettingsTests {
   }
 
   @Test(.enabled(if: ProcessInfo.processInfo.environment["CI"] == nil))
+  func testIsModelDownloadedAsyncDetectsValidModelDirectory() async throws {
+    let settings = TranscriptionSettings()
+    let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let modelDir =
+      tempDir
+      .appendingPathComponent("models")
+      .appendingPathComponent("argmaxinc")
+      .appendingPathComponent("whisperkit-coreml")
+      .appendingPathComponent("openai_whisper-tiny")
+
+    try FileManager.default.createDirectory(at: modelDir, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: modelDir.appendingPathComponent("AudioEncoder.mlmodelc"),
+      withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+      at: modelDir.appendingPathComponent("TextDecoder.mlmodelc"),
+      withIntermediateDirectories: true
+    )
+    try "{}".write(
+      to: modelDir.appendingPathComponent("config.json"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    defer {
+      try? FileManager.default.removeItem(at: tempDir)
+    }
+
+    settings.modelDirectory = tempDir.path
+    let isDownloaded = await settings.isModelDownloadedAsync(modelName: "tiny")
+
+    #expect(isDownloaded, "Should detect model directory with required indicator files")
+  }
+
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["CI"] == nil))
+  func testIsModelDownloadedAsyncDoesNotConfuseLargeV3WithDistilLargeV3() async throws {
+    let settings = TranscriptionSettings()
+    let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let distilDir =
+      tempDir
+      .appendingPathComponent("models")
+      .appendingPathComponent("argmaxinc")
+      .appendingPathComponent("whisperkit-coreml")
+      .appendingPathComponent("distil-whisper_distil-large-v3")
+
+    try FileManager.default.createDirectory(at: distilDir, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: distilDir.appendingPathComponent("AudioEncoder.mlmodelc"),
+      withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+      at: distilDir.appendingPathComponent("TextDecoder.mlmodelc"),
+      withIntermediateDirectories: true
+    )
+    try "{}".write(
+      to: distilDir.appendingPathComponent("config.json"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    defer {
+      try? FileManager.default.removeItem(at: tempDir)
+    }
+
+    settings.modelDirectory = tempDir.path
+
+    let largeV3Downloaded = await settings.isModelDownloadedAsync(modelName: "large-v3")
+    let distilDownloaded = await settings.isModelDownloadedAsync(modelName: "distil-large-v3")
+
+    #expect(!largeV3Downloaded, "Should not treat distil-large-v3 as large-v3")
+    #expect(distilDownloaded, "Should still detect distil-large-v3 correctly")
+  }
+
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["CI"] == nil))
+  func testIsModelDownloadedAsyncReturnsFalseForIncompleteModelDirectory() async throws {
+    let settings = TranscriptionSettings()
+    let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let modelDir =
+      tempDir
+      .appendingPathComponent("models")
+      .appendingPathComponent("argmaxinc")
+      .appendingPathComponent("whisperkit-coreml")
+      .appendingPathComponent("openai_whisper-tiny")
+
+    try FileManager.default.createDirectory(at: modelDir, withIntermediateDirectories: true)
+    try "{}".write(
+      to: modelDir.appendingPathComponent("config.json"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    defer {
+      try? FileManager.default.removeItem(at: tempDir)
+    }
+
+    settings.modelDirectory = tempDir.path
+    let isDownloaded = await settings.isModelDownloadedAsync(modelName: "tiny")
+
+    #expect(!isDownloaded, "Should require all model indicator files")
+  }
+
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["CI"] == nil))
   func testDefaultModelDirectoryIsInUserHome() {
     let defaultDir = TranscriptionSettings.defaultModelDirectory
 
     #expect(
       defaultDir.path.contains(".abplayer"),
-      "Default directory should be in ~/.abplayer")
+      "Default directory should be in ~/.abplayer"
+    )
   }
 
   @Test
   func testFormatSizeReturnsReadableString() {
-    // Test MB formatting
-    let mbSize: Int64 = 100 * 1024 * 1024  // 100 MB
+    let mbSize: Int64 = 100 * 1024 * 1024
     let mbFormatted = TranscriptionSettings.formatSize(mbSize)
     #expect(mbFormatted.contains("MB") || mbFormatted.contains("100"))
 
-    // Test GB formatting
-    let gbSize: Int64 = 2 * 1024 * 1024 * 1024  // 2 GB
+    let gbSize: Int64 = 2 * 1024 * 1024 * 1024
     let gbFormatted = TranscriptionSettings.formatSize(gbSize)
     #expect(gbFormatted.contains("GB") || gbFormatted.contains("2"))
   }

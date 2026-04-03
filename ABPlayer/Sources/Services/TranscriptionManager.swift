@@ -19,7 +19,7 @@ enum TranscriptionState: Equatable {
 @MainActor
 @Observable
 final class TranscriptionManager {
-  private var whisperKit: WhisperKit?
+  private let runtime = TranscriptionRuntime()
   private var loadedModelName: String?
   private var downloadTask: Task<Void, Error>?
   var state: TranscriptionState = .idle
@@ -28,7 +28,7 @@ final class TranscriptionManager {
 
   /// Whether the model is loaded and ready
   var isModelLoaded: Bool {
-    whisperKit != nil
+    loadedModelName != nil
   }
 
   /// Download model with progress tracking
@@ -99,22 +99,18 @@ final class TranscriptionManager {
     downloadBase: URL,
     endpoint: String
   ) async throws {
-    if whisperKit != nil, loadedModelName == modelName {
+    if await runtime.hasLoadedModel(named: modelName) {
+      loadedModelName = modelName
       return
     }
 
     state = .loading(modelName: modelName)
     do {
-      let localFolder = Self.localModelFolder(modelName: modelName, downloadBase: downloadBase)
-      let config = WhisperKitConfig(
-        model: modelName,
+      try await runtime.loadModel(
+        modelName: modelName,
         downloadBase: downloadBase,
-        modelEndpoint: endpoint,
-        modelFolder: localFolder,
-        download: false
+        endpoint: endpoint
       )
-
-      whisperKit = try await WhisperKit(config)
       loadedModelName = modelName
       invalidModelName = nil
       state = .idle
@@ -133,35 +129,13 @@ final class TranscriptionManager {
     }
   }
 
-  /// Returns the path to an already-downloaded model folder, or nil if not present.
-  /// WhisperKit stores models at: <downloadBase>/models/argmaxinc/whisperkit-coreml/<variant>/
-  private static func localModelFolder(modelName: String, downloadBase: URL) -> String? {
-    let whisperKitDir = downloadBase
-      .appendingPathComponent("models/argmaxinc/whisperkit-coreml")
-    guard let contents = try? FileManager.default.contentsOfDirectory(
-      at: whisperKitDir,
-      includingPropertiesForKeys: [.isDirectoryKey],
-      options: [.skipsHiddenFiles]
-    ) else { return nil }
-
-    let knownModels = TranscriptionSettings.availableModels.map(\.id)
-      .sorted { $0.count > $1.count }
-
-    return contents.first { url in
-      let folderName = url.lastPathComponent
-      guard let bestMatch = knownModels.first(where: { folderName.contains($0) }) else {
-        return false
-      }
-      return bestMatch == modelName
-    }?.path
-  }
-
   func checkIfModelExist(
     modelName: String = "distil-large-v3",
     downloadBase: URL,
     endpoint: String
   ) async throws -> Bool {
-    if whisperKit != nil, loadedModelName == modelName {
+    if await runtime.hasLoadedModel(named: modelName) {
+      loadedModelName = modelName
       return true
     }
     do {
@@ -185,41 +159,38 @@ final class TranscriptionManager {
     settings: TranscriptionSettings
   ) async throws -> [SubtitleCue] {
     let fileName = audioURL.lastPathComponent
+    let runtimeConfig = RuntimeConfig(settings: settings)
 
-    if whisperKit == nil || loadedModelName != settings.modelName {
+    if !(await runtime.hasLoadedModel(named: runtimeConfig.modelName)) {
       do {
         try await loadModel(
-          modelName: settings.modelName,
-          downloadBase: settings.modelDirectoryURL,
-          endpoint: settings.effectiveDownloadEndpoint
+          modelName: runtimeConfig.modelName,
+          downloadBase: runtimeConfig.downloadBase,
+          endpoint: runtimeConfig.endpoint
         )
       } catch is CancellationError {
         state = .cancelled
         throw CancellationError()
       } catch {
-        if settings.isModelDownloaded(modelName: settings.modelName) {
+        if await settings.isModelDownloadedAsync(modelName: runtimeConfig.modelName) {
           throw error
         }
         do {
           try await downloadModel(
-            modelName: settings.modelName,
-            downloadBase: settings.modelDirectoryURL,
-            endpoint: settings.effectiveDownloadEndpoint
+            modelName: runtimeConfig.modelName,
+            downloadBase: runtimeConfig.downloadBase,
+            endpoint: runtimeConfig.endpoint
           )
         } catch is CancellationError {
           state = .cancelled
           throw CancellationError()
         }
         try await loadModel(
-          modelName: settings.modelName,
-          downloadBase: settings.modelDirectoryURL,
-          endpoint: settings.effectiveDownloadEndpoint
+          modelName: runtimeConfig.modelName,
+          downloadBase: runtimeConfig.downloadBase,
+          endpoint: runtimeConfig.endpoint
         )
       }
-    }
-
-    guard let whisperKit else {
-      throw TranscriptionError.modelNotLoaded
     }
 
     state = .transcribing(progress: 0, fileName: fileName)
@@ -233,52 +204,21 @@ final class TranscriptionManager {
       }
 
       if isVideoFile(audioURL) {
-        let extractedURL = try await extractAudio(from: audioURL, settings: settings)
+        let extractedURL = try await extractAudio(from: audioURL, ffmpegPath: runtimeConfig.ffmpegPath)
         extractedWavURL = extractedURL
         workingURL = extractedURL
       }
 
-      let language = settings.language == "auto" ? nil : settings.language
-      let options = DecodingOptions(language: language)
-      let results: [TranscriptionResult] = try await whisperKit.transcribe(
+      let cues = try await runtime.transcribe(
         audioPath: workingURL.path,
-        decodeOptions: options
+        language: runtimeConfig.language,
+        audioFileID: audioFileID
       )
 
       audioURL.stopAccessingSecurityScopedResource()
 
       if let wavURL = extractedWavURL {
         try? FileManager.default.removeItem(at: wavURL)
-      }
-
-      var cueIndex = 0
-      let cues: [SubtitleCue] = results.flatMap { result in
-        result.segments.compactMap { segment in
-          let cleanedText = cleanTranscriptionText(segment.text)
-
-          guard !cleanedText.isEmpty,
-            segment.end > segment.start
-          else {
-            return nil
-          }
-
-          defer { cueIndex += 1 }
-          let startTime = Double(segment.start)
-          let endTime = Double(segment.end)
-          let cueID = SubtitleCue.generateDeterministicID(
-            audioFileID: audioFileID,
-            cueIndex: cueIndex,
-            startTime: startTime,
-            endTime: endTime
-          )
-
-          return SubtitleCue(
-            id: cueID,
-            startTime: startTime,
-            endTime: endTime,
-            text: cleanedText
-          )
-        }
       }
 
       state = .completed
@@ -306,7 +246,7 @@ final class TranscriptionManager {
 
   // MARK: - Audio Extraction
 
-  private func extractAudio(from videoURL: URL, settings: TranscriptionSettings) async throws -> URL {
+  private func extractAudio(from videoURL: URL, ffmpegPath: String?) async throws -> URL {
     let fileName = videoURL.lastPathComponent
     state = .extractingAudio(progress: 0, fileName: fileName)
 
@@ -316,7 +256,7 @@ final class TranscriptionManager {
 
     try? FileManager.default.removeItem(at: wavURL)
 
-    guard let ffmpegPath = settings.effectiveFFmpegPath() else {
+    guard let ffmpegPath else {
       throw TranscriptionError.audioExtractionFailed(
         "FFmpeg not found. Please install FFmpeg or configure the path in Settings."
       )
@@ -371,13 +311,107 @@ final class TranscriptionManager {
     return videoExtensions.contains(url.pathExtension.lowercased())
   }
 
-  // MARK: - Text Cleaning
+}
+
+private extension TranscriptionManager {
+  struct RuntimeConfig: Sendable {
+    let modelName: String
+    let downloadBase: URL
+    let endpoint: String
+    let language: String?
+    let ffmpegPath: String?
+
+    @MainActor
+    init(settings: TranscriptionSettings) {
+      modelName = settings.modelName
+      downloadBase = settings.modelDirectoryURL
+      endpoint = settings.effectiveDownloadEndpoint
+      language = settings.language == "auto" ? nil : settings.language
+      ffmpegPath = settings.effectiveFFmpegPath()
+    }
+  }
+}
+
+private actor TranscriptionRuntime {
+  private var whisperKit: WhisperKit?
+  private var loadedModelName: String?
+
+  func hasLoadedModel(named modelName: String) -> Bool {
+    whisperKit != nil && loadedModelName == modelName
+  }
+
+  func loadModel(
+    modelName: String,
+    downloadBase: URL,
+    endpoint: String
+  ) async throws {
+    if whisperKit != nil, loadedModelName == modelName {
+      return
+    }
+
+    let localFolder = Self.localModelFolder(modelName: modelName, downloadBase: downloadBase)
+    let config = WhisperKitConfig(
+      model: modelName,
+      downloadBase: downloadBase,
+      modelEndpoint: endpoint,
+      modelFolder: localFolder,
+      download: false
+    )
+
+    whisperKit = try await WhisperKit(config)
+    loadedModelName = modelName
+  }
+
+  func transcribe(
+    audioPath: String,
+    language: String?,
+    audioFileID: UUID
+  ) async throws -> [SubtitleCue] {
+    guard let whisperKit else {
+      throw TranscriptionError.modelNotLoaded
+    }
+
+    let options = DecodingOptions(language: language)
+    let results = try await whisperKit.transcribe(
+      audioPath: audioPath,
+      decodeOptions: options
+    )
+
+    var cueIndex = 0
+    return results.flatMap { result in
+      result.segments.compactMap { segment in
+        let cleanedText = Self.cleanTranscriptionText(segment.text)
+
+        guard !cleanedText.isEmpty,
+          segment.end > segment.start
+        else {
+          return nil
+        }
+
+        defer { cueIndex += 1 }
+        let startTime = Double(segment.start)
+        let endTime = Double(segment.end)
+        let cueID = SubtitleCue.generateDeterministicID(
+          audioFileID: audioFileID,
+          cueIndex: cueIndex,
+          startTime: startTime,
+          endTime: endTime
+        )
+
+        return SubtitleCue(
+          id: cueID,
+          startTime: startTime,
+          endTime: endTime,
+          text: cleanedText
+        )
+      }
+    }
+  }
 
   private static let timestampRegex = try? NSRegularExpression(pattern: "<\\|[^>]*\\|>")
 
-  /// Remove timestamp patterns like <|16.64|> from transcription text
-  private func cleanTranscriptionText(_ text: String) -> String {
-    guard let regex = Self.timestampRegex else {
+  private static func cleanTranscriptionText(_ text: String) -> String {
+    guard let regex = timestampRegex else {
       return text.trimmingCharacters(in: .whitespaces)
     }
 
@@ -390,6 +424,27 @@ final class TranscriptionManager {
     )
 
     return cleaned.trimmingCharacters(in: .whitespaces)
+  }
+
+  private static func localModelFolder(modelName: String, downloadBase: URL) -> String? {
+    let whisperKitDir = downloadBase
+      .appendingPathComponent("models/argmaxinc/whisperkit-coreml")
+    guard let contents = try? FileManager.default.contentsOfDirectory(
+      at: whisperKitDir,
+      includingPropertiesForKeys: [.isDirectoryKey],
+      options: [.skipsHiddenFiles]
+    ) else { return nil }
+
+    let knownModels = TranscriptionSettings.availableModels.map(\.id)
+      .sorted { $0.count > $1.count }
+
+    return contents.first { url in
+      let folderName = url.lastPathComponent
+      guard let bestMatch = knownModels.first(where: { folderName.contains($0) }) else {
+        return false
+      }
+      return bestMatch == modelName
+    }?.path
   }
 }
 

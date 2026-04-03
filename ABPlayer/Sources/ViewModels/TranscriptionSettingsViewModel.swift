@@ -176,16 +176,14 @@ final class TranscriptionSettingsViewModel {
     guard let settings else { return }
     let currentModel = settings.modelName
     modelDownloadStatus = .checking
-    Task.detached(priority: .utility) { [settings] in
-      async let modelExists = settings.isModelDownloaded(modelName: currentModel)
-      async let models = settings.listDownloadedModelsAsync()
-      let (exists, downloadedModels) = await (modelExists, models)
-      await MainActor.run { [self] in
-        guard self.settings?.modelName == currentModel else { return }
-        self.modelDownloadStatus = exists ? .downloaded : .notDownloaded
-        self.downloadedModels = downloadedModels
-        self.updateOutput()
-      }
+    Task {
+      async let modelExistsTask = settings.isModelDownloadedAsync(modelName: currentModel)
+      async let modelsTask = settings.listDownloadedModelsAsync()
+      let (modelExists, models) = await (modelExistsTask, modelsTask)
+      guard self.settings?.modelName == currentModel else { return }
+      self.modelDownloadStatus = modelExists ? .downloaded : .notDownloaded
+      self.downloadedModels = models
+      self.updateOutput()
     }
   }
 

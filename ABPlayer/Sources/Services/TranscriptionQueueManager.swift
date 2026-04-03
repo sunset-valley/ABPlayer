@@ -222,7 +222,9 @@ final class TranscriptionQueueManager {
 
     let srtURL = audioURL.deletingPathExtension().appendingPathExtension("srt")
     do {
-      try SubtitleParser.writeSRT(cues: cues, to: srtURL)
+      try await Task.detached(priority: .utility) {
+        try SubtitleParser.writeSRT(cues: cues, to: srtURL)
+      }.value
     } catch {
       Logger.data.error("Failed to save SRT: \(error)")
     }
@@ -268,4 +270,5 @@ final class TranscriptionQueueManager {
       }
     }
   }
+
 }
