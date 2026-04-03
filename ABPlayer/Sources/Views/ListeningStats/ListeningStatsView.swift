@@ -4,23 +4,68 @@ import SwiftUI
 
 @MainActor
 struct ListeningStatsView: View {
+  enum ContentTab: String, CaseIterable, Hashable, Identifiable {
+    case trend
+    case sessions
+
+    var id: String { rawValue }
+
+    var title: String {
+      switch self {
+      case .trend:
+        return "Trend"
+      case .sessions:
+        return "Sessions"
+      }
+    }
+  }
+
   @Environment(ListeningStatsService.self) private var statsService
 
   @State private var viewModel = ListeningStatsViewModel()
+  @State private var selectedContentTab: ContentTab = .trend
   @State private var hoveredDayStart: Date?
   @State private var hoverLocation: CGPoint?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       titleSection
+      contentTabRow
       controlRow
-      chartSection
+      contentSection
     }
     .padding(20)
     .frame(minWidth: 820, minHeight: 520)
     .onAppear {
       viewModel.configureIfNeeded(statsService: statsService)
       _ = viewModel.transform(input: .init(event: .onAppear))
+    }
+  }
+
+  private var contentSection: some View {
+    Group {
+      switch selectedContentTab {
+      case .trend:
+        chartSection
+      case .sessions:
+        sessionsSection
+      }
+    }
+  }
+
+  private var contentTabRow: some View {
+    HStack(spacing: 16) {
+      Picker("Content", selection: $selectedContentTab) {
+        ForEach(ContentTab.allCases) { tab in
+          Text(tab.title)
+            .tag(tab)
+            .accessibilityIdentifier("listening-stats-content-tab-\(tab.rawValue)")
+        }
+      }
+      .pickerStyle(.segmented)
+//      .frame(maxWidth: 260)
+      .accessibilityIdentifier("listening-stats-content-tab-picker")
+      .accessibilityValue(selectedContentTab.title)
     }
   }
 
@@ -46,15 +91,12 @@ struct ListeningStatsView: View {
         }
       }
       .pickerStyle(.segmented)
-      .frame(maxWidth: 320)
       .accessibilityIdentifier("listening-stats-range-picker")
       .accessibilityValue(viewModel.output.selectedRange.title)
 
       if viewModel.output.selectedRange == .month {
         monthNavigation
       }
-
-      Spacer(minLength: 0)
     }
   }
 
@@ -87,7 +129,7 @@ struct ListeningStatsView: View {
 
   private var chartSection: some View {
     GroupBox("Trend") {
-      if viewModel.output.showsEmptyState {
+      if viewModel.output.showsTrendEmptyState {
         ContentUnavailableView(
           "No Listening Data",
           systemImage: "chart.bar.xaxis",
@@ -198,6 +240,109 @@ struct ListeningStatsView: View {
       }
     }
     .frame(maxHeight: .infinity)
+  }
+
+  private var sessionsSection: some View {
+    GroupBox("Sessions") {
+      if viewModel.output.showsSessionsEmptyState {
+        ContentUnavailableView(
+          "No Sessions",
+          systemImage: "list.bullet.rectangle",
+          description: Text("No listening sessions were recorded for this range.")
+        )
+        .frame(maxWidth: .infinity, minHeight: 320)
+        .accessibilityIdentifier("listening-stats-sessions-empty")
+      } else {
+        VStack(alignment: .leading, spacing: 10) {
+          sessionsSummary
+
+          List {
+            ForEach(viewModel.output.sessionSections) { section in
+              Section {
+                ForEach(section.rows) { row in
+                  sessionRow(row)
+                }
+              } header: {
+                sessionSectionHeader(section)
+              }
+            }
+          }
+          .listStyle(.plain)
+          .scrollContentBackground(.hidden)
+          .accessibilityIdentifier("listening-stats-sessions-list")
+        }
+        .frame(maxWidth: .infinity, minHeight: 360)
+      }
+    }
+    .frame(maxHeight: .infinity)
+  }
+
+  private var sessionsSummary: some View {
+    HStack(spacing: 14) {
+      Label("\(viewModel.output.sessionSliceCount)", systemImage: "list.number")
+        .font(.subheadline)
+        .help("Session slices")
+
+      Label(readableDurationLabel(seconds: viewModel.output.totalSessionDuration), systemImage: "clock")
+        .font(.subheadline)
+        .help("Total duration")
+
+      Label(readableDurationLabel(seconds: viewModel.output.averageSessionDuration), systemImage: "chart.bar.doc.horizontal")
+        .font(.subheadline)
+        .help("Average slice duration")
+
+      Spacer(minLength: 0)
+    }
+    .foregroundStyle(.secondary)
+    .padding(.horizontal, 2)
+    .accessibilityIdentifier("listening-stats-sessions-summary")
+  }
+
+  private func sessionSectionHeader(_ section: ListeningStatsViewModel.SessionSection) -> some View {
+    HStack {
+      VStack(alignment: .leading, spacing: 2) {
+        Text(section.title)
+          .font(.subheadline)
+          .fontWeight(.semibold)
+        Text(section.subtitle)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
+      Spacer(minLength: 0)
+
+      Text(section.totalDurationText)
+        .font(.caption)
+        .fontWeight(.medium)
+        .foregroundStyle(.secondary)
+    }
+    .accessibilityIdentifier(
+      "listening-stats-sessions-section-\(section.dayStart.formatted(.dateTime.year().month(.twoDigits).day(.twoDigits)))"
+    )
+  }
+
+  private func sessionRow(_ row: ListeningStatsViewModel.SessionRow) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 12) {
+      VStack(alignment: .leading, spacing: 2) {
+        Text(row.timeRangeText)
+          .font(.subheadline)
+          .fontWeight(.medium)
+
+        if row.isOngoing {
+          Text("Ongoing")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+      }
+
+      Spacer(minLength: 0)
+
+      Text(row.durationText)
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+    }
+    .padding(.vertical, 2)
+    .accessibilityIdentifier("listening-stats-session-row-\(row.id)")
   }
 
   private var selectedRangeBinding: Binding<ListeningStatsViewModel.Range> {
