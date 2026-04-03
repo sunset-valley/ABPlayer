@@ -13,26 +13,7 @@ struct SubtitlePlaybackAnnotationDemoView: View {
 
   private static let audioFileID = UUID(uuidString: "00000000-0000-0000-0000-00000000BEEF") ?? UUID()
 
-  private static let demoCues: [SubtitleCue] = [
-    SubtitleCue(
-      id: UUID(uuidString: "00000000-0000-0000-0000-000000000101") ?? UUID(),
-      startTime: 0,
-      endTime: 2,
-      text: "First cue line for regression testing"
-    ),
-    SubtitleCue(
-      id: UUID(uuidString: "00000000-0000-0000-0000-000000000102") ?? UUID(),
-      startTime: 2,
-      endTime: 4,
-      text: "Second cue should become active"
-    ),
-    SubtitleCue(
-      id: UUID(uuidString: "00000000-0000-0000-0000-000000000103") ?? UUID(),
-      startTime: 4,
-      endTime: 6,
-      text: "Third cue verifies follow keeps advancing"
-    ),
-  ]
+  private static let demoCues: [SubtitleCue] = makeDemoCues()
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -104,7 +85,7 @@ struct SubtitlePlaybackAnnotationDemoView: View {
     let audioFile = try? makeAudioFile()
     guard let audioFile else { return }
 
-    seedDemoAnnotationIfNeeded(audioFileID: audioFile.id)
+    clearDemoAnnotations()
 
     await playerManager.load(audioFile: audioFile, fromStart: true)
     await playerManager.play()
@@ -129,34 +110,13 @@ struct SubtitlePlaybackAnnotationDemoView: View {
     return audioFile
   }
 
-  private func seedDemoAnnotationIfNeeded(audioFileID: UUID) {
-    let targetCue = cues[0]
-    let existing = annotationService.annotations(for: targetCue.id)
-    if !existing.isEmpty {
-      return
+  private func clearDemoAnnotations() {
+    for cue in cues {
+      let groups = Set(annotationService.annotations(for: cue.id).map(\.groupID))
+      for groupID in groups {
+        annotationService.removeAnnotationGroup(groupID: groupID)
+      }
     }
-
-    guard let styleID = annotationStyleService.allStyles().first?.id else { return }
-
-    let selection = CrossCueTextSelection(
-      segments: [
-        .init(
-          cueID: targetCue.id,
-          cueStartTime: targetCue.startTime,
-          cueEndTime: targetCue.endTime,
-          localRange: NSRange(location: 0, length: 5),
-          text: "First"
-        )
-      ],
-      fullText: "First",
-      globalRange: NSRange(location: 0, length: 5)
-    )
-
-    _ = annotationService.addAnnotation(
-      audioFileID: audioFileID,
-      selection: selection,
-      stylePresetID: styleID
-    )
   }
 
   private func applyAnnotationAndResume() async {
@@ -190,5 +150,23 @@ struct SubtitlePlaybackAnnotationDemoView: View {
     await playerManager.pause()
     guard !transcriptionSettings.pauseOnWordDismiss else { return }
     await playerManager.play()
+  }
+
+  private static func makeDemoCues() -> [SubtitleCue] {
+    (0..<120).map { index in
+      let start = Double(index) * 2.0
+      let end = start + 1.8
+      return SubtitleCue(
+        id: SubtitleCue.generateDeterministicID(
+          audioFileID: audioFileID,
+          cueIndex: index,
+          startTime: start,
+          endTime: end
+        ),
+        startTime: start,
+        endTime: end,
+        text: "Cue \(index + 1): Subtitle playback annotation regression line for manual-scroll follow-mode testing."
+      )
+    }
   }
 }

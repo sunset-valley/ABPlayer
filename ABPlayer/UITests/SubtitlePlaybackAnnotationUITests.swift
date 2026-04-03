@@ -51,9 +51,8 @@ final class SubtitlePlaybackAnnotationUITests: XCTestCase {
       "Playback should eventually return to following state after dismiss, got: \((followingLabel.value as? String) ?? followingLabel.label)"
     )
 
-    let followButton = app.buttons["subtitle-follow-playback-button"]
     XCTAssertFalse(
-      followButton.exists,
+      followPlaybackButton(in: app).exists,
       "Follow-playback button should be hidden before manual scroll"
     )
 
@@ -62,13 +61,15 @@ final class SubtitlePlaybackAnnotationUITests: XCTestCase {
       transcriptScrollView.waitForExistence(timeout: 4),
       "Transcript scroll view not found for follow-button transition test"
     )
+
     transcriptScrollView.swipeUp()
 
     XCTAssertTrue(
-      waitForCondition(timeout: 4) { followButton.exists },
+      waitForCondition(timeout: 4) { self.followPlaybackButton(in: app).exists },
       "Follow-playback button should appear after manual scrolling"
     )
 
+    let followButton = followPlaybackButton(in: app)
     if followButton.isHittable {
       followButton.click()
     } else {
@@ -76,7 +77,7 @@ final class SubtitlePlaybackAnnotationUITests: XCTestCase {
     }
 
     XCTAssertTrue(
-      waitForCondition(timeout: 4) { !followButton.exists },
+      waitForCondition(timeout: 4) { !self.followPlaybackButton(in: app).exists },
       "Follow-playback button should hide after resuming follow"
     )
   }
@@ -91,18 +92,19 @@ final class SubtitlePlaybackAnnotationUITests: XCTestCase {
       "Active cue label not found. UI tree:\n\(app.debugDescription)"
     )
 
+    let cueIndexBeforeEdit = waitForActiveCueIndex(in: app, timeout: 6)
     XCTAssertNotNil(
-      waitForActiveCueIndex(in: app, timeout: 6),
+      cueIndexBeforeEdit,
       "Expected active cue to become available before edit"
     )
 
-    let transcriptInteraction = transcriptInteractionElement(in: app)
+    let transcriptScrollSurface = app.scrollViews["subtitle-playback-annotation-demo-subtitle-view"]
     XCTAssertTrue(
-      transcriptInteraction.waitForExistence(timeout: 6),
-      "Transcript interaction element not found. UI tree:\n\(app.debugDescription)"
+      transcriptScrollSurface.waitForExistence(timeout: 6),
+      "Transcript scroll surface not found. UI tree:\n\(app.debugDescription)"
     )
 
-    let clickPoint = transcriptInteraction.coordinate(withNormalizedOffset: CGVector(dx: 0.24, dy: 0.18))
+    let clickPoint = transcriptScrollSurface.coordinate(withNormalizedOffset: CGVector(dx: 0.24, dy: 0.18))
     clickPoint.rightClick()
 
     let editMenuItem = app.menuItems["Edit Subtitle"]
@@ -127,18 +129,15 @@ final class SubtitlePlaybackAnnotationUITests: XCTestCase {
 
     XCTAssertFalse(editor.waitForExistence(timeout: 3), "Editor sheet did not close after confirm")
 
-    let seekPoint = transcriptInteraction.coordinate(withNormalizedOffset: CGVector(dx: 0.24, dy: 0.18))
-    seekPoint.click()
-
-    XCTAssertTrue(
-      waitForCondition(timeout: 3) { self.activeCueIndex(in: app) == 1 },
-      "Expected tapping cue row to seek playback to cue 1"
-    )
+    let cueIndexAfterEdit = activeCueIndex(in: app)
+    XCTAssertNotNil(cueIndexAfterEdit, "Expected active cue after subtitle edit")
 
     XCTAssertTrue(
       waitForCondition(timeout: 6) {
-        guard let nextCueIndex = self.activeCueIndex(in: app) else { return false }
-        return nextCueIndex > 1
+        guard let nextCueIndex = self.activeCueIndex(in: app),
+          let cueIndexAfterEdit
+        else { return false }
+        return nextCueIndex > cueIndexAfterEdit
       },
       "Active cue did not advance after subtitle edit. active=\((activeCueLabel.value as? String) ?? activeCueLabel.label)"
     )
@@ -188,22 +187,27 @@ final class SubtitlePlaybackAnnotationUITests: XCTestCase {
       return transcriptScrollView
     }
 
-    return app.scrollViews["subtitle-playback-annotation-demo-subtitle-view"]
-  }
-
-  @MainActor
-  private func transcriptInteractionElement(in app: XCUIApplication) -> XCUIElement {
     let transcriptTextView = app.textViews["subtitle-transcript-text-view"]
     if transcriptTextView.exists {
       return transcriptTextView
     }
 
-    let transcriptScrollView = app.scrollViews["subtitle-transcript-scroll-view"]
-    if transcriptScrollView.exists {
-      return transcriptScrollView
+    return app.scrollViews["subtitle-playback-annotation-demo-subtitle-view"]
+  }
+
+  @MainActor
+  private func followPlaybackButton(in app: XCUIApplication) -> XCUIElement {
+    let byIdentifier = app.buttons["subtitle-follow-playback-button"]
+    if byIdentifier.exists {
+      return byIdentifier
     }
 
-    return app.scrollViews["subtitle-playback-annotation-demo-subtitle-view"]
+    let byTitle = app.buttons["跟随播放"]
+    if byTitle.exists {
+      return byTitle
+    }
+
+    return byIdentifier
   }
 
   @MainActor

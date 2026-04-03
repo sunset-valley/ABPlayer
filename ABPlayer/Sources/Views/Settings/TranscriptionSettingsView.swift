@@ -4,35 +4,10 @@ struct TranscriptionSettingsView: View {
   @Environment(TranscriptionSettings.self) private var settings
   @Environment(TranscriptionManager.self) private var transcriptionManager
 
+  @State private var viewModel = TranscriptionSettingsViewModel()
   @State private var isFileImporterPresented = false
   @State private var fileImportType: FileImportType?
-  @State private var downloadedModels: [(name: String, size: Int64)] = []
-  @State private var modelToDelete: String?
-  @State private var showDeleteConfirmation = false
-  @State private var isMigrating = false
-  @State private var migrationError: String?
-  @State private var previousDirectory: String = ""
-  @State private var ffmpegPathStatus: FFmpegStatus = .unchecked
-  @State private var mirrorSelection: String = ""
   @State private var showManualDownload: Bool = false
-  @State private var modelEndpointTestTask: Task<Void, Never>?
-  @State private var modelEndpointTestStatus: EndpointTestStatus = .idle
-  @State private var modelDownloadStatus: ModelDownloadStatus = .unknown
-
-  private static let hfMirror = "https://hf-mirror.com"
-  private static let hfCDNMirror = "https://hf-cdn.sufy.com"
-  private static let customMirrorSentinel = "__custom__"
-
-  enum ModelDownloadStatus: Equatable {
-    case unknown, checking, downloaded, notDownloaded
-  }
-
-  enum EndpointTestStatus {
-    case idle
-    case testing
-    case success(latency: Int)
-    case failure(String)
-  }
 
   var body: some View {
     Form {
@@ -50,35 +25,38 @@ struct TranscriptionSettingsView: View {
     }
     .confirmationDialog(
       "Delete Model",
-      isPresented: $showDeleteConfirmation,
-      presenting: modelToDelete
+      isPresented: Binding(
+        get: { viewModel.output.showDeleteConfirmation },
+        set: { if !$0 { viewModel.transform(input: .init(event: .cancelDeleteModel)) } }
+      ),
+      presenting: viewModel.output.modelToDelete
     ) { model in
       Button("Delete \(model)", role: .destructive) {
-        deleteModel(named: model)
+        viewModel.transform(input: .init(event: .confirmDeleteModel))
       }
-      Button("Cancel", role: .cancel) {
-        modelToDelete = nil
-      }
+      Button("Cancel", role: .cancel) {}
     } message: { model in
       Text("Are you sure you want to delete the model \"\(model)\"? This cannot be undone.")
     }
-    .alert("Migration Error", isPresented: .constant(migrationError != nil)) {
-      Button("OK") { migrationError = nil }
+    .alert("Migration Error", isPresented: Binding(
+      get: { viewModel.output.migrationError != nil },
+      set: { _ in viewModel.transform(input: .init(event: .dismissMigrationError)) }
+    )) {
+      Button("OK") { viewModel.transform(input: .init(event: .dismissMigrationError)) }
     } message: {
-      if let error = migrationError {
+      if let error = viewModel.output.migrationError {
         Text(error)
       }
     }
     .onAppear {
-      checkModelStatus()
-      refreshModels()
-      refreshFFmpegStatus()
+      viewModel.configureIfNeeded(settings: settings, transcriptionManager: transcriptionManager)
+      viewModel.transform(input: .init(event: .onAppear))
     }
     .onChange(of: settings.modelName) { _, _ in
-      checkModelStatus()
+      viewModel.transform(input: .init(event: .modelNameChanged))
     }
     .onChange(of: settings.ffmpegPath) { _, _ in
-      refreshFFmpegStatus()
+      viewModel.transform(input: .init(event: .ffmpegPathChanged))
     }
   }
 
@@ -118,10 +96,7 @@ struct TranscriptionSettingsView: View {
               .font(.caption)
 
             Button {
-              transcriptionManager.cancelDownload()
-              settings.deleteDownloadCache(modelName: modelName)
-              refreshModels()
-              checkModelStatus()
+              viewModel.transform(input: .init(event: .cancelModelDownload))
             } label: {
               Image(systemName: "xmark.circle.fill")
                 .foregroundStyle(.secondary)
@@ -129,11 +104,13 @@ struct TranscriptionSettingsView: View {
             .buttonStyle(.plain)
             .help("Cancel download")
           }
-        } else if modelDownloadStatus == .unknown || modelDownloadStatus == .checking {
+        } else if viewModel.output.modelDownloadStatus == .unknown
+          || viewModel.output.modelDownloadStatus == .checking
+        {
           ProgressView()
             .progressViewStyle(.circular)
             .controlSize(.small)
-        } else if modelDownloadStatus == .downloaded {
+        } else if viewModel.output.modelDownloadStatus == .downloaded {
           HStack(spacing: 4) {
             Image(systemName: "checkmark.circle.fill")
               .foregroundStyle(.green)
@@ -142,9 +119,7 @@ struct TranscriptionSettingsView: View {
           }
         } else {
           Button {
-            Task {
-              await downloadCurrentModel()
-            }
+            viewModel.transform(input: .init(event: .downloadModel))
           } label: {
             HStack(spacing: 4) {
               Image(systemName: "arrow.down.circle")
@@ -210,13 +185,12 @@ struct TranscriptionSettingsView: View {
       // Model Directory
       LabeledContent("Model Directory") {
         HStack {
-          Text(displayDirectory)
+          Text(viewModel.output.displayDirectory)
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .truncationMode(.middle)
 
           Button("Choose...") {
-            previousDirectory = settings.modelDirectory
             fileImportType = .modelDirectory
             isFileImporterPresented = true
           }
@@ -243,7 +217,7 @@ struct TranscriptionSettingsView: View {
       // FFmpeg Path
       LabeledContent("FFmpeg") {
         HStack(spacing: 8) {
-          Text(displayFFmpegPath)
+          Text(viewModel.output.displayFFmpegPath)
             .foregroundStyle(ffmpegStatusColor)
             .lineLimit(1)
             .truncationMode(.middle)
@@ -296,7 +270,7 @@ struct TranscriptionSettingsView: View {
         )
         .captionStyle()
 
-        if ffmpegPathStatus != .valid {
+        if viewModel.output.ffmpegPathStatus != .valid {
           Text("FFmpeg not found. Install manually with: brew install ffmpeg")
             .captionStyle()
         }
@@ -311,61 +285,50 @@ struct TranscriptionSettingsView: View {
       LabeledContent("Download Mirror") {
         VStack {
           HStack {
-            if mirrorSelection == Self.customMirrorSentinel {
+            if viewModel.output.mirrorSelection == TranscriptionSettingsViewModel.customMirrorSentinel {
               TextField(
                 "",
                 text: Binding(
-                  get: { settings.downloadEndpoint },
-                  set: { settings.downloadEndpoint = $0 }
+                  get: { viewModel.output.customEndpointDraft },
+                  set: { viewModel.transform(input: .init(event: .customEndpointDraftChanged($0))) }
                 )
               )
               .textFieldStyle(.roundedBorder)
               .frame(minWidth: 180)
+              .onSubmit {
+                viewModel.transform(input: .init(event: .applyCustomEndpoint))
+              }
+
+              Button("Apply") {
+                viewModel.transform(input: .init(event: .applyCustomEndpoint))
+              }
+              .disabled(!viewModel.output.canApplyCustomEndpoint)
             }
 
-            Picker("", selection: $mirrorSelection) {
+            Picker(
+              "",
+              selection: Binding(
+                get: { viewModel.output.mirrorSelection },
+                set: { viewModel.transform(input: .init(event: .mirrorSelectionChanged($0))) }
+              )
+            ) {
               Text("HuggingFace (Official)").tag("")
-              Text("HF Mirror (hf-mirror.com)").tag(Self.hfMirror)
-              Text("HF Mirror (hf-cdn.sufy.com)").tag(Self.hfCDNMirror)
-              Text("Custom").tag(Self.customMirrorSentinel)
+              Text("HF Mirror (hf-mirror.com)").tag(TranscriptionSettingsViewModel.hfMirror)
+              Text("HF Mirror (hf-cdn.sufy.com)").tag(TranscriptionSettingsViewModel.hfCDNMirror)
+              Text("Custom").tag(TranscriptionSettingsViewModel.customMirrorSentinel)
             }
             .labelsHidden()
             .fixedSize()
           }
         }
       }
-      .onChange(of: mirrorSelection) { _, newValue in
-        if newValue != Self.customMirrorSentinel {
-          settings.downloadEndpoint = newValue
-        }
-        if settings.downloadEndpoint.isEmpty {
-          return
-        }
-        modelEndpointTestTask?.cancel()
-        modelEndpointTestTask = Task { await testModelEndpoint() }
-      }
 
-      endpointStatusRow(modelEndpointTestStatus)
+      endpointStatusRow(viewModel.output.modelEndpointTestStatus)
     } header: {
       Label("Download Mirror", systemImage: "network")
     } footer: {
       Text("中国用户：将下载镜像设为 hf-mirror.com 即可无需翻墙下载模型。")
         .captionStyle()
-    }
-    .onAppear {
-      // Sync HuggingFace mirror state
-      if settings.downloadEndpoint.isEmpty ||
-        settings.downloadEndpoint == Self.hfMirror ||
-        settings.downloadEndpoint == Self.hfCDNMirror
-      {
-        mirrorSelection = settings.downloadEndpoint
-      } else {
-        mirrorSelection = Self.customMirrorSentinel
-      }
-
-      // Auto-test endpoint on appear
-      modelEndpointTestTask?.cancel()
-      modelEndpointTestTask = Task { await testModelEndpoint() }
     }
   }
 
@@ -373,18 +336,18 @@ struct TranscriptionSettingsView: View {
 
   private var downloadedModelsSection: some View {
     Section {
-      if isMigrating {
+      if viewModel.output.isMigrating {
         HStack {
           ProgressView()
             .controlSize(.small)
           Text("Moving models...")
             .foregroundStyle(.secondary)
         }
-      } else if downloadedModels.isEmpty {
+      } else if viewModel.output.downloadedModels.isEmpty {
         Text("No models downloaded")
           .foregroundStyle(.secondary)
       } else {
-        ForEach(downloadedModels, id: \.name) { model in
+        ForEach(viewModel.output.downloadedModels, id: \.name) { model in
           HStack {
             VStack(alignment: .leading, spacing: 2) {
               Text(model.name)
@@ -405,8 +368,7 @@ struct TranscriptionSettingsView: View {
             }
 
             Button {
-              modelToDelete = model.name
-              showDeleteConfirmation = true
+              viewModel.transform(input: .init(event: .requestDeleteModel(model.name)))
             } label: {
               Image(systemName: "trash")
                 .foregroundStyle(.red)
@@ -419,8 +381,8 @@ struct TranscriptionSettingsView: View {
     } header: {
       Label("Downloaded Models", systemImage: "square.and.arrow.down")
     } footer: {
-      if !downloadedModels.isEmpty {
-        let totalSize = downloadedModels.reduce(0) { $0 + $1.size }
+      if !viewModel.output.downloadedModels.isEmpty {
+        let totalSize = viewModel.output.downloadedModels.reduce(0) { $0 + $1.size }
         Text("Total: \(TranscriptionSettings.formatSize(totalSize))")
       }
     }
@@ -428,28 +390,8 @@ struct TranscriptionSettingsView: View {
 
   // MARK: - Helpers
 
-  private var displayFFmpegPath: String {
-    if !settings.ffmpegPath.isEmpty, ffmpegPathStatus == .valid {
-      return settings.ffmpegPath
-    }
-    if Bundle.main.url(forAuxiliaryExecutable: "ffmpeg") != nil {
-      return "Bundled"
-    }
-    if let detected = TranscriptionSettings.autoDetectFFmpegPath() {
-      return "Auto-detected: \(detected)"
-    }
-    return "Not found"
-  }
-
-  private var displayDirectory: String {
-    if settings.modelDirectory.isEmpty {
-      return "Default"
-    }
-    return (settings.modelDirectory as NSString).lastPathComponent
-  }
-
   private var ffmpegStatusColor: Color {
-    switch ffmpegPathStatus {
+    switch viewModel.output.ffmpegPathStatus {
     case .valid:
       return .green
     case .invalid, .notFound:
@@ -459,142 +401,24 @@ struct TranscriptionSettingsView: View {
     }
   }
 
-  private func refreshFFmpegStatus() {
-    if !settings.ffmpegPath.isEmpty {
-      ffmpegPathStatus = TranscriptionSettings.isFFmpegValid(at: settings.ffmpegPath) ? .valid : .invalid
-    } else if settings.effectiveFFmpegPath() != nil {
-      ffmpegPathStatus = .valid
-    } else {
-      ffmpegPathStatus = .notFound
-    }
-  }
-
   private func handleFileImportResult(_ result: Result<[URL], Error>) {
     guard let importType = fileImportType else { return }
-
     switch importType {
     case .ffmpegPath:
-      handleFFmpegPathSelection(result)
+      if case let .success(urls) = result, let url = urls.first {
+        viewModel.transform(input: .init(event: .ffmpegPathSelected(url)))
+      }
     case .modelDirectory:
-      handleDirectorySelection(result)
+      if case let .success(urls) = result, let url = urls.first {
+        viewModel.transform(input: .init(event: .directorySelected(url)))
+      }
     case .libraryDirectory:
       break
     }
   }
 
-  private func handleFFmpegPathSelection(_ result: Result<[URL], Error>) {
-    switch result {
-    case let .success(urls):
-      if let url = urls.first {
-        settings.ffmpegPath = url.path
-        refreshFFmpegStatus()
-      }
-    case .failure:
-      break
-    }
-  }
-
-  private func checkModelStatus() {
-    let currentModel = settings.modelName
-    modelDownloadStatus = .checking
-    Task.detached(priority: .utility) {
-      let exists = await settings.isModelDownloaded(modelName: currentModel)
-      await MainActor.run {
-        guard settings.modelName == currentModel else { return }
-        modelDownloadStatus = exists ? .downloaded : .notDownloaded
-      }
-    }
-  }
-
-  private func refreshModels() {
-    Task {
-      downloadedModels = await settings.listDownloadedModelsAsync()
-    }
-  }
-
-  private func downloadCurrentModel() async {
-    if modelDownloadStatus == .downloaded { return }
-
-    do {
-      try await transcriptionManager.downloadModel(
-        modelName: settings.modelName,
-        downloadBase: settings.modelDirectoryURL,
-        endpoint: settings.effectiveDownloadEndpoint
-      )
-      checkModelStatus()
-      refreshModels()
-    } catch is CancellationError {
-      checkModelStatus()
-      refreshModels()
-    } catch {
-      checkModelStatus()
-      refreshModels()
-      migrationError = "Failed to download model: \(error.localizedDescription)"
-    }
-  }
-
-  private func deleteModel(named name: String) {
-    do {
-      try settings.deleteModel(named: name)
-      refreshModels()
-      checkModelStatus()
-    } catch {
-      migrationError = "Failed to delete model: \(error.localizedDescription)"
-    }
-    modelToDelete = nil
-  }
-
-  private func handleDirectorySelection(_ result: Result<[URL], Error>) {
-    switch result {
-    case let .success(urls):
-      if let url = urls.first {
-        if (try? url.bookmarkData(
-          options: [.withSecurityScope],
-          includingResourceValuesForKeys: nil,
-          relativeTo: nil
-        )) != nil {
-          let newPath = url.path
-          let oldPath =
-            previousDirectory.isEmpty
-              ? TranscriptionSettings.defaultModelDirectory.path
-              : previousDirectory
-
-          if !downloadedModels.isEmpty, oldPath != newPath {
-            migrateModels(from: oldPath, to: newPath)
-          }
-
-          settings.modelDirectory = newPath
-          refreshModels()
-        }
-      }
-    case .failure:
-      break
-    }
-  }
-
-  private func migrateModels(from oldPath: String, to newPath: String) {
-    isMigrating = true
-
-    Task {
-      do {
-        let oldURL = URL(fileURLWithPath: oldPath)
-        let newURL = URL(fileURLWithPath: newPath)
-        try settings.migrateModels(from: oldURL, to: newURL)
-      } catch {
-        await MainActor.run {
-          migrationError = "Failed to migrate models: \(error.localizedDescription)"
-        }
-      }
-
-      await MainActor.run {
-        isMigrating = false
-        refreshModels()
-      }
-    }
-  }
-
   @ViewBuilder
-  private func endpointStatusRow(_ testStatus: EndpointTestStatus) -> some View {
+  private func endpointStatusRow(_ testStatus: TranscriptionSettingsViewModel.EndpointTestStatus) -> some View {
     switch testStatus {
     case .idle:
       EmptyView()
@@ -615,38 +439,6 @@ struct TranscriptionSettingsView: View {
         .foregroundStyle(.red)
         .font(.callout)
         .lineLimit(2)
-    }
-  }
-
-  private func testModelEndpoint() async {
-    modelEndpointTestStatus = .testing
-    modelEndpointTestStatus = await performEndpointTest(urlString: settings.effectiveDownloadEndpoint)
-  }
-
-  private func performEndpointTest(urlString: String) async -> EndpointTestStatus {
-    guard let url = URL(string: urlString) else {
-      return .failure("Invalid URL")
-    }
-    let config = URLSessionConfiguration.default
-    config.timeoutIntervalForRequest = 10
-    let session = URLSession(configuration: config)
-    var request = URLRequest(url: url)
-    request.httpMethod = "HEAD"
-    let start = Date()
-    do {
-      let (_, response) = try await session.data(for: request)
-      let ms = Int(Date().timeIntervalSince(start) * 1000)
-      let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-      if statusCode < 500 {
-        return .success(latency: ms)
-      } else {
-        return .failure("Server returned \(statusCode)")
-      }
-    } catch {
-      if error.localizedDescription == "cancelled" {
-        return .idle
-      }
-      return .failure(error.localizedDescription)
     }
   }
 }

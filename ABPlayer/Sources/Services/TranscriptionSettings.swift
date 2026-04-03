@@ -69,6 +69,15 @@ final class TranscriptionSettings {
     set { withMutation(keyPath: \.downloadEndpoint) { _downloadEndpoint = newValue } }
   }
 
+  /// Last applied custom mirror endpoint
+  @ObservationIgnored
+  @AppStorage("transcription_last_custom_download_endpoint")
+  private var _lastCustomDownloadEndpoint: String = ""
+  var lastCustomDownloadEndpoint: String {
+    get { access(keyPath: \.lastCustomDownloadEndpoint); return _lastCustomDownloadEndpoint }
+    set { withMutation(keyPath: \.lastCustomDownloadEndpoint) { _lastCustomDownloadEndpoint = newValue } }
+  }
+
   // MARK: - Computed Properties
 
   /// Effective HuggingFace endpoint passed to WhisperKit downloads
@@ -94,7 +103,7 @@ final class TranscriptionSettings {
   // MARK: - Available Options
 
   /// Available WhisperKit models (from smallest to largest)
-  static let availableModels: [(id: String, name: String)] = [
+  nonisolated static let availableModels: [(id: String, name: String)] = [
     ("tiny", "Tiny (~40MB, fastest)"),
     ("base", "Base (~80MB)"),
     ("small", "Small (~240MB)"),
@@ -118,19 +127,45 @@ final class TranscriptionSettings {
 
   /// Check if a specific model is downloaded by verifying indicator files exist
   func isModelDownloaded(modelName: String) -> Bool {
-    let whisperKitDir = modelDirectoryURL
-      .appendingPathComponent("models/argmaxinc/whisperkit-coreml")
-    let fm = FileManager.default
-    guard fm.fileExists(atPath: whisperKitDir.path),
-      let contents = try? fm.contentsOfDirectory(
-        at: whisperKitDir, includingPropertiesForKeys: [.isDirectoryKey],
-        options: [.skipsHiddenFiles])
-    else { return false }
-    guard let modelDir = contents.first(where: { $0.lastPathComponent.contains(modelName) })
-    else { return false }
-    let indicators = ["AudioEncoder.mlmodelc", "TextDecoder.mlmodelc", "config.json"]
-    return indicators.allSatisfy { fm.fileExists(atPath: modelDir.appendingPathComponent($0).path) }
+    Self.isModelDownloadedSync(modelName: modelName, baseDir: modelDirectoryURL)
   }
+
+  /// Check if model is downloaded without blocking the main actor
+  func isModelDownloadedAsync(modelName: String) async -> Bool {
+    let baseDir = modelDirectoryURL
+    return await Task.detached(priority: .utility) {
+      Self.isModelDownloadedSync(modelName: modelName, baseDir: baseDir)
+    }.value
+  }
+
+  nonisolated private static func isModelDownloadedSync(modelName: String, baseDir: URL) -> Bool {
+    let fileManager = FileManager.default
+    let whisperKitDir = modelRootDirectory(in: baseDir)
+
+    guard fileManager.fileExists(atPath: whisperKitDir.path) else { return false }
+
+    guard
+      let contents = try? fileManager.contentsOfDirectory(
+        at: whisperKitDir,
+        includingPropertiesForKeys: [.isDirectoryKey],
+        options: [.skipsHiddenFiles]
+      )
+    else { return false }
+
+    return contents.contains { url in
+      var isDir: ObjCBool = false
+      guard fileManager.fileExists(atPath: url.path, isDirectory: &isDir),
+        isDir.boolValue
+      else { return false }
+
+      guard Self.detectedModelID(from: url.lastPathComponent) == modelName else {
+        return false
+      }
+
+      return Self.hasRequiredModelFiles(at: url, fileManager: fileManager)
+    }
+  }
+
 
   /// Returns list of downloaded models asynchronously (non-blocking)
   func listDownloadedModelsAsync() async -> [(name: String, size: Int64)] {
@@ -145,11 +180,7 @@ final class TranscriptionSettings {
     let fileManager = FileManager.default
 
     // WhisperKit stores models in a nested structure
-    let whisperKitDir =
-      baseDir
-      .appendingPathComponent("models", isDirectory: true)
-      .appendingPathComponent("argmaxinc", isDirectory: true)
-      .appendingPathComponent("whisperkit-coreml", isDirectory: true)
+    let whisperKitDir = modelRootDirectory(in: baseDir)
 
     guard fileManager.fileExists(atPath: whisperKitDir.path) else { return [] }
 
@@ -170,10 +201,7 @@ final class TranscriptionSettings {
         if url.lastPathComponent.hasPrefix(".") { return nil }
 
         // Check if it looks like a model directory (contains .mlmodelc or similar)
-        let modelIndicators = ["AudioEncoder.mlmodelc", "TextDecoder.mlmodelc", "config.json"]
-        let hasModelFiles = modelIndicators.contains { indicator in
-          fileManager.fileExists(atPath: url.appendingPathComponent(indicator).path)
-        }
+        let hasModelFiles = Self.hasAnyModelIndicatorFiles(at: url, fileManager: fileManager)
 
         guard hasModelFiles else { return nil }
 
@@ -287,6 +315,30 @@ final class TranscriptionSettings {
     }
 
     return totalSize
+  }
+
+  nonisolated private static func modelRootDirectory(in baseDir: URL) -> URL {
+    baseDir
+      .appendingPathComponent("models", isDirectory: true)
+      .appendingPathComponent("argmaxinc", isDirectory: true)
+      .appendingPathComponent("whisperkit-coreml", isDirectory: true)
+  }
+
+  nonisolated private static func hasRequiredModelFiles(at url: URL, fileManager: FileManager) -> Bool {
+    ["AudioEncoder.mlmodelc", "TextDecoder.mlmodelc", "config.json"].allSatisfy { indicator in
+      fileManager.fileExists(atPath: url.appendingPathComponent(indicator).path)
+    }
+  }
+
+  nonisolated private static func hasAnyModelIndicatorFiles(at url: URL, fileManager: FileManager) -> Bool {
+    ["AudioEncoder.mlmodelc", "TextDecoder.mlmodelc", "config.json"].contains { indicator in
+      fileManager.fileExists(atPath: url.appendingPathComponent(indicator).path)
+    }
+  }
+
+  nonisolated private static func detectedModelID(from folderName: String) -> String? {
+    let knownModels = availableModels.map(\.id).sorted { $0.count > $1.count }
+    return knownModels.first { folderName.contains($0) }
   }
 
   /// Format byte size for display

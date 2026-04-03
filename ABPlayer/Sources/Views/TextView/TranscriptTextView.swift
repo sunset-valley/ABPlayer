@@ -55,7 +55,7 @@ struct TranscriptTextView: NSViewRepresentable {
   // MARK: - NSViewRepresentable
 
   func makeNSView(context: Context) -> NSScrollView {
-    let scrollView = NSScrollView()
+    let scrollView = TranscriptNSScrollView()
     scrollView.hasVerticalScroller = true
     scrollView.hasHorizontalScroller = false
     scrollView.autohidesScrollers = true
@@ -86,14 +86,25 @@ struct TranscriptTextView: NSViewRepresentable {
     textView.coordinator = context.coordinator
     textView.setAccessibilityIdentifier("subtitle-transcript-text-view")
 
+    scrollView.coordinator = context.coordinator
+
     scrollView.documentView = textView
 
-    // Detect user live-scroll to pause auto-scroll
+    // Detect manual scrolling from both direct wheel input and clip-view bounds changes.
+    scrollView.contentView.postsBoundsChangedNotifications = true
+
     NotificationCenter.default.addObserver(
       context.coordinator,
       selector: #selector(Coordinator.handleLiveScroll(_:)),
       name: NSScrollView.didLiveScrollNotification,
       object: scrollView
+    )
+
+    NotificationCenter.default.addObserver(
+      context.coordinator,
+      selector: #selector(Coordinator.handleClipViewBoundsChanged(_:)),
+      name: NSView.boundsDidChangeNotification,
+      object: scrollView.contentView
     )
 
     return scrollView
@@ -125,9 +136,6 @@ struct TranscriptTextView: NSViewRepresentable {
     coordinator.fontSize = fontSize
     coordinator.activeCueID = activeCueID
     coordinator.isUserScrolling = isUserScrolling
-    if !isUserScrolling {
-      coordinator.didNotifyUserScroll = false
-    }
     coordinator.textSelection = textSelection
     coordinator.annotationVersion = annotationVersion
     coordinator.annotationsProvider = annotationsProvider
@@ -157,18 +165,14 @@ struct TranscriptTextView: NSViewRepresentable {
     // Sync selection highlight from SwiftUI state → NSTextView
     coordinator.syncSelectionHighlight(in: textView)
 
-    // When auto-scroll resumes (button tapped), force an immediate re-scroll
-    if resumingAutoScroll {
-      coordinator.lastScrolledCueID = nil
-    }
-
     // Auto-scroll to active cue when not user-scrolling
     if !isUserScrolling, let cueID = activeCueID {
-      coordinator.scrollToActiveCue(cueID, in: scrollView)
+      coordinator.scrollToActiveCue(cueID, in: scrollView, force: resumingAutoScroll)
     }
 
     coordinator.publishScrollMetrics(in: scrollView)
   }
+
 
   func makeCoordinator() -> Coordinator {
     Coordinator(
@@ -221,10 +225,13 @@ struct TranscriptTextView: NSViewRepresentable {
     // Highlight book-keeping
     var selectionHighlightRange: NSRange?
 
-    // Scroll deduplication
+    // Scroll source tracking
     var lastScrolledCueID: UUID?
-    var didNotifyUserScroll = false
     var lastDocumentWidth: CGFloat = 0
+    var isProgrammaticScrollInFlight = false
+    var programmaticScrollToken = 0
+    var pendingManualScrollIntent = false
+    var lastKnownOffsetY: CGFloat?
 
     // Coalesces scroll-metrics delivery onto the next main-actor turn so
     // SwiftUI state updates in clients do not occur during NSView updates.
@@ -395,8 +402,8 @@ struct TranscriptTextView: NSViewRepresentable {
 
     // MARK: - Scroll
 
-    func scrollToActiveCue(_ cueID: UUID, in scrollView: NSScrollView) {
-      guard cueID != lastScrolledCueID,
+    func scrollToActiveCue(_ cueID: UUID, in scrollView: NSScrollView, force: Bool = false) {
+      guard force || cueID != lastScrolledCueID,
         let layout = layouts.first(where: { $0.cueID == cueID }),
         let textView = scrollView.documentView as? TranscriptNSTextView,
         let layoutManager = textView.layoutManager,
@@ -423,13 +430,26 @@ struct TranscriptTextView: NSViewRepresentable {
       let maxY = max(0, textView.frame.height - visibleHeight)
       let centeredY = max(0, min(targetY, maxY))
 
-      NSAnimationContext.runAnimationGroup { ctx in
-        ctx.duration = 0.3
-        ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        scrollView.contentView.animator().setBoundsOrigin(NSPoint(x: 0, y: centeredY))
-        scrollView.reflectScrolledClipView(scrollView.contentView)
-      }
+      let currentToken = programmaticScrollToken + 1
+      programmaticScrollToken = currentToken
+      isProgrammaticScrollInFlight = true
+
+      NSAnimationContext.runAnimationGroup(
+        { ctx in
+          ctx.duration = 0.3
+          ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+          scrollView.contentView.animator().setBoundsOrigin(NSPoint(x: 0, y: centeredY))
+          scrollView.reflectScrolledClipView(scrollView.contentView)
+        },
+        completionHandler: { [weak self] in
+          Task { @MainActor in
+            guard let self, self.programmaticScrollToken == currentToken else { return }
+            self.isProgrammaticScrollInFlight = false
+          }
+        }
+      )
     }
+
 
     // MARK: - Selection building
 
@@ -718,16 +738,46 @@ struct TranscriptTextView: NSViewRepresentable {
       )
     }
 
-    // MARK: - Scroll notification
+    func handleManualScrollCandidate(from scrollView: NSScrollView) {
+      let currentOffsetY = scrollView.contentView.bounds.origin.y
+      defer { lastKnownOffsetY = currentOffsetY }
+
+      guard let previousOffsetY = lastKnownOffsetY else { return }
+      handleManualScrollDelta(previousOffsetY: previousOffsetY, currentOffsetY: currentOffsetY)
+    }
+
+    func handleManualScrollDelta(previousOffsetY: CGFloat, currentOffsetY: CGFloat, fromUserInput: Bool = false) {
+      guard abs(currentOffsetY - previousOffsetY) > 0.5 else { return }
+      guard activeCueID != nil else { return }
+
+      if isProgrammaticScrollInFlight {
+        guard fromUserInput else { return }
+        isProgrammaticScrollInFlight = false
+        programmaticScrollToken += 1
+      }
+
+      notifyManualScrollIntent()
+    }
+
+    func notifyManualScrollIntent() {
+      guard activeCueID != nil else { return }
+      guard !isUserScrolling else { return }
+      guard !pendingManualScrollIntent else { return }
+      pendingManualScrollIntent = true
+    }
+
+    @objc func handleClipViewBoundsChanged(_ notification: Notification) {
+      guard let clipView = notification.object as? NSClipView,
+        let scrollView = clipView.superview as? NSScrollView
+      else { return }
+
+      handleManualScrollCandidate(from: scrollView)
+      publishScrollMetrics(in: scrollView)
+    }
 
     @objc func handleLiveScroll(_ notification: Notification) {
       guard let scrollView = notification.object as? NSScrollView else { return }
-
-      if !didNotifyUserScroll {
-        didNotifyUserScroll = true
-        onUserScrolled()
-      }
-
+      handleManualScrollCandidate(from: scrollView)
       publishScrollMetrics(in: scrollView)
     }
 
@@ -738,6 +788,10 @@ struct TranscriptTextView: NSViewRepresentable {
       let documentHeight = max(1, textView.frame.height)
       let maxOffsetY = max(0, documentHeight - visibleHeight)
       let offsetY = max(0, min(scrollView.contentView.bounds.origin.y, maxOffsetY))
+
+      if lastKnownOffsetY == nil {
+        lastKnownOffsetY = offsetY
+      }
 
       pendingScrollMetrics = ScrollMetrics(
         offsetY: offsetY,
@@ -757,6 +811,14 @@ struct TranscriptTextView: NSViewRepresentable {
         self.pendingScrollMetrics = nil
 
         self.onScrollMetricsChanged(metrics)
+
+        if self.pendingManualScrollIntent,
+          !self.isUserScrolling,
+          self.activeCueID != nil
+        {
+          self.pendingManualScrollIntent = false
+          self.onUserScrolled()
+        }
       }
     }
   }
@@ -874,6 +936,20 @@ final class TranscriptLayoutManager: NSLayoutManager {
   }
 }
 
+final class TranscriptNSScrollView: NSScrollView {
+  weak var coordinator: TranscriptTextView.Coordinator?
+
+  override func scrollWheel(with event: NSEvent) {
+    let previousOffsetY = contentView.bounds.origin.y
+    super.scrollWheel(with: event)
+    guard let coordinator else { return }
+    let currentOffsetY = contentView.bounds.origin.y
+    coordinator.handleManualScrollDelta(previousOffsetY: previousOffsetY, currentOffsetY: currentOffsetY, fromUserInput: true)
+    coordinator.lastKnownOffsetY = currentOffsetY
+    coordinator.publishScrollMetrics(in: self)
+  }
+}
+
 final class TranscriptNSTextView: NSTextView {
 
   private enum CursorKind {
@@ -975,6 +1051,26 @@ final class TranscriptNSTextView: NSTextView {
     coordinator.activeSelectionRange = nil
     pendingSelectionRange = nil
     isSelectionApplyScheduled = false
+  }
+
+  override func scrollWheel(with event: NSEvent) {
+    let previousOffsetY = enclosingScrollView?.contentView.bounds.origin.y
+    super.scrollWheel(with: event)
+
+    guard let coordinator,
+      let scrollView = enclosingScrollView
+    else { return }
+
+    let currentOffsetY = scrollView.contentView.bounds.origin.y
+    if let previousOffsetY {
+      coordinator.handleManualScrollDelta(
+        previousOffsetY: previousOffsetY,
+        currentOffsetY: currentOffsetY,
+        fromUserInput: true
+      )
+    }
+    coordinator.lastKnownOffsetY = currentOffsetY
+    coordinator.publishScrollMetrics(in: scrollView)
   }
 
   override func mouseDragged(with event: NSEvent) {

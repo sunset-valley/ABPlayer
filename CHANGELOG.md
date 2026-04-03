@@ -1,3 +1,22 @@
+## [0.3.7.123] - 2026-04-02
+
+- No significant changes.
+
+
+## [0.3.7.122] - 2026-04-02
+
+### Bug Fixes
+- harden runtime loading and follow playback
+- preserve and apply custom transcription mirrors explicitly
+- center chart x-axis labels
+
+
+## [0.3.7.121] - 2026-04-01
+
+### Improvements
+- extract app dependency container
+
+
 ## [0.3.6.120] - 2026-04-01
 
 ### Features

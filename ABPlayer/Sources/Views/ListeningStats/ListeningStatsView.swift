@@ -115,7 +115,7 @@ struct ListeningStatsView: View {
           AxisMarks(values: .stride(by: .day, count: xAxisStrideCount)) { value in
             AxisGridLine()
             AxisTick()
-            AxisValueLabel {
+            AxisValueLabel(centered: true) {
               if let date = value.as(Date.self) {
                 Text(xAxisLabel(for: date))
               }
