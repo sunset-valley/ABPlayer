@@ -73,7 +73,7 @@ struct AudioPlayerView: View {
                 : "repeat.circle"
             )
             .font(.title)
-            .foregroundStyle(playerManager.loopMode != .none ? .blue : .primary)
+            .foregroundStyle(playerManager.loopMode != .none ? Color.accentColor : .primary)
           }
           .buttonStyle(.plain)
           .help("Loop mode: \(playerManager.loopMode.displayName)")
