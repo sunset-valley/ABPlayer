@@ -8,7 +8,10 @@ struct TranscriptScrollDemoView: View {
     offsetY: 0,
     maxOffsetY: 0,
     documentHeight: 0,
-    visibleHeight: 0
+    visibleHeight: 0,
+    cueCount: 0,
+    firstFullyVisibleCueIndex: nil,
+    lastFullyVisibleCueIndex: nil
   )
 
   var body: some View {
@@ -38,6 +41,21 @@ struct TranscriptScrollDemoView: View {
           "bottom",
           value: scrollMetrics.isAtBottom ? "true" : "false",
           id: "transcript-scroll-at-bottom"
+        )
+        metric(
+          "firstFullyVisible",
+          value: scrollMetrics.firstFullyVisibleCueIndex.map(String.init) ?? "nil",
+          id: "transcript-scroll-first-fully-visible-cue-index"
+        )
+        metric(
+          "lastFullyVisible",
+          value: scrollMetrics.lastFullyVisibleCueIndex.map(String.init) ?? "nil",
+          id: "transcript-scroll-last-fully-visible-cue-index"
+        )
+        metric(
+          "cueCount",
+          value: String(scrollMetrics.cueCount),
+          id: "transcript-scroll-cue-count"
         )
       }
       .font(.caption.monospacedDigit())
