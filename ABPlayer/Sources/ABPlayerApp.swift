@@ -36,6 +36,8 @@ struct ABPlayerApp: App {
   private var mainWindowRootView: some View {
     if uiFlags.isTranscriptScroll {
       TranscriptScrollDemoView()
+    } else if uiFlags.isTranscription {
+      TranscriptionDemoView()
     } else if uiFlags.isVideoSubtitleToggle {
       VideoSubtitleToggleDemoView()
     } else if uiFlags.isSubtitleEdit {
@@ -156,6 +158,7 @@ private struct UITestingFlags {
   let isSubtitleEdit: Bool
   let isSubtitlePlaybackAnnotation: Bool
   let isTranscriptScroll: Bool
+  let isTranscription: Bool
   let isVideoSubtitleToggle: Bool
   let isNotesExport: Bool
   let isListeningStats: Bool
@@ -171,6 +174,7 @@ private struct UITestingFlags {
       "--ui-testing-subtitle-playback-annotation",
       "ABP_UI_TESTING_SUBTITLE_PLAYBACK_ANNOTATION")
     isTranscriptScroll = Self.check(args, env, "--ui-testing-transcript-scroll", "ABP_UI_TESTING_TRANSCRIPT_SCROLL")
+    isTranscription = Self.check(args, env, "--ui-testing-transcription", "ABP_UI_TESTING_TRANSCRIPTION")
     isVideoSubtitleToggle = Self.check(args, env, "--ui-testing-video-subtitle-toggle", "ABP_UI_TESTING_VIDEO_SUBTITLE_TOGGLE")
     isNotesExport = Self.check(args, env, "--ui-testing-notes-export", "ABP_UI_TESTING_NOTES_EXPORT")
     isListeningStats = Self.check(args, env, "--ui-testing-listening-stats", "ABP_UI_TESTING_LISTENING_STATS")

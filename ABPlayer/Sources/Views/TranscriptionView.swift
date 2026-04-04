@@ -3,66 +3,70 @@ import SwiftUI
 
 /// View for transcription display and controls
 struct TranscriptionView: View {
+  enum UITestScenario {
+    case loadingCache
+    case empty
+    case downloading
+    case loadingModel
+    case extractingAudio
+    case transcribing
+    case failed
+    case content
+    case queued
+    case queueDownloading
+    case queueLoading
+    case queueExtractingAudio
+    case queueTranscribing
+    case queueFailed
+  }
+
+  private enum StateActionStyle {
+    case bordered
+    case prominent
+  }
+
+  private struct StateAction {
+    let id: String
+    let title: String
+    let systemImage: String?
+    let role: ButtonRole?
+    let style: StateActionStyle
+    let handler: () -> Void
+  }
+
   let audioFile: ABFile
+  private let uiTestScenario: UITestScenario?
+  private let uiTestCues: [SubtitleCue]
 
   @Environment(TranscriptionManager.self) private var transcriptionManager
   @Environment(TranscriptionQueueManager.self) private var queueManager
   @Environment(TranscriptionSettings.self) private var settings
-  @Environment(PlayerManager.self) private var playerManager
   @Environment(SubtitleLoader.self) private var subtitleLoader
   @Environment(\.modelContext) private var modelContext
 
   @State private var viewModel = TranscriptionViewModel()
+  @State private var demoSubtitleFontSize: Double = 16
+
+  init(
+    audioFile: ABFile,
+    uiTestScenario: UITestScenario? = nil,
+    uiTestCues: [SubtitleCue] = []
+  ) {
+    self.audioFile = audioFile
+    self.uiTestScenario = uiTestScenario
+    self.uiTestCues = uiTestCues
+  }
 
   var body: some View {
     Group {
-      // Check if current file has a task in the queue
-      if let task = viewModel.currentTask {
-        taskProgressView(task: task)
+      if let uiTestScenario {
+        uiTestScenarioView(uiTestScenario)
       } else {
-        // Original logic for non-queued state
-        switch transcriptionManager.state {
-        case .unavailable:
-          loadingCacheView
-        case .idle:
-          if viewModel.isLoadingCache {
-            loadingCacheView
-          } else if viewModel.cachedCues.isEmpty && viewModel.hasCheckedCache {
-            noTranscriptionView
-          } else if !viewModel.cachedCues.isEmpty {
-            transcriptionContentView
-          } else {
-            loadingCacheView
-          }
-
-        case let .downloading(progress, modelName):
-          downloadingView(progress: progress, modelName: modelName)
-
-        case let .loading(modelName):
-          loadingModelView(modelName: modelName)
-
-        case let .extractingAudio(progress, fileName):
-          extractingAudioView(progress: progress, fileName: fileName)
-
-        case let .transcribing(progress, fileName):
-          transcribingView(progress: progress, fileName: fileName)
-
-        case .completed:
-          if !viewModel.cachedCues.isEmpty {
-            transcriptionContentView
-          } else {
-            loadingCacheView
-          }
-
-        case let .failed(error):
-          failedView(error: error)
-
-        case .cancelled:
-          noTranscriptionView
-        }
+        liveView
       }
     }
     .task(id: audioFile.id) {
+      guard uiTestScenario == nil else { return }
       viewModel.setup(
         audioFile: audioFile,
         transcriptionManager: transcriptionManager,
@@ -73,15 +77,249 @@ struct TranscriptionView: View {
     }
   }
 
+  @ViewBuilder
+  private var liveView: some View {
+    if let task = viewModel.currentTask {
+      taskProgressView(task: task)
+    } else {
+      switch transcriptionManager.state {
+      case .unavailable:
+        loadingCacheView
+
+      case .idle:
+        if viewModel.isLoadingCache {
+          loadingCacheView
+        } else if viewModel.cachedCues.isEmpty && viewModel.hasCheckedCache {
+          noTranscriptionView
+        } else if !viewModel.cachedCues.isEmpty {
+          transcriptionContentView
+        } else {
+          loadingCacheView
+        }
+
+      case let .downloading(progress, modelName):
+        downloadingView(progress: progress, modelName: modelName)
+
+      case let .loading(modelName):
+        loadingModelView(modelName: modelName)
+
+      case let .extractingAudio(progress, fileName):
+        extractingAudioView(progress: progress, fileName: fileName)
+
+      case let .transcribing(progress, fileName):
+        transcribingView(progress: progress, fileName: fileName)
+
+      case .completed:
+        if !viewModel.cachedCues.isEmpty {
+          transcriptionContentView
+        } else {
+          loadingCacheView
+        }
+
+      case let .failed(error):
+        failedView(error: error)
+
+      case .cancelled:
+        noTranscriptionView
+      }
+    }
+  }
+
+  // MARK: - UI Test Scenarios
+
+  @ViewBuilder
+  private func uiTestScenarioView(_ scenario: UITestScenario) -> some View {
+    switch scenario {
+    case .loadingCache:
+      loadingCacheView
+    case .empty:
+      noTranscriptionView
+    case .downloading:
+      stateView(
+        icon: "arrow.down.circle",
+        title: "Downloading Model",
+        subtitle: "distil-large-v3",
+        progress: 0.45,
+        showPercentage: true,
+        action: StateAction(
+          id: "transcription-cancel-button",
+          title: "Cancel",
+          systemImage: nil,
+          role: nil,
+          style: .bordered,
+          handler: {}
+        )
+      )
+    case .loadingModel:
+      loadingModelView(modelName: "distil-large-v3")
+    case .extractingAudio:
+      extractingAudioView(progress: 0.42, fileName: "UI Test Audio")
+    case .transcribing:
+      transcribingView(progress: 0.68, fileName: "UI Test Audio")
+    case .failed:
+      stateView(
+        icon: "exclamationmark.triangle",
+        title: "Transcription Failed",
+        subtitle: "Mock transcription failure for UI test",
+        progress: nil,
+        showPercentage: false,
+        footnote: nil,
+        showsIndeterminateProgress: false,
+        iconSize: 48,
+        iconColor: .orange,
+        animateIcon: false,
+        subtitleLineLimit: nil,
+        subtitleMaxWidth: 320,
+        action: StateAction(
+          id: "transcription-retry-button",
+          title: "Try Again",
+          systemImage: "arrow.clockwise",
+          role: nil,
+          style: .prominent,
+          handler: {}
+        )
+      )
+    case .content:
+      transcriptionContentView(
+        cues: uiTestCues,
+        fontSize: $demoSubtitleFontSize,
+        onRetranscribe: {},
+        onEditSubtitle: { _, _ in }
+      )
+    case .queued:
+      stateView(
+        icon: "clock",
+        title: "Queued",
+        subtitle: "UI Test Audio",
+        progress: nil,
+        showPercentage: false,
+        footnote: "Waiting for other transcriptions to complete",
+        showsIndeterminateProgress: true
+      )
+    case .queueDownloading:
+      stateView(
+        icon: "arrow.down.circle",
+        title: "Downloading Model",
+        subtitle: "distil-large-v3",
+        progress: 0.57,
+        showPercentage: true,
+        action: StateAction(
+          id: "transcription-cancel-button",
+          title: "Cancel",
+          systemImage: nil,
+          role: nil,
+          style: .bordered,
+          handler: {}
+        )
+      )
+    case .queueLoading:
+      stateView(
+        icon: "brain",
+        title: "Loading Model",
+        subtitle: "distil-large-v3",
+        progress: nil,
+        showPercentage: false,
+        footnote: "This may take a moment on first run",
+        showsIndeterminateProgress: true,
+        action: StateAction(
+          id: "transcription-cancel-button",
+          title: "Cancel",
+          systemImage: nil,
+          role: nil,
+          style: .bordered,
+          handler: {}
+        )
+      )
+    case .queueExtractingAudio:
+      stateView(
+        icon: "waveform.and.mic",
+        title: "Extracting Audio",
+        subtitle: "UI Test Audio",
+        progress: 0.33,
+        showPercentage: true,
+        footnote: "Converting video to audio format",
+        action: StateAction(
+          id: "transcription-cancel-button",
+          title: "Cancel",
+          systemImage: nil,
+          role: nil,
+          style: .bordered,
+          handler: {}
+        )
+      )
+    case .queueTranscribing:
+      stateView(
+        icon: "waveform",
+        title: "Transcribing",
+        subtitle: "UI Test Audio",
+        progress: 0.74,
+        showPercentage: true,
+        action: StateAction(
+          id: "transcription-cancel-button",
+          title: "Cancel",
+          systemImage: nil,
+          role: nil,
+          style: .bordered,
+          handler: {}
+        )
+      )
+    case .queueFailed:
+      stateView(
+        icon: "exclamationmark.triangle",
+        title: "Transcription Failed",
+        subtitle: "Mock queue transcription failure",
+        progress: nil,
+        showPercentage: false,
+        footnote: nil,
+        showsIndeterminateProgress: false,
+        iconSize: 48,
+        iconColor: .orange,
+        animateIcon: false,
+        subtitleLineLimit: nil,
+        subtitleMaxWidth: 320,
+        action: StateAction(
+          id: "transcription-remove-button",
+          title: "Remove",
+          systemImage: nil,
+          role: nil,
+          style: .bordered,
+          handler: {}
+        )
+      )
+    }
+  }
+
   // MARK: - Content View
 
   private var transcriptionContentView: some View {
+    transcriptionContentView(
+      cues: viewModel.cachedCues,
+      fontSize: Binding(
+        get: { viewModel.subtitleFontSize },
+        set: { viewModel.subtitleFontSize = $0 }
+      ),
+      onRetranscribe: {
+        Task {
+          await viewModel.clearAndRetranscribe()
+        }
+      },
+      onEditSubtitle: { cueID, subtitle in
+        Task {
+          await viewModel.updateSubtitle(cueID: cueID, subtitle: subtitle)
+        }
+      }
+    )
+  }
+
+  private func transcriptionContentView(
+    cues: [SubtitleCue],
+    fontSize: Binding<Double>,
+    onRetranscribe: @escaping () -> Void,
+    onEditSubtitle: @escaping (UUID, String) -> Void
+  ) -> some View {
     VStack(spacing: 0) {
-      // Toolbar with cache management
       HStack {
-        Button {
-          Task { await viewModel.clearAndRetranscribe() }
-        } label: {
+        Button(action: onRetranscribe) {
           HStack(spacing: 4) {
             Image(systemName: "arrow.clockwise")
             Text("Re-transcribe")
@@ -89,14 +327,14 @@ struct TranscriptionView: View {
         }
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
+        .accessibilityIdentifier("transcription-retranscribe-button")
 
         Spacer()
 
-        // Subtitle Font Size Picker
         HStack(spacing: 0) {
           ForEach([("Small", 14.0), ("Medium", 16.0), ("Large", 18.0)], id: \.0) { label, size in
             Button {
-              viewModel.subtitleFontSize = size
+              fontSize.wrappedValue = size
             } label: {
               Text(label)
                 .font(.caption)
@@ -105,321 +343,439 @@ struct TranscriptionView: View {
             }
             .buttonStyle(.plain)
             .background(
-              viewModel.subtitleFontSize == size ? Color.accentColor : Color.secondary.opacity(0.15)
+              fontSize.wrappedValue == size ? Color.accentColor : Color.secondary.opacity(0.15)
             )
-            .foregroundStyle(viewModel.subtitleFontSize == size ? .white : .secondary)
+            .foregroundStyle(fontSize.wrappedValue == size ? .white : .secondary)
+            .accessibilityIdentifier(fontSizeIdentifier(for: label))
           }
         }
         .clipShape(RoundedRectangle(cornerRadius: 6))
       }
       .padding(.horizontal, 12)
-      .padding(.vertical, 8)
+      .padding(.vertical, 10)
+      .accessibilityIdentifier("transcription-content-toolbar")
 
       Divider()
 
       SubtitleView(
-        cues: viewModel.cachedCues,
-        fontSize: viewModel.subtitleFontSize,
-        onEditSubtitle: { cueID, subtitle in
-          Task {
-            await viewModel.updateSubtitle(cueID: cueID, subtitle: subtitle)
-          }
-        }
+        cues: cues,
+        fontSize: fontSize.wrappedValue,
+        onEditSubtitle: onEditSubtitle
       )
+      .accessibilityIdentifier("transcription-subtitle-content")
     }
   }
 
-  // MARK: - Loading Cache View
+  private func fontSizeIdentifier(for label: String) -> String {
+    switch label {
+    case "Small":
+      return "transcription-font-size-small"
+    case "Medium":
+      return "transcription-font-size-medium"
+    case "Large":
+      return "transcription-font-size-large"
+    default:
+      return "transcription-font-size-unknown"
+    }
+  }
+
+  // MARK: - Loading and Empty State
 
   private var loadingCacheView: some View {
-    VStack(spacing: 12) {
-      ProgressView()
-        .controlSize(.regular)
-      Text("Checking cache...")
-        .font(.subheadline)
-        .foregroundStyle(.secondary)
-    }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    stateView(
+      icon: "clock.arrow.circlepath",
+      title: "Checking Cache",
+      subtitle: "Checking cache...",
+      progress: nil,
+      showPercentage: false,
+      showsIndeterminateProgress: true,
+      iconColor: .secondary,
+      animateIcon: true
+    )
   }
 
-  // MARK: - Empty State
-
   private var noTranscriptionView: some View {
-    VStack(spacing: 20) {
-      Image(systemName: "text.bubble")
-        .font(.system(size: 56, weight: .light))
-        .foregroundStyle(.quaternary)
-
-      VStack(spacing: 8) {
-        Text("No Transcription")
-          .font(.title2)
-          .fontWeight(.medium)
-
-        Text("Generate subtitles using on-device speech recognition")
-          .font(.subheadline)
-          .foregroundStyle(.secondary)
-          .multilineTextAlignment(.center)
-      }
-
-      Button {
-        viewModel.startTranscription()
-      } label: {
-        HStack(spacing: 6) {
-          Image(systemName: "waveform")
-          Text("Transcribe Audio")
+    stateView(
+      icon: "text.bubble",
+      title: "No Transcription",
+      subtitle: "Generate subtitles with on-device speech recognition",
+      progress: nil,
+      showPercentage: false,
+      footnote:
+        "If you are transcribing English-only audio or video, we recommend Distil Large v3 in Settings. For other languages, use Large v3. If auto-detection is not accurate, choose the language manually in Settings.",
+      showsIndeterminateProgress: false,
+      iconSize: 56,
+      iconColor: Color.secondary.opacity(0.5),
+      animateIcon: false,
+      subtitleLineLimit: nil,
+      subtitleMaxWidth: 320,
+      action: StateAction(
+        id: "transcription-primary-action",
+        title: "Transcribe Audio",
+        systemImage: "waveform",
+        role: nil,
+        style: .prominent,
+        handler: {
+          viewModel.startTranscription()
         }
-        .font(.body.weight(.medium))
-      }
-      .buttonStyle(.borderedProminent)
-      .controlSize(.large)
-    }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .padding()
+      )
+    )
   }
 
   // MARK: - Progress Views
 
   private func downloadingView(progress: Double, modelName: String) -> some View {
-    VStack {
-      progressView(
-        icon: "arrow.down.circle",
-        title: "Downloading Model",
-        subtitle: modelName,
-        progress: progress,
-        showPercentage: true
+    stateView(
+      icon: "arrow.down.circle",
+      title: "Downloading Model",
+      subtitle: modelName,
+      progress: progress,
+      showPercentage: true,
+      action: StateAction(
+        id: "transcription-cancel-button",
+        title: "Cancel",
+        systemImage: nil,
+        role: nil,
+        style: .bordered,
+        handler: {
+          transcriptionManager.cancelDownload()
+          settings.deleteDownloadCache(modelName: modelName)
+        }
       )
-
-      Button("Cancel") {
-        transcriptionManager.cancelDownload()
-        settings.deleteDownloadCache(modelName: modelName)
-      }
-      .buttonStyle(.bordered)
-      .controlSize(.small)
-      .padding(.bottom, 20)
-    }
+    )
   }
 
   private func loadingModelView(modelName: String) -> some View {
-    progressView(
+    stateView(
       icon: "brain",
       title: "Loading Model",
       subtitle: modelName,
       progress: nil,
       showPercentage: false,
-      footnote: "This may take a moment on first run"
+      footnote: "This may take a moment on first run",
+      showsIndeterminateProgress: true,
+      animateIcon: true
     )
   }
 
   private func extractingAudioView(progress: Double, fileName: String) -> some View {
-    progressView(
+    stateView(
       icon: "waveform.and.mic",
       title: "Extracting Audio",
       subtitle: fileName,
       progress: progress > 0 ? progress : nil,
       showPercentage: progress > 0,
-      footnote: "Converting video to audio format"
+      footnote: "Converting video to audio format",
+      showsIndeterminateProgress: progress <= 0
     )
   }
 
   private func transcribingView(progress: Double, fileName: String) -> some View {
-    progressView(
+    stateView(
       icon: "waveform",
       title: "Transcribing",
       subtitle: fileName,
       progress: progress > 0 ? progress : nil,
-      showPercentage: progress > 0
+      showPercentage: progress > 0,
+      showsIndeterminateProgress: progress <= 0
     )
   }
 
   /// View for queue task progress
+  @ViewBuilder
   private func taskProgressView(task: TranscriptionTask) -> some View {
-    VStack {
-      switch task.status {
-      case .queued:
-        progressView(
-          icon: "clock",
-          title: "Queued",
-          subtitle: task.audioFileName,
-          progress: nil,
-          showPercentage: false,
-          footnote: "Waiting for other transcriptions to complete"
+    switch task.status {
+    case .queued:
+      stateView(
+        icon: "clock",
+        title: "Queued",
+        subtitle: task.audioFileName,
+        progress: nil,
+        showPercentage: false,
+        footnote: "Waiting for other transcriptions to complete",
+        showsIndeterminateProgress: true
+      )
+
+    case let .downloading(progress):
+      stateView(
+        icon: "arrow.down.circle",
+        title: "Downloading Model",
+        subtitle: settings.modelName,
+        progress: progress,
+        showPercentage: true,
+        action: StateAction(
+          id: "transcription-cancel-button",
+          title: "Cancel",
+          systemImage: nil,
+          role: nil,
+          style: .bordered,
+          handler: {
+            queueManager.cancelTask(id: task.id)
+          }
         )
+      )
 
-      case let .downloading(progress):
-        VStack {
-          progressView(
-            icon: "arrow.down.circle",
-            title: "Downloading Model",
-            subtitle: settings.modelName,
-            progress: progress,
-            showPercentage: true
-          )
-          cancelButton(taskId: task.id)
-        }
+    case .loading:
+      stateView(
+        icon: "brain",
+        title: "Loading Model",
+        subtitle: settings.modelName,
+        progress: nil,
+        showPercentage: false,
+        footnote: "This may take a moment on first run",
+        showsIndeterminateProgress: true,
+        animateIcon: true,
+        action: StateAction(
+          id: "transcription-cancel-button",
+          title: "Cancel",
+          systemImage: nil,
+          role: nil,
+          style: .bordered,
+          handler: {
+            queueManager.cancelTask(id: task.id)
+          }
+        )
+      )
 
-      case .loading:
-        VStack {
-          progressView(
-            icon: "brain",
-            title: "Loading Model",
-            subtitle: settings.modelName,
-            progress: nil,
-            showPercentage: false,
-            footnote: "This may take a moment on first run"
-          )
-          cancelButton(taskId: task.id)
-        }
+    case let .extractingAudio(progress):
+      stateView(
+        icon: "waveform.and.mic",
+        title: "Extracting Audio",
+        subtitle: task.audioFileName,
+        progress: progress > 0 ? progress : nil,
+        showPercentage: progress > 0,
+        footnote: "Converting video to audio format",
+        showsIndeterminateProgress: progress <= 0,
+        action: StateAction(
+          id: "transcription-cancel-button",
+          title: "Cancel",
+          systemImage: nil,
+          role: nil,
+          style: .bordered,
+          handler: {
+            queueManager.cancelTask(id: task.id)
+          }
+        )
+      )
 
-      case let .extractingAudio(progress):
-        VStack {
-          progressView(
-            icon: "waveform.and.mic",
-            title: "Extracting Audio",
-            subtitle: task.audioFileName,
-            progress: progress > 0 ? progress : nil,
-            showPercentage: progress > 0,
-            footnote: "Converting video to audio format"
-          )
-          cancelButton(taskId: task.id)
-        }
+    case let .transcribing(progress):
+      stateView(
+        icon: "waveform",
+        title: "Transcribing",
+        subtitle: task.audioFileName,
+        progress: progress > 0 ? progress : nil,
+        showPercentage: progress > 0,
+        showsIndeterminateProgress: progress <= 0,
+        action: StateAction(
+          id: "transcription-cancel-button",
+          title: "Cancel",
+          systemImage: nil,
+          role: nil,
+          style: .bordered,
+          handler: {
+            queueManager.cancelTask(id: task.id)
+          }
+        )
+      )
 
-      case let .transcribing(progress):
-        VStack {
-          progressView(
-            icon: "waveform",
-            title: "Transcribing",
-            subtitle: task.audioFileName,
-            progress: progress > 0 ? progress : nil,
-            showPercentage: progress > 0
-          )
-          cancelButton(taskId: task.id)
-        }
-
-      case .completed:
-        // Reload cache and show content
-        if !viewModel.cachedCues.isEmpty {
-          transcriptionContentView
-        } else {
-          loadingCacheView
-            .task {
-              await viewModel.loadCachedTranscription()
-              queueManager.removeTask(id: task.id)
-            }
-        }
-
-      case let .failed(error):
-        VStack(spacing: 20) {
-          failedView(error: error)
-          Button("Remove") {
+    case .completed:
+      if !viewModel.cachedCues.isEmpty {
+        transcriptionContentView
+      } else {
+        loadingCacheView
+          .task {
+            await viewModel.loadCachedTranscription()
             queueManager.removeTask(id: task.id)
           }
-          .buttonStyle(.bordered)
-        }
+      }
 
-      case .cancelled:
-        VStack(spacing: 20) {
-          noTranscriptionView
-        }
+    case let .failed(error):
+      stateView(
+        icon: "exclamationmark.triangle",
+        title: "Transcription Failed",
+        subtitle: error,
+        progress: nil,
+        showPercentage: false,
+        footnote: nil,
+        showsIndeterminateProgress: false,
+        iconSize: 48,
+        iconColor: .orange,
+        animateIcon: false,
+        subtitleLineLimit: nil,
+        subtitleMaxWidth: 320,
+        action: StateAction(
+          id: "transcription-remove-button",
+          title: "Remove",
+          systemImage: nil,
+          role: nil,
+          style: .bordered,
+          handler: {
+            queueManager.removeTask(id: task.id)
+          }
+        )
+      )
+
+    case .cancelled:
+      noTranscriptionView
         .task {
           queueManager.removeTask(id: task.id)
         }
-      }
     }
   }
 
-  private func cancelButton(taskId: UUID) -> some View {
-    Button("Cancel") {
-      queueManager.cancelTask(id: taskId)
-    }
-    .buttonStyle(.bordered)
-    .controlSize(.small)
-    .padding(.bottom, 20)
+  // MARK: - Failed View
+
+  private func failedView(error: String) -> some View {
+    stateView(
+      icon: "exclamationmark.triangle",
+      title: "Transcription Failed",
+      subtitle: error,
+      progress: nil,
+      showPercentage: false,
+      footnote: nil,
+      showsIndeterminateProgress: false,
+      iconSize: 48,
+      iconColor: .orange,
+      animateIcon: false,
+      subtitleLineLimit: nil,
+      subtitleMaxWidth: 320,
+      action: StateAction(
+        id: "transcription-retry-button",
+        title: "Try Again",
+        systemImage: "arrow.clockwise",
+        role: nil,
+        style: .prominent,
+        handler: {
+          transcriptionManager.reset()
+        }
+      )
+    )
   }
 
-  private func progressView(
+  // MARK: - Shared State View
+
+  private func stateView(
     icon: String,
     title: String,
     subtitle: String,
     progress: Double?,
     showPercentage: Bool,
-    footnote: String? = nil
+    footnote: String? = nil,
+    showsIndeterminateProgress: Bool = false,
+    iconSize: CGFloat = 40,
+    iconColor: Color = .accentColor,
+    animateIcon: Bool = true,
+    subtitleLineLimit: Int? = 1,
+    subtitleMaxWidth: CGFloat? = nil,
+    action: StateAction? = nil
   ) -> some View {
     VStack(spacing: 20) {
-      Image(systemName: icon)
-        .font(.system(size: 40, weight: .light))
-        .foregroundStyle(.tint)
-        .symbolEffect(.pulse, options: .repeating)
+      Group {
+        if animateIcon {
+          Image(systemName: icon)
+            .symbolEffect(.pulse, options: .repeating)
+        } else {
+          Image(systemName: icon)
+        }
+      }
+      .font(.system(size: iconSize, weight: .light))
+      .foregroundStyle(iconColor)
+      .accessibilityIdentifier("transcription-state-icon")
 
-      VStack(spacing: 6) {
+      VStack(spacing: 8) {
         Text(title)
-          .font(.headline)
+          .font(.title2)
+          .fontWeight(.medium)
+          .accessibilityIdentifier("transcription-state-title")
 
-        Text(subtitle)
-          .font(.subheadline)
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-          .truncationMode(.middle)
+        Group {
+          if subtitleLineLimit == nil {
+            Text(subtitle)
+              .font(.subheadline)
+              .foregroundStyle(.secondary)
+              .multilineTextAlignment(.center)
+          } else {
+            Text(subtitle)
+              .font(.subheadline)
+              .foregroundStyle(.secondary)
+              .lineLimit(subtitleLineLimit)
+              .truncationMode(.middle)
+              .multilineTextAlignment(.center)
+          }
+        }
+        .frame(maxWidth: subtitleMaxWidth)
+        .accessibilityIdentifier("transcription-state-subtitle")
       }
 
       if let progress {
         VStack(spacing: 8) {
-          ProgressView(value: progress)
+          ProgressView(value: min(max(progress, 0), 1))
             .progressViewStyle(.linear)
-            .frame(maxWidth: 200)
+            .frame(maxWidth: 220)
+            .accessibilityIdentifier("transcription-state-progress")
 
           if showPercentage {
             Text("\(Int(progress * 100))%")
               .font(.caption)
               .foregroundStyle(.secondary)
               .monospacedDigit()
+              .accessibilityIdentifier("transcription-state-percentage")
           }
         }
-      } else {
+      } else if showsIndeterminateProgress {
         ProgressView()
           .controlSize(.regular)
+          .accessibilityIdentifier("transcription-state-progress")
       }
 
       if let footnote {
         Text(footnote)
           .font(.caption)
           .foregroundStyle(.tertiary)
-      }
-    }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .padding()
-  }
-
-  // MARK: - Failed View
-
-  private func failedView(error: String) -> some View {
-    VStack(spacing: 20) {
-      Image(systemName: "exclamationmark.triangle")
-        .font(.system(size: 48, weight: .light))
-        .foregroundStyle(.orange)
-
-      VStack(spacing: 8) {
-        Text("Transcription Failed")
-          .font(.title3)
-          .fontWeight(.medium)
-
-        Text(error)
-          .font(.subheadline)
-          .foregroundStyle(.secondary)
           .multilineTextAlignment(.center)
           .frame(maxWidth: 300)
+          .accessibilityIdentifier("transcription-state-footnote")
       }
 
-      Button {
-        transcriptionManager.reset()
-      } label: {
-        HStack(spacing: 6) {
-          Image(systemName: "arrow.clockwise")
-          Text("Try Again")
-        }
+      if let action {
+        actionButton(action)
       }
-      .buttonStyle(.borderedProminent)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .padding()
+    .accessibilityIdentifier("transcription-state-view")
+  }
+
+  @ViewBuilder
+  private func actionButton(_ action: StateAction) -> some View {
+    if action.style == .prominent {
+      Button(role: action.role) {
+        action.handler()
+      } label: {
+        actionButtonLabel(action)
+      }
+      .buttonStyle(.borderedProminent)
+      .controlSize(.large)
+      .accessibilityIdentifier(action.id)
+    } else {
+      Button(role: action.role) {
+        action.handler()
+      } label: {
+        actionButtonLabel(action)
+      }
+      .buttonStyle(.bordered)
+      .controlSize(.regular)
+      .accessibilityIdentifier(action.id)
+    }
+  }
+
+  private func actionButtonLabel(_ action: StateAction) -> some View {
+    HStack(spacing: 6) {
+      if let systemImage = action.systemImage {
+        Image(systemName: systemImage)
+      }
+      Text(action.title)
+    }
+    .font(.body.weight(.medium))
   }
 }
