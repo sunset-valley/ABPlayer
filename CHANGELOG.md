@@ -1,3 +1,14 @@
+## [0.3.9.125] - 2026-04-03
+
+### Bug Fixes
+- recompute layout on viewport width changes
+- use accent color for loop button
+
+### Chores
+- add UI demo states and guidance copy
+- add UI coverage for unified states
+
+
 ## [0.3.8.124] - 2026-04-02
 
 ### Chores
