@@ -347,6 +347,104 @@ struct SessionTrackerLogicTests {
   }
 
   @Test
+  @MainActor
+  func testEndSessionAndWaitFlushesEndedSession() async throws {
+    let (tracker, context) = try makeTracker(warmupThreshold: 5, idleTimeout: 0.2)
+
+    tracker.handlePlaybackStateChanged(isPlaying: true)
+    tracker.recordPlaybackTick(5.0)
+    await tracker.endSessionAndWaitForTesting()
+
+    let sessions = (try? context.fetch(FetchDescriptor<ListeningSession>())) ?? []
+    #expect(sessions.count == 1)
+    #expect(abs((sessions.first?.duration ?? 0) - 5.0) < 0.001)
+    #expect(sessions.first?.endedAt != nil)
+  }
+
+  @Test
+  @MainActor
+  func testOrphanCleanupRepairsAndMergesNearbyOrphans() async throws {
+    let (tracker, context) = try makeTracker(warmupThreshold: 5, idleTimeout: 0.2)
+    let base = Date(timeIntervalSince1970: 1_700_000_000)
+
+    let orphanA = ListeningSession(
+      startedAt: base,
+      endedAt: nil,
+      duration: 120
+    )
+    let orphanB = ListeningSession(
+      startedAt: base.addingTimeInterval(170),
+      endedAt: nil,
+      duration: 90
+    )
+    let orphanC = ListeningSession(
+      startedAt: base.addingTimeInterval(400),
+      endedAt: nil,
+      duration: 30
+    )
+
+    context.insert(orphanA)
+    context.insert(orphanB)
+    context.insert(orphanC)
+    try context.save()
+
+    await tracker.repairOrphanSessionsNow()
+
+    let sessions = (try? context.fetch(
+      FetchDescriptor<ListeningSession>(
+        sortBy: [SortDescriptor(\ListeningSession.startedAt, order: .forward)]
+      )
+    )) ?? []
+
+    #expect(sessions.count == 2)
+
+    let first = sessions[0]
+    let second = sessions[1]
+
+    #expect(first.startedAt == base)
+    #expect(abs(first.duration - 210) < 0.001)
+    #expect(first.endedAt == base.addingTimeInterval(260))
+
+    #expect(second.startedAt == base.addingTimeInterval(400))
+    #expect(abs(second.duration - 30) < 0.001)
+    #expect(second.endedAt == base.addingTimeInterval(430))
+  }
+
+  @Test
+  @MainActor
+  func testOrphanCleanupDeletesInvalidZeroDurationOrphan() async throws {
+    let (tracker, context) = try makeTracker(warmupThreshold: 5, idleTimeout: 0.2)
+    let base = Date(timeIntervalSince1970: 1_700_100_000)
+
+    let invalidOrphan = ListeningSession(
+      startedAt: base,
+      endedAt: nil,
+      duration: 0
+    )
+    let validOrphan = ListeningSession(
+      startedAt: base.addingTimeInterval(120),
+      endedAt: nil,
+      duration: 30
+    )
+
+    context.insert(invalidOrphan)
+    context.insert(validOrphan)
+    try context.save()
+
+    await tracker.repairOrphanSessionsNow()
+
+    let sessions = (try? context.fetch(
+      FetchDescriptor<ListeningSession>(
+        sortBy: [SortDescriptor(\ListeningSession.startedAt, order: .forward)]
+      )
+    )) ?? []
+
+    #expect(sessions.count == 1)
+    #expect(sessions.first?.startedAt == base.addingTimeInterval(120))
+    #expect(sessions.first?.endedAt == base.addingTimeInterval(150))
+  }
+
+  @Test
   func testListeningTimeAccumulation() {
     // Given: initial duration and delta
     var totalDuration = 0.0

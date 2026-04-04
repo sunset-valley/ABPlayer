@@ -81,7 +81,13 @@ struct ABPlayerApp: App {
     .modelContainer(container.modelContainer)
     .commands {
       SettingsCommands()
-      NotesBrowserCommands()
+      NotesBrowserCommands(
+        onRepairListeningSessions: {
+          Task {
+            await container.sessionTracker.repairOrphanSessionsNow()
+          }
+        }
+      )
       CommandGroup(replacing: .appInfo) {
         Button("About ABPlayer") {
           NSApp.orderFrontStandardAboutPanel(options: [
@@ -193,6 +199,11 @@ private struct UITestingFlags {
 
 struct NotesBrowserCommands: Commands {
   @Environment(\.openWindow) private var openWindow
+  private let onRepairListeningSessions: () -> Void
+
+  init(onRepairListeningSessions: @escaping () -> Void = {}) {
+    self.onRepairListeningSessions = onRepairListeningSessions
+  }
 
   var body: some Commands {
     CommandMenu("Study") {
@@ -203,6 +214,12 @@ struct NotesBrowserCommands: Commands {
 
       Button("Daily Listening Time") {
         openWindow(id: "listening-stats")
+      }
+
+      Divider()
+
+      Button("Repair Listening Sessions") {
+        onRepairListeningSessions()
       }
     }
   }

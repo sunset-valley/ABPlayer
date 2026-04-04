@@ -101,6 +101,34 @@ struct ListeningSessionSliceAggregationTests {
   }
 
   @Test
+  func slicesMarkOnlyNewestOpenSessionAsOngoingWhenMultipleAreOpen() {
+    let calendar = makeCalendar()
+    let now = makeDate(year: 2026, month: 3, day: 28, hour: 1, minute: 0, calendar: calendar)
+
+    let oldOpen = ListeningSession(
+      startedAt: makeDate(year: 2026, month: 3, day: 28, hour: 0, minute: 0, calendar: calendar),
+      endedAt: nil,
+      duration: 600
+    )
+    let newOpen = ListeningSession(
+      startedAt: makeDate(year: 2026, month: 3, day: 28, hour: 0, minute: 40, calendar: calendar),
+      endedAt: nil,
+      duration: 300
+    )
+
+    let slices = ListeningSessionSliceAggregation.slices(
+      sessions: [oldOpen, newOpen],
+      days: 1,
+      now: now,
+      calendar: calendar
+    )
+
+    #expect(slices.count == 2)
+    #expect(slices[0].isOngoing == false)
+    #expect(slices[1].isOngoing == true)
+  }
+
+  @Test
   func slicesIgnoreZeroDurationSession() {
     let calendar = makeCalendar()
     let now = makeDate(year: 2026, month: 3, day: 28, hour: 12, minute: 0, calendar: calendar)

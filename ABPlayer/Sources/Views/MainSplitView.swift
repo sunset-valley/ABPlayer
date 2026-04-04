@@ -78,7 +78,13 @@ public struct MainSplitView: View {
     }
     #if os(macOS)
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
-      sessionTracker.endSession()
+      sessionTracker.handlePlaybackStateChanged(isPlaying: false)
+      let semaphore = DispatchSemaphore(value: 0)
+      Task {
+        await sessionTracker.shutdownAndWait()
+        semaphore.signal()
+      }
+      _ = semaphore.wait(timeout: .now() + 1)
     }
     #endif
     .fileImporter(

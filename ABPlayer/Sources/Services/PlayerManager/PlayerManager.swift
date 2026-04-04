@@ -65,6 +65,9 @@ final class PlayerManager {
   }
 
   func clearPlayer() async {
+    sessionTracker?.handlePlaybackStateChanged(isPlaying: false)
+    await sessionTracker?.endSessionAndWait()
+    isPlaying = false
     player = nil
     await _engine.teardown()
   }
@@ -382,6 +385,9 @@ final class PlayerManager {
       currentFile = file
       return
     }
+
+    sessionTracker?.handlePlaybackStateChanged(isPlaying: false)
+    await sessionTracker?.endSessionAndWait()
 
 
     loadAudioTask?.cancel()
