@@ -21,6 +21,9 @@ struct TranscriptTextView: NSViewRepresentable {
     let maxOffsetY: CGFloat
     let documentHeight: CGFloat
     let visibleHeight: CGFloat
+    let cueCount: Int
+    let firstFullyVisibleCueIndex: Int?
+    let lastFullyVisibleCueIndex: Int?
 
     var isAtBottom: Bool {
       maxOffsetY <= 1 || offsetY >= maxOffsetY - 1
@@ -121,7 +124,6 @@ struct TranscriptTextView: NSViewRepresentable {
     let activeCueChanged = oldActiveCueID != activeCueID
     let wasUserScrolling = coordinator.isUserScrolling
     let resumingAutoScroll = wasUserScrolling && !isUserScrolling
-    let widthChanged = abs(coordinator.lastDocumentWidth - documentWidth) > 0.5
 
     // Full rebuild needed when cues, font, or annotations change — but NOT
     // just because the active cue advanced. Active-cue changes use the fast
@@ -146,15 +148,11 @@ struct TranscriptTextView: NSViewRepresentable {
     coordinator.onUserScrolled = onUserScrolled
     coordinator.onEditSubtitleRequested = onEditSubtitleRequested
     coordinator.onScrollMetricsChanged = onScrollMetricsChanged
-    coordinator.lastDocumentWidth = documentWidth
 
     if needsFullRebuild {
+      coordinator.lastDocumentWidth = documentWidth
       coordinator.rebuildAttributedString(in: textView, documentWidth: documentWidth)
     } else {
-      if widthChanged {
-        coordinator.updateDocumentSize(in: textView, documentWidth: documentWidth)
-      }
-
       if activeCueChanged {
         // Fast path: swap highlight on old and new paragraphs only
         coordinator.updateActiveCueHighlight(
@@ -308,6 +306,15 @@ struct TranscriptTextView: NSViewRepresentable {
       if abs(textView.frame.height - contentHeight) > 0.5 {
         textView.setFrameSize(NSSize(width: targetWidth, height: contentHeight))
       }
+    }
+
+    func handleViewportWidthChange(in scrollView: NSScrollView, documentWidth: CGFloat) {
+      guard let textView = scrollView.documentView as? TranscriptNSTextView else { return }
+      guard abs(lastDocumentWidth - documentWidth) > 0.5 else { return }
+
+      lastDocumentWidth = documentWidth
+      updateDocumentSize(in: textView, documentWidth: documentWidth)
+      publishScrollMetrics(in: scrollView)
     }
 
     // MARK: - Selection sync
@@ -788,6 +795,7 @@ struct TranscriptTextView: NSViewRepresentable {
       let documentHeight = max(1, textView.frame.height)
       let maxOffsetY = max(0, documentHeight - visibleHeight)
       let offsetY = max(0, min(scrollView.contentView.bounds.origin.y, maxOffsetY))
+      let visibleCueRange = fullyVisibleCueRange(in: scrollView, textView: textView)
 
       if lastKnownOffsetY == nil {
         lastKnownOffsetY = offsetY
@@ -797,7 +805,10 @@ struct TranscriptTextView: NSViewRepresentable {
         offsetY: offsetY,
         maxOffsetY: maxOffsetY,
         documentHeight: documentHeight,
-        visibleHeight: visibleHeight
+        visibleHeight: visibleHeight,
+        cueCount: layouts.count,
+        firstFullyVisibleCueIndex: visibleCueRange.first,
+        lastFullyVisibleCueIndex: visibleCueRange.last
       )
 
       guard !isScrollMetricsDeliveryScheduled else { return }
@@ -820,6 +831,47 @@ struct TranscriptTextView: NSViewRepresentable {
           self.onUserScrolled()
         }
       }
+    }
+
+    private func fullyVisibleCueRange(
+      in scrollView: NSScrollView,
+      textView: TranscriptNSTextView
+    ) -> (first: Int?, last: Int?) {
+      guard let layoutManager = textView.layoutManager,
+        let textContainer = textView.textContainer
+      else {
+        return (nil, nil)
+      }
+
+      layoutManager.ensureLayout(for: textContainer)
+
+      let clipView = scrollView.contentView
+      let visibleRect = clipView.bounds.insetBy(dx: -0.5, dy: -0.5)
+
+      var first: Int?
+      var last: Int?
+
+      for (index, layout) in layouts.enumerated() {
+        let glyphRange = layoutManager.glyphRange(
+          forCharacterRange: layout.paragraphRange,
+          actualCharacterRange: nil
+        )
+        guard glyphRange.length > 0 else { continue }
+
+        var paragraphRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+        paragraphRect.origin.x += textView.textContainerInset.width
+        paragraphRect.origin.y += textView.textContainerInset.height
+
+        let paragraphRectInClip = clipView.convert(paragraphRect, from: textView)
+        guard visibleRect.contains(paragraphRectInClip) else { continue }
+
+        if first == nil {
+          first = index
+        }
+        last = index
+      }
+
+      return (first, last)
     }
   }
 }
@@ -938,6 +990,28 @@ final class TranscriptLayoutManager: NSLayoutManager {
 
 final class TranscriptNSScrollView: NSScrollView {
   weak var coordinator: TranscriptTextView.Coordinator?
+  private var lastViewportWidth: CGFloat = 0
+
+  override func tile() {
+    super.tile()
+    handleViewportWidthChangeIfNeeded()
+  }
+
+  override func layout() {
+    super.layout()
+    handleViewportWidthChangeIfNeeded()
+  }
+
+  private func handleViewportWidthChangeIfNeeded() {
+    guard let coordinator else { return }
+
+    let viewportWidth = max(1, contentView.bounds.width)
+    guard viewportWidth.isFinite else { return }
+    guard abs(lastViewportWidth - viewportWidth) > 0.5 else { return }
+
+    lastViewportWidth = viewportWidth
+    coordinator.handleViewportWidthChange(in: self, documentWidth: viewportWidth)
+  }
 
   override func scrollWheel(with event: NSEvent) {
     let previousOffsetY = contentView.bounds.origin.y
