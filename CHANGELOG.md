@@ -1,3 +1,14 @@
+## [0.4.1.127] - 2026-04-04
+
+### Chores
+- add notarized release workflow
+- harden notarization script
+
+### Other
+- update ci
+- update docs
+
+
 ## [0.4.0.126] - 2026-04-04
 
 ### Bug Fixes
