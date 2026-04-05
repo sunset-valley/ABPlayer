@@ -24,21 +24,11 @@ enum SelectionItem: Hashable {
 
 /// Hierarchical folder navigation view for the sidebar
 struct FolderNavigationView: View {
-  init(
-    viewModel: FolderNavigationViewModel,
-    onSelectFile: @escaping @MainActor (ABFile) async -> Void
-  ) {
-    self.viewModel = viewModel
-    self.onSelectFile = onSelectFile
-  }
-
   @Bindable var viewModel: FolderNavigationViewModel
 
   let onSelectFile: @MainActor (ABFile) async -> Void
 
   var body: some View {
-    let _ = Self._printChanges()
-
     VStack(spacing: 0) {
       navigationHeader
       fileList

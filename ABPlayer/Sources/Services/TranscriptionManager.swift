@@ -25,6 +25,7 @@ final class TranscriptionManager {
   private var downloadTask: Task<Void, Error>?
   private var audioExtractionTask: Task<URL, Error>?
   private var transcriptionTask: Task<[SubtitleCue], Error>?
+  private var lastPublishedTranscriptionProgressPercent: Int?
   private var cancellationRequested = false
   private var stateObservers: [UUID: @MainActor (TranscriptionState) -> Void] = [:]
   var state: TranscriptionState = .idle {
@@ -120,6 +121,7 @@ final class TranscriptionManager {
     transcriptionTask = nil
     audioExtractionTask?.cancel()
     audioExtractionTask = nil
+    lastPublishedTranscriptionProgressPercent = nil
     state = .cancelled
   }
 
@@ -230,6 +232,7 @@ final class TranscriptionManager {
 
     try throwIfCancellationRequested()
 
+    lastPublishedTranscriptionProgressPercent = 0
     state = .transcribing(progress: 0, fileName: fileName)
 
     var extractedWavURL: URL?
@@ -256,7 +259,12 @@ final class TranscriptionManager {
         return try await runtime.transcribe(
           audioPath: workingURL.path,
           language: runtimeConfig.language,
-          audioFileID: audioFileID
+          audioFileID: audioFileID,
+          onProgress: { [weak self] progress in
+            Task { @MainActor [weak self] in
+              self?.publishTranscribingProgressIfNeeded(progress, fileName: fileName)
+            }
+          }
         )
       }
       transcriptionTask = transcribeTask
@@ -274,6 +282,7 @@ final class TranscriptionManager {
         try? FileManager.default.removeItem(at: wavURL)
       }
 
+      lastPublishedTranscriptionProgressPercent = nil
       state = .completed
       return cues
     } catch is CancellationError {
@@ -281,6 +290,7 @@ final class TranscriptionManager {
       if let wavURL = extractedWavURL {
         try? FileManager.default.removeItem(at: wavURL)
       }
+      lastPublishedTranscriptionProgressPercent = nil
       state = .cancelled
       throw CancellationError()
     } catch {
@@ -288,6 +298,7 @@ final class TranscriptionManager {
       if let wavURL = extractedWavURL {
         try? FileManager.default.removeItem(at: wavURL)
       }
+      lastPublishedTranscriptionProgressPercent = nil
       state = .failed(error.localizedDescription)
       throw error
     }
@@ -302,6 +313,7 @@ final class TranscriptionManager {
     transcriptionTask = nil
     audioExtractionTask?.cancel()
     audioExtractionTask = nil
+    lastPublishedTranscriptionProgressPercent = nil
     state = .idle
   }
 
@@ -433,6 +445,31 @@ final class TranscriptionManager {
     }
   }
 
+  private func publishTranscribingProgressIfNeeded(_ progress: Double, fileName: String) {
+    guard case let .transcribing(currentProgress, currentFileName) = state,
+      currentFileName == fileName
+    else {
+      return
+    }
+
+    let clampedProgress = min(max(progress, 0), 1)
+    let percentBucket = Int(clampedProgress * 100)
+
+    if let lastPublishedTranscriptionProgressPercent,
+      percentBucket <= lastPublishedTranscriptionProgressPercent
+    {
+      return
+    }
+
+    let currentPercent = Int(min(max(currentProgress, 0), 1) * 100)
+    guard percentBucket != currentPercent else {
+      return
+    }
+
+    lastPublishedTranscriptionProgressPercent = percentBucket
+    state = .transcribing(progress: Double(percentBucket) / 100, fileName: fileName)
+  }
+
   private func notifyStateObservers() {
     let currentState = state
     for observer in stateObservers.values {
@@ -506,6 +543,26 @@ private actor TranscriptionRuntime {
   private var whisperKit: WhisperKit?
   private var loadedModelName: String?
 
+  private final class ProgressRelay: @unchecked Sendable {
+    private let lock = NSLock()
+    private var lastPublishedPercent = -1
+
+    func consume(_ progress: Double) -> Double? {
+      let clampedProgress = min(max(progress, 0), 1)
+      let percentBucket = Int(clampedProgress * 100)
+
+      lock.lock()
+      defer { lock.unlock() }
+
+      guard percentBucket > lastPublishedPercent else {
+        return nil
+      }
+
+      lastPublishedPercent = percentBucket
+      return Double(percentBucket) / 100
+    }
+  }
+
   func hasLoadedModel(named modelName: String) -> Bool {
     whisperKit != nil && loadedModelName == modelName
   }
@@ -535,16 +592,31 @@ private actor TranscriptionRuntime {
   func transcribe(
     audioPath: String,
     language: String?,
-    audioFileID: UUID
+    audioFileID: UUID,
+    onProgress: (@Sendable (Double) -> Void)? = nil
   ) async throws -> [SubtitleCue] {
     guard let whisperKit else {
       throw TranscriptionError.modelNotLoaded
     }
 
     let options = DecodingOptions(language: language)
+    let progressRelay = ProgressRelay()
     let results = try await whisperKit.transcribe(
       audioPath: audioPath,
-      decodeOptions: options
+      decodeOptions: options,
+      callback: { [whisperKit, progressRelay] _ in
+        guard let onProgress else {
+          return nil
+        }
+
+        let fractionCompleted = whisperKit.progress.fractionCompleted
+        guard let quantizedProgress = progressRelay.consume(fractionCompleted) else {
+          return nil
+        }
+
+        onProgress(quantizedProgress)
+        return nil
+      }
     )
 
     var cueIndex = 0
