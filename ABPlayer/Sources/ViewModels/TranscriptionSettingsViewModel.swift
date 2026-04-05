@@ -28,7 +28,6 @@ final class TranscriptionSettingsViewModel {
     enum Event {
       case onAppear
       case modelNameChanged
-      case ffmpegPathChanged
       case mirrorSelectionChanged(String)
       case customEndpointDraftChanged(String)
       case applyCustomEndpoint
@@ -38,7 +37,6 @@ final class TranscriptionSettingsViewModel {
       case confirmDeleteModel
       case cancelDeleteModel
       case directorySelected(URL)
-      case ffmpegPathSelected(URL)
       case dismissMigrationError
     }
 
@@ -51,13 +49,11 @@ final class TranscriptionSettingsViewModel {
     let showDeleteConfirmation: Bool
     let isMigrating: Bool
     let migrationError: String?
-    let ffmpegPathStatus: FFmpegStatus
     let mirrorSelection: String
     let customEndpointDraft: String
     let canApplyCustomEndpoint: Bool
     let modelEndpointTestStatus: EndpointTestStatus
     let modelDownloadStatus: ModelDownloadStatus
-    let displayFFmpegPath: String
     let displayDirectory: String
   }
 
@@ -73,7 +69,6 @@ final class TranscriptionSettingsViewModel {
   private var showDeleteConfirmation = false
   private var isMigrating = false
   private var migrationError: String?
-  private var ffmpegPathStatus: FFmpegStatus = .unchecked
   private var mirrorSelection = ""
   private var customEndpointDraft = ""
   private var modelEndpointTestStatus: EndpointTestStatus = .idle
@@ -101,13 +96,11 @@ final class TranscriptionSettingsViewModel {
       showDeleteConfirmation: false,
       isMigrating: false,
       migrationError: nil,
-      ffmpegPathStatus: .unchecked,
       mirrorSelection: "",
       customEndpointDraft: "",
       canApplyCustomEndpoint: false,
       modelEndpointTestStatus: .idle,
       modelDownloadStatus: .unknown,
-      displayFFmpegPath: "",
       displayDirectory: ""
     )
   }
@@ -127,7 +120,6 @@ final class TranscriptionSettingsViewModel {
     switch input.event {
     case .onAppear:
       checkAndRefreshModels()
-      refreshFFmpegStatus()
       syncMirrorSelection()
       if shouldTestCurrentEndpoint() {
         scheduleEndpointTest()
@@ -136,8 +128,6 @@ final class TranscriptionSettingsViewModel {
       }
     case .modelNameChanged:
       checkAndRefreshModels()
-    case .ffmpegPathChanged:
-      refreshFFmpegStatus()
     case .mirrorSelectionChanged(let mirror):
       handleMirrorChange(mirror)
     case .customEndpointDraftChanged(let draft):
@@ -160,9 +150,6 @@ final class TranscriptionSettingsViewModel {
       showDeleteConfirmation = false
     case .directorySelected(let url):
       handleDirectorySelected(url)
-    case .ffmpegPathSelected(let url):
-      settings?.ffmpegPath = url.path
-      refreshFFmpegStatus()
     case .dismissMigrationError:
       migrationError = nil
     }
@@ -274,17 +261,6 @@ final class TranscriptionSettingsViewModel {
       self.isMigrating = false
       self.refreshModels()
       self.updateOutput()
-    }
-  }
-
-  private func refreshFFmpegStatus() {
-    guard let settings else { return }
-    if !settings.ffmpegPath.isEmpty {
-      ffmpegPathStatus = TranscriptionSettings.isFFmpegValid(at: settings.ffmpegPath) ? .valid : .invalid
-    } else if settings.effectiveFFmpegPath() != nil {
-      ffmpegPathStatus = .valid
-    } else {
-      ffmpegPathStatus = .notFound
     }
   }
 
@@ -423,29 +399,13 @@ final class TranscriptionSettingsViewModel {
       showDeleteConfirmation: showDeleteConfirmation,
       isMigrating: isMigrating,
       migrationError: migrationError,
-      ffmpegPathStatus: ffmpegPathStatus,
       mirrorSelection: mirrorSelection,
       customEndpointDraft: customEndpointDraft,
       canApplyCustomEndpoint: canApplyCustomEndpoint(),
       modelEndpointTestStatus: modelEndpointTestStatus,
       modelDownloadStatus: modelDownloadStatus,
-      displayFFmpegPath: computeDisplayFFmpegPath(),
       displayDirectory: computeDisplayDirectory()
     )
-  }
-
-  private func computeDisplayFFmpegPath() -> String {
-    guard let settings else { return "" }
-    if !settings.ffmpegPath.isEmpty, ffmpegPathStatus == .valid {
-      return settings.ffmpegPath
-    }
-    if Bundle.main.url(forAuxiliaryExecutable: "ffmpeg") != nil {
-      return "Bundled"
-    }
-    if let detected = TranscriptionSettings.autoDetectFFmpegPath() {
-      return "Auto-detected: \(detected)"
-    }
-    return "Not found"
   }
 
   private func computeDisplayDirectory() -> String {

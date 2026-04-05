@@ -99,6 +99,7 @@ final class TranscriptionQueueManager {
       tasks.remove(at: index)
     case .downloading, .loading, .extractingAudio, .transcribing:
       transcriptionManager.cancelDownload()
+      transcriptionManager.cancelTranscription()
       tasks[index].status = .cancelled
     default:
       break
@@ -131,14 +132,11 @@ final class TranscriptionQueueManager {
       let url = try resolveURL(from: task.bookmarkData)
 
       // Track transcription manager state changes
-      let stateObservation = Task { @MainActor in
-        while !Task.isCancelled {
-          await updateTaskFromManagerState(taskId: task.id)
-          try? await Task.sleep(for: .milliseconds(100))
-        }
+      let observerID = transcriptionManager.addStateObserver { [weak self] state in
+        guard let self else { return }
+        self.updateTask(taskId: task.id, from: state)
       }
-
-      defer { stateObservation.cancel() }
+      defer { transcriptionManager.removeStateObserver(observerID) }
 
       // Perform transcription
       let cues = try await transcriptionManager.transcribe(
@@ -173,10 +171,10 @@ final class TranscriptionQueueManager {
     }
   }
 
-  private func updateTaskFromManagerState(taskId: UUID) async {
+  private func updateTask(taskId: UUID, from state: TranscriptionState) {
     guard let index = tasks.firstIndex(where: { $0.id == taskId }) else { return }
 
-    switch transcriptionManager.state {
+    switch state {
     case .downloading(let progress, _):
       if tasks[index].status != .downloading(progress: progress) {
         tasks[index].status = .downloading(progress: progress)

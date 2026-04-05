@@ -8,6 +8,7 @@ import SwiftData
 @ModelActor
 actor SessionRecorder {
   private var currentSessionID: PersistentIdentifier?
+  private let orphanMergeGapSeconds: TimeInterval = 60
 
   /// Start a new session on the background context.
   @discardableResult
@@ -77,6 +78,78 @@ actor SessionRecorder {
     }
     currentSessionID = nil
   }
+
+  /// Repair stale orphan sessions left open by prior app runs.
+  func repairOrphanSessions(now: Date = Date()) {
+    let descriptor = FetchDescriptor<ListeningSession>(
+      sortBy: [SortDescriptor(\ListeningSession.startedAt, order: .forward)]
+    )
+
+    guard let sessions = try? modelContext.fetch(descriptor), !sessions.isEmpty else {
+      return
+    }
+
+    var didMutate = false
+    var repairedOrphanIDs: Set<PersistentIdentifier> = []
+
+    for (index, session) in sessions.enumerated() {
+      guard session.endedAt == nil else { continue }
+
+      var repairedEnd = session.startedAt.addingTimeInterval(max(0, session.duration))
+      if let nextSession = sessions[(index + 1)...].first(where: { $0.startedAt > session.startedAt }) {
+        repairedEnd = min(repairedEnd, nextSession.startedAt)
+      }
+
+      if repairedEnd <= session.startedAt {
+        modelContext.delete(session)
+        didMutate = true
+        continue
+      }
+
+      session.endedAt = min(repairedEnd, now)
+      repairedOrphanIDs.insert(session.persistentModelID)
+      didMutate = true
+    }
+
+    if !repairedOrphanIDs.isEmpty {
+      if let refreshedSessions = try? modelContext.fetch(descriptor) {
+        var previousRepairedSession: ListeningSession?
+
+        for session in refreshedSessions {
+          guard repairedOrphanIDs.contains(session.persistentModelID) else {
+            previousRepairedSession = nil
+            continue
+          }
+
+          guard let sessionEnd = session.endedAt, sessionEnd > session.startedAt else {
+            modelContext.delete(session)
+            didMutate = true
+            continue
+          }
+
+          if let previousRepairedSession, let previousEnd = previousRepairedSession.endedAt {
+            let gap = session.startedAt.timeIntervalSince(previousEnd)
+            if gap <= orphanMergeGapSeconds {
+              previousRepairedSession.endedAt = max(previousEnd, sessionEnd)
+              previousRepairedSession.duration = max(0, previousRepairedSession.duration) + max(0, session.duration)
+              modelContext.delete(session)
+              didMutate = true
+              continue
+            }
+          }
+
+          previousRepairedSession = session
+        }
+      }
+    }
+
+    guard didMutate else { return }
+    do {
+      try modelContext.save()
+    } catch {
+      Logger.data.error("[SessionRecorder] Failed to repair orphan sessions: \(error)")
+    }
+  }
 }
 
 /// Tracks listening sessions and persists playback progress.
@@ -102,6 +175,7 @@ final class SessionTracker {
   private var isCurrentlyPlaying = false
   private var warmupPlayedSeconds: Double = 0
   private var idleEndTask: Task<Void, Never>?
+  private var didScheduleOrphanCleanup = false
 
   init(
     warmupThreshold: Double = 5,
@@ -115,6 +189,7 @@ final class SessionTracker {
     warmupThreshold = 5
     idleTimeout = 5
     self.recorder = SessionRecorder(modelContainer: modelContainer)
+    scheduleOrphanCleanupIfNeeded()
   }
 
   init(
@@ -125,11 +200,14 @@ final class SessionTracker {
     self.warmupThreshold = warmupThreshold
     self.idleTimeout = idleTimeout
     self.recorder = SessionRecorder(modelContainer: modelContainer)
+    scheduleOrphanCleanupIfNeeded()
   }
 
   /// Initialize the recorder with a ModelContainer.
   func setModelContainer(_ container: ModelContainer) {
     self.recorder = SessionRecorder(modelContainer: container)
+    didScheduleOrphanCleanup = false
+    scheduleOrphanCleanupIfNeeded()
   }
 
   /// Drive session state from playback state changes.
@@ -247,6 +325,33 @@ final class SessionTracker {
     }
   }
 
+  /// End active session and wait until recorder queue is fully flushed.
+  func endSessionAndWait() async {
+    endSession()
+    await recorderTask?.value
+  }
+
+  /// Best-effort shutdown hook for app lifecycle.
+  func shutdownAndWait() async {
+    await endSessionAndWait()
+  }
+
+  /// Trigger orphan-session cleanup and wait for completion.
+  func repairOrphanSessionsNow() async {
+    enqueueRecorderOperation { recorder in
+      await recorder?.repairOrphanSessions()
+    }
+    await recorderTask?.value
+  }
+
+  func endSessionAndWaitForTesting() async {
+    await endSessionAndWait()
+  }
+
+  func runOrphanCleanupForTesting() async {
+    await repairOrphanSessionsNow()
+  }
+
   func waitForRecorderTasksForTesting() async {
     await recorderTask?.value
   }
@@ -282,6 +387,15 @@ final class SessionTracker {
         await previousTask.value
       }
       await operation(recorder)
+    }
+  }
+
+  private func scheduleOrphanCleanupIfNeeded() {
+    guard !didScheduleOrphanCleanup else { return }
+    didScheduleOrphanCleanup = true
+
+    enqueueRecorderOperation { recorder in
+      await recorder?.repairOrphanSessions()
     }
   }
 }

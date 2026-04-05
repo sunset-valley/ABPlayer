@@ -20,6 +20,9 @@ private struct ResizePlaceholderModifier<Placeholder: View>: ViewModifier {
       proxy.size
     } action: { newSize in
       // Skip initial layout — nothing is "resizing" yet.
+      guard newSize.width > 20, newSize.height > 20 else {
+        return
+      }
       guard let previousSize = lastSize, previousSize != newSize else {
         lastSize = newSize
         return

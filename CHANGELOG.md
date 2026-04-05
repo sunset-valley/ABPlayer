@@ -1,3 +1,13 @@
+## [0.4.0.126] - 2026-04-04
+
+### Bug Fixes
+- reduce progress UI update churn
+- repair orphaned listening sessions
+
+### Improvements
+- remove ffmpeg dependency for media import
+
+
 ## [0.3.9.125] - 2026-04-03
 
 ### Bug Fixes

@@ -390,7 +390,7 @@ struct TranscriptionView: View {
       showPercentage: false,
       showsIndeterminateProgress: true,
       iconColor: .secondary,
-      animateIcon: true
+      animateIcon: false
     )
   }
 
@@ -402,7 +402,7 @@ struct TranscriptionView: View {
       progress: nil,
       showPercentage: false,
       footnote:
-        "If you are transcribing English-only audio or video, we recommend Distil Large v3 in Settings. For other languages, use Large v3. If auto-detection is not accurate, choose the language manually in Settings.",
+      "If you are transcribing English-only audio or video, we recommend Distil Large v3 in Settings. For other languages, use Large v3. If auto-detection is not accurate, choose the language manually in Settings.",
       showsIndeterminateProgress: false,
       iconSize: 56,
       iconColor: Color.secondary.opacity(0.5),
@@ -439,6 +439,7 @@ struct TranscriptionView: View {
         style: .bordered,
         handler: {
           transcriptionManager.cancelDownload()
+          transcriptionManager.cancelTranscription()
           settings.deleteDownloadCache(modelName: modelName)
         }
       )
@@ -566,6 +567,7 @@ struct TranscriptionView: View {
         progress: progress > 0 ? progress : nil,
         showPercentage: progress > 0,
         showsIndeterminateProgress: progress <= 0,
+        animateIcon: false,
         action: StateAction(
           id: "transcription-cancel-button",
           title: "Cancel",

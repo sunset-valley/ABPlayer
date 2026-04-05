@@ -158,6 +158,10 @@ enum ListeningSessionSliceAggregation {
     guard rangeEnd > rangeStart else { return [] }
 
     var sessionSlices: [ListeningSessionSlice] = []
+    let latestOpenSessionID = sessions
+      .filter { $0.endedAt == nil }
+      .max(by: { $0.startedAt < $1.startedAt })?
+      .id
 
     for session in sessions {
       let sessionEnd = session.endedAt ?? now
@@ -175,7 +179,7 @@ enum ListeningSessionSliceAggregation {
       guard clampedInterval > 0 else { continue }
 
       let clampedDuration = session.duration * (clampedInterval / sessionInterval)
-      let isSessionOngoing = session.endedAt == nil
+      let isSessionOngoing = session.endedAt == nil && session.id == latestOpenSessionID
 
       var cursor = clampedStart
       while cursor < clampedEnd {

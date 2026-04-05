@@ -35,8 +35,6 @@ public struct MainSplitView: View {
   public init() {}
 
   public var body: some View {
-    let _ = Self._printChanges()
-
     NavigationSplitView {
       sidebar
         .navigationSplitViewColumnWidth(min: 280, ideal: 280, max: 400)
@@ -78,7 +76,13 @@ public struct MainSplitView: View {
     }
     #if os(macOS)
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
-      sessionTracker.endSession()
+      sessionTracker.handlePlaybackStateChanged(isPlaying: false)
+      let semaphore = DispatchSemaphore(value: 0)
+      Task {
+        await sessionTracker.shutdownAndWait()
+        semaphore.signal()
+      }
+      _ = semaphore.wait(timeout: .now() + 1)
     }
     #endif
     .fileImporter(

@@ -18,7 +18,7 @@ struct TranscriptionSettingsView: View {
     .formStyle(.grouped)
     .fileImporter(
       isPresented: $isFileImporterPresented,
-      allowedContentTypes: fileImportType == .ffmpegPath ? [.unixExecutable] : [.folder],
+      allowedContentTypes: [.folder],
       allowsMultipleSelection: false
     ) { result in
       handleFileImportResult(result)
@@ -54,9 +54,6 @@ struct TranscriptionSettingsView: View {
     }
     .onChange(of: settings.modelName) { _, _ in
       viewModel.transform(input: .init(event: .modelNameChanged))
-    }
-    .onChange(of: settings.ffmpegPath) { _, _ in
-      viewModel.transform(input: .init(event: .ffmpegPathChanged))
     }
   }
 
@@ -214,21 +211,6 @@ struct TranscriptionSettingsView: View {
         )
       )
 
-      // FFmpeg Path
-      LabeledContent("FFmpeg") {
-        HStack(spacing: 8) {
-          Text(viewModel.output.displayFFmpegPath)
-            .foregroundStyle(ffmpegStatusColor)
-            .lineLimit(1)
-            .truncationMode(.middle)
-
-          Button("Choose...") {
-            fileImportType = .ffmpegPath
-            isFileImporterPresented = true
-          }
-        }
-      }
-
     } header: {
       Label("Transcription", systemImage: "text.bubble")
     } footer: {
@@ -264,16 +246,6 @@ struct TranscriptionSettingsView: View {
           }
         }
         .captionStyle()
-
-        Text(
-          "FFmpeg is required for extracting audio from video files. If not installed, video transcription will fail."
-        )
-        .captionStyle()
-
-        if viewModel.output.ffmpegPathStatus != .valid {
-          Text("FFmpeg not found. Install manually with: brew install ffmpeg")
-            .captionStyle()
-        }
       }
     }
   }
@@ -390,30 +362,14 @@ struct TranscriptionSettingsView: View {
 
   // MARK: - Helpers
 
-  private var ffmpegStatusColor: Color {
-    switch viewModel.output.ffmpegPathStatus {
-    case .valid:
-      return .green
-    case .invalid, .notFound:
-      return .red
-    case .unchecked:
-      return .secondary
-    }
-  }
-
   private func handleFileImportResult(_ result: Result<[URL], Error>) {
     guard let importType = fileImportType else { return }
+    fileImportType = nil
     switch importType {
-    case .ffmpegPath:
-      if case let .success(urls) = result, let url = urls.first {
-        viewModel.transform(input: .init(event: .ffmpegPathSelected(url)))
-      }
     case .modelDirectory:
       if case let .success(urls) = result, let url = urls.first {
         viewModel.transform(input: .init(event: .directorySelected(url)))
       }
-    case .libraryDirectory:
-      break
     }
   }
 

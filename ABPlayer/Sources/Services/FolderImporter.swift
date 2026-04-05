@@ -16,10 +16,6 @@ final class FolderImporter {
     self.librarySettings = librarySettings
   }
 
-  /// Supported file extensions
-  static let audioExtensions: Set<String> = [
-    "mp3", "m4a", "wav", "aac", "mp4", "mov", "m4v", "avi", "mkv",
-  ]
   static let subtitleExtensions: Set<String> = ["srt", "vtt"]
   static let pdfExtension = "pdf"
 
@@ -93,7 +89,7 @@ final class FolderImporter {
 
     // Classify files
     var directories: [URL] = []
-    var audioFiles: [URL] = []
+    var mediaFiles: [URL] = []
     var subtitleFiles: [URL] = []
     var pdfFiles: [URL] = []
 
@@ -105,8 +101,8 @@ final class FolderImporter {
       } else {
         let ext = item.pathExtension.lowercased()
 
-        if Self.audioExtensions.contains(ext) {
-          audioFiles.append(item)
+        if Self.isMediaFile(item) {
+          mediaFiles.append(item)
         } else if Self.subtitleExtensions.contains(ext) {
           subtitleFiles.append(item)
         } else if ext == Self.pdfExtension {
@@ -115,10 +111,10 @@ final class FolderImporter {
       }
     }
 
-    // Process audio files (insert or update)
-    for audioURL in audioFiles {
+    // Process media files (insert or update)
+    for mediaURL in mediaFiles {
       try await processAudioFile(
-        at: audioURL,
+        at: mediaURL,
         folder: folder,
         relativePath: relativePath,
         subtitleFiles: subtitleFiles,
@@ -195,6 +191,7 @@ final class FolderImporter {
       audioFile = ABFile(
         id: deterministicID,
         displayName: url.lastPathComponent,
+        fileType: ABFile.inferFileType(from: url),
         bookmarkData: bookmarkData,
         createdAt: getFileCreationDate(from: url),
         folder: folder,
@@ -336,6 +333,23 @@ final class FolderImporter {
     let relativePath = folder.relativePath
     guard !relativePath.isEmpty else { return nil }
     return librarySettings.libraryDirectoryURL.appendingPathComponent(relativePath)
+  }
+
+  private static func isMediaFile(_ url: URL) -> Bool {
+    if let contentType = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType {
+      if contentType.conforms(to: .audio) || contentType.conforms(to: .movie) {
+        return true
+      }
+    }
+
+    let ext = url.pathExtension.lowercased()
+    guard !ext.isEmpty,
+      let type = UTType(filenameExtension: ext)
+    else {
+      return false
+    }
+
+    return type.conforms(to: .audio) || type.conforms(to: .movie)
   }
 
 }
