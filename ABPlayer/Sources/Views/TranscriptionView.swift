@@ -120,7 +120,13 @@ struct TranscriptionView: View {
         failedView(error: error)
 
       case .cancelled:
-        noTranscriptionView
+        if !viewModel.cachedCues.isEmpty {
+          transcriptionContentView
+        } else if viewModel.hasCheckedCache {
+          noTranscriptionView
+        } else {
+          loadingCacheView
+        }
       }
     }
   }
@@ -172,7 +178,7 @@ struct TranscriptionView: View {
         subtitleMaxWidth: 320,
         action: StateAction(
           id: "transcription-retry-button",
-          title: "Try Again",
+          title: "Retry",
           systemImage: "arrow.clockwise",
           role: nil,
           style: .prominent,
@@ -278,11 +284,11 @@ struct TranscriptionView: View {
         subtitleLineLimit: nil,
         subtitleMaxWidth: 320,
         action: StateAction(
-          id: "transcription-remove-button",
-          title: "Remove",
-          systemImage: nil,
+          id: "transcription-retry-button",
+          title: "Retry",
+          systemImage: "arrow.clockwise",
           role: nil,
-          style: .bordered,
+          style: .prominent,
           handler: {}
         )
       )
@@ -497,6 +503,47 @@ struct TranscriptionView: View {
         showsIndeterminateProgress: true
       )
 
+    case .checkingExistingSubtitles:
+      stateView(
+        icon: "magnifyingglass",
+        title: "Checking Subtitles",
+        subtitle: task.audioFileName,
+        progress: nil,
+        showPercentage: false,
+        footnote: "Looking for existing subtitle files",
+        showsIndeterminateProgress: true,
+        action: StateAction(
+          id: "transcription-cancel-button",
+          title: "Cancel",
+          systemImage: nil,
+          role: nil,
+          style: .bordered,
+          handler: {
+            queueManager.cancelTask(id: task.id)
+          }
+        )
+      )
+
+    case .loadingExistingSubtitles:
+      stateView(
+        icon: "text.bubble",
+        title: "Loading Subtitles",
+        subtitle: task.audioFileName,
+        progress: nil,
+        showPercentage: false,
+        showsIndeterminateProgress: true,
+        action: StateAction(
+          id: "transcription-cancel-button",
+          title: "Cancel",
+          systemImage: nil,
+          role: nil,
+          style: .bordered,
+          handler: {
+            queueManager.cancelTask(id: task.id)
+          }
+        )
+      )
+
     case let .downloading(progress):
       stateView(
         icon: "arrow.down.circle",
@@ -580,6 +627,46 @@ struct TranscriptionView: View {
         )
       )
 
+    case .savingSubtitles:
+      stateView(
+        icon: "square.and.arrow.down",
+        title: "Saving Subtitles",
+        subtitle: task.audioFileName,
+        progress: nil,
+        showPercentage: false,
+        showsIndeterminateProgress: true,
+        action: StateAction(
+          id: "transcription-cancel-button",
+          title: "Cancel",
+          systemImage: nil,
+          role: nil,
+          style: .bordered,
+          handler: {
+            queueManager.cancelTask(id: task.id)
+          }
+        )
+      )
+
+    case .reloadingSubtitles:
+      stateView(
+        icon: "arrow.clockwise",
+        title: "Reloading Subtitles",
+        subtitle: task.audioFileName,
+        progress: nil,
+        showPercentage: false,
+        showsIndeterminateProgress: true,
+        action: StateAction(
+          id: "transcription-cancel-button",
+          title: "Cancel",
+          systemImage: nil,
+          role: nil,
+          style: .bordered,
+          handler: {
+            queueManager.cancelTask(id: task.id)
+          }
+        )
+      )
+
     case .completed:
       if !viewModel.cachedCues.isEmpty {
         transcriptionContentView
@@ -606,13 +693,13 @@ struct TranscriptionView: View {
         subtitleLineLimit: nil,
         subtitleMaxWidth: 320,
         action: StateAction(
-          id: "transcription-remove-button",
-          title: "Remove",
-          systemImage: nil,
+          id: "transcription-retry-button",
+          title: "Retry",
+          systemImage: "arrow.clockwise",
           role: nil,
-          style: .bordered,
+          style: .prominent,
           handler: {
-            queueManager.removeTask(id: task.id)
+            queueManager.retryTask(id: task.id)
           }
         )
       )
@@ -643,12 +730,12 @@ struct TranscriptionView: View {
       subtitleMaxWidth: 320,
       action: StateAction(
         id: "transcription-retry-button",
-        title: "Try Again",
+        title: "Retry",
         systemImage: "arrow.clockwise",
         role: nil,
         style: .prominent,
         handler: {
-          transcriptionManager.reset()
+          viewModel.retryTranscriptionFromStart()
         }
       )
     )

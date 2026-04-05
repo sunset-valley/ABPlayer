@@ -6,6 +6,12 @@ import OSLog
 @Observable
 @MainActor
 final class SubtitleLoader {
+  enum LoadResult: Equatable {
+    case loaded([SubtitleCue])
+    case notFound
+    case failed(String)
+  }
+
   private static let maxCacheEntries = 8
 
   private var cachedSubtitlesByAudioFileID: [UUID: [SubtitleCue]] = [:]
@@ -20,14 +26,23 @@ final class SubtitleLoader {
   /// - Parameter audioFile: The audio file to load subtitles for
   /// - Returns: Array of subtitle cues, empty if no subtitles found
   func loadSubtitles(for audioFile: ABFile) async -> [SubtitleCue] {
+    let result = await loadSubtitlesResult(for: audioFile)
+    switch result {
+    case let .loaded(cues):
+      return cues
+    case .notFound, .failed:
+      return []
+    }
+  }
+
+  func loadSubtitlesResult(for audioFile: ABFile) async -> LoadResult {
     guard let srtURL = audioFile.srtFileURL else {
       cacheSubtitles([], for: audioFile.id)
-      return []
+      return .notFound
     }
 
     guard let audioURL = try? resolveURL(from: audioFile.bookmarkData) else {
-      cacheSubtitles([], for: audioFile.id)
-      return []
+      return .failed("Failed to resolve audio file bookmark")
     }
 
     let gotAccess = audioURL.startAccessingSecurityScopedResource()
@@ -37,7 +52,12 @@ final class SubtitleLoader {
       }
     }
 
-    return await loadSubtitles(from: srtURL, audioFileID: audioFile.id)
+    if !FileManager.default.fileExists(atPath: srtURL.path) {
+      cacheSubtitles([], for: audioFile.id)
+      return .notFound
+    }
+
+    return await loadSubtitlesResult(from: srtURL, audioFileID: audioFile.id)
   }
 
   /// Load subtitles from a specific URL
@@ -45,9 +65,29 @@ final class SubtitleLoader {
   ///   - url: The URL of the subtitle file
   /// - Returns: Array of subtitle cues, empty if loading fails
   func loadSubtitles(from url: URL, audioFileID: UUID) async -> [SubtitleCue] {
-    let cues = await parseSubtitles(at: url, audioFileID: audioFileID)
-    cacheSubtitles(cues, for: audioFileID)
-    return cues
+    let result = await loadSubtitlesResult(from: url, audioFileID: audioFileID)
+    switch result {
+    case let .loaded(cues):
+      return cues
+    case .notFound, .failed:
+      return []
+    }
+  }
+
+  func loadSubtitlesResult(from url: URL, audioFileID: UUID) async -> LoadResult {
+    guard FileManager.default.fileExists(atPath: url.path) else {
+      cacheSubtitles([], for: audioFileID)
+      return .notFound
+    }
+
+    let result = await parseSubtitlesResult(at: url, audioFileID: audioFileID)
+    switch result {
+    case let .success(cues):
+      cacheSubtitles(cues, for: audioFileID)
+      return .loaded(cues)
+    case let .failure(error):
+      return .failed(error.localizedDescription)
+    }
   }
 
   func updateSubtitle(for audioFile: ABFile, cueID: UUID, subtitle: String) async -> [SubtitleCue]? {
@@ -113,12 +153,12 @@ final class SubtitleLoader {
   /// Parse subtitles from a file URL (runs on background thread)
   /// - Parameter url: The URL of the subtitle file
   /// - Returns: Array of subtitle cues
-  private func parseSubtitles(at url: URL, audioFileID: UUID) async -> [SubtitleCue] {
+  private func parseSubtitlesResult(at url: URL, audioFileID: UUID) async -> Result<[SubtitleCue], Error> {
     await Task.detached {
       do {
-        return try SubtitleParser.parse(from: url, audioFileID: audioFileID)
+        return .success(try SubtitleParser.parse(from: url, audioFileID: audioFileID))
       } catch {
-        return []
+        return .failure(error)
       }
     }.value
   }

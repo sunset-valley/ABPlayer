@@ -45,7 +45,7 @@ final class TranscriptionUITests: XCTestCase {
     let app = launchApp(state: "failed")
     assertUnifiedStateScaffold(in: app, expectedTitle: "Transcription Failed")
 
-    let retry = button(in: app, label: "Try Again")
+    let retry = button(in: app, label: "Retry")
     XCTAssertTrue(retry.waitForExistence(timeout: 4), "Retry button missing in failed state")
     assertActionIsInline(button: retry, in: app)
   }
@@ -82,13 +82,13 @@ final class TranscriptionUITests: XCTestCase {
   }
 
   @MainActor
-  func testQueueFailedStateShowsInlineRemoveButton() {
+  func testQueueFailedStateShowsInlineRetryButton() {
     let app = launchApp(state: "queue-failed")
     assertUnifiedStateScaffold(in: app, expectedTitle: "Transcription Failed")
 
-    let remove = button(in: app, label: "Remove")
-    XCTAssertTrue(remove.waitForExistence(timeout: 4), "Remove button missing in queue-failed state")
-    assertActionIsInline(button: remove, in: app)
+    let retry = button(in: app, label: "Retry")
+    XCTAssertTrue(retry.waitForExistence(timeout: 4), "Retry button missing in queue-failed state")
+    assertActionIsInline(button: retry, in: app)
   }
 
   @MainActor

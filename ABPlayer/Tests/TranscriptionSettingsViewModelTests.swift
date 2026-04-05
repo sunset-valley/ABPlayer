@@ -41,6 +41,23 @@ struct TranscriptionSettingsViewModelTests {
     try? await Task.sleep(nanoseconds: 80_000_000)
   }
 
+  private func makeModelDirectory(baseDirectory: URL, modelName: String) throws {
+    let modelFolderName = "openai_whisper-\(modelName)"
+    let modelDirectory = baseDirectory
+      .appendingPathComponent("models", isDirectory: true)
+      .appendingPathComponent("argmaxinc", isDirectory: true)
+      .appendingPathComponent("whisperkit-coreml", isDirectory: true)
+      .appendingPathComponent(modelFolderName, isDirectory: true)
+
+    try FileManager.default.createDirectory(at: modelDirectory, withIntermediateDirectories: true)
+
+    let requiredFiles = ["AudioEncoder.mlmodelc", "TextDecoder.mlmodelc", "config.json"]
+    for fileName in requiredFiles {
+      let fileURL = modelDirectory.appendingPathComponent(fileName)
+      FileManager.default.createFile(atPath: fileURL.path, contents: Data())
+    }
+  }
+
   private func makeSystemUnderTest(
     endpoint: String = "",
     lastCustom: String = "",
@@ -58,6 +75,25 @@ struct TranscriptionSettingsViewModelTests {
     })
     viewModel.configureIfNeeded(settings: settings, transcriptionManager: manager)
     return (viewModel, settings)
+  }
+
+  private func makeSystemUnderTestWithManager(
+    endpoint: String = "",
+    lastCustom: String = "",
+    testerSpy: EndpointTesterSpy
+  ) -> (viewModel: TranscriptionSettingsViewModel, settings: TranscriptionSettings, manager: TranscriptionManager) {
+    resetMirrorDefaults()
+
+    let settings = TranscriptionSettings()
+    settings.downloadEndpoint = endpoint
+    settings.lastCustomDownloadEndpoint = lastCustom
+
+    let manager = TranscriptionManager()
+    let viewModel = TranscriptionSettingsViewModel(endpointTester: { url in
+      await testerSpy.test(url)
+    })
+    viewModel.configureIfNeeded(settings: settings, transcriptionManager: manager)
+    return (viewModel, settings, manager)
   }
 
   @Test("Selecting Custom keeps picker selection and tests remembered custom endpoint")
@@ -134,5 +170,79 @@ struct TranscriptionSettingsViewModelTests {
     #expect(settings.lastCustomDownloadEndpoint == "https://new.custom")
     #expect(await spy.lastURL() == "https://new.custom")
     #expect(viewModel.output.canApplyCustomEndpoint == false)
+  }
+
+  @Test("Model selection change invalidates runtime cache")
+  func modelSelectionChangeInvalidatesRuntimeCache() async {
+    let spy = EndpointTesterSpy()
+    let (viewModel, settings, manager) = makeSystemUnderTestWithManager(testerSpy: spy)
+
+    manager.invalidModelName = "distil-large-v3"
+    settings.modelName = "tiny"
+
+    _ = viewModel.transform(input: .init(event: .modelNameChanged))
+
+    #expect(manager.invalidModelName == nil)
+  }
+
+  @Test("Directory change invalidates runtime cache")
+  func directoryChangeInvalidatesRuntimeCache() async throws {
+    let spy = EndpointTesterSpy()
+    let (viewModel, settings, manager) = makeSystemUnderTestWithManager(testerSpy: spy)
+
+    manager.invalidModelName = "base"
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    _ = viewModel.transform(input: .init(event: .directorySelected(directory)))
+
+    #expect(settings.modelDirectory == directory.path)
+    #expect(manager.invalidModelName == nil)
+  }
+
+  @Test("Mirror selection does not invalidate runtime cache")
+  func mirrorSelectionDoesNotInvalidateRuntimeCache() async {
+    let spy = EndpointTesterSpy()
+    let (viewModel, _, manager) = makeSystemUnderTestWithManager(testerSpy: spy)
+
+    manager.invalidModelName = "small"
+
+    _ = viewModel.transform(input: .init(event: .mirrorSelectionChanged(TranscriptionSettingsViewModel.hfMirror)))
+
+    #expect(manager.invalidModelName == "small")
+  }
+
+  @Test("Applying custom endpoint does not invalidate runtime cache")
+  func applyingCustomEndpointDoesNotInvalidateRuntimeCache() async {
+    let spy = EndpointTesterSpy()
+    let (viewModel, _, manager) = makeSystemUnderTestWithManager(testerSpy: spy)
+
+    manager.invalidModelName = "large-v3"
+
+    _ = viewModel.transform(input: .init(event: .mirrorSelectionChanged(TranscriptionSettingsViewModel.customMirrorSentinel)))
+    _ = viewModel.transform(input: .init(event: .customEndpointDraftChanged("https://mirror.example.com")))
+    _ = viewModel.transform(input: .init(event: .applyCustomEndpoint))
+
+    #expect(manager.invalidModelName == "large-v3")
+  }
+
+  @Test("Directory selection updates status to downloaded when model exists there")
+  func directorySelectionUpdatesDownloadStatusToDownloaded() async throws {
+    let spy = EndpointTesterSpy()
+    let (viewModel, settings) = makeSystemUnderTest(testerSpy: spy)
+
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    settings.modelName = "tiny"
+    try makeModelDirectory(baseDirectory: directory, modelName: "tiny")
+
+    _ = viewModel.transform(input: .init(event: .directorySelected(directory)))
+    await waitForAsyncStateUpdate()
+    await waitForAsyncStateUpdate()
+
+    #expect(viewModel.output.modelDownloadStatus == .downloaded)
   }
 }
