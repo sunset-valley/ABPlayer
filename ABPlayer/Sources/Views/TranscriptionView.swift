@@ -431,18 +431,19 @@ struct TranscriptionView: View {
       subtitle: modelName,
       progress: progress,
       showPercentage: true,
-      action: StateAction(
-        id: "transcription-cancel-button",
-        title: "Cancel",
-        systemImage: nil,
-        role: nil,
-        style: .bordered,
-        handler: {
-          transcriptionManager.cancelDownload()
-          settings.deleteDownloadCache(modelName: modelName)
-        }
+        action: StateAction(
+          id: "transcription-cancel-button",
+          title: "Cancel",
+          systemImage: nil,
+          role: nil,
+          style: .bordered,
+          handler: {
+            transcriptionManager.cancelDownload()
+            transcriptionManager.cancelTranscription()
+            settings.deleteDownloadCache(modelName: modelName)
+          }
+        )
       )
-    )
   }
 
   private func loadingModelView(modelName: String) -> some View {

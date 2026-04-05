@@ -43,9 +43,6 @@ let project = Project(
         "ABPlayer/Sources",
         "ABPlayer/Resources",
       ],
-      copyFiles: [
-        .executables(name: "ffmpeg", files: [.glob(pattern: "Binaries/ffmpeg")]),
-      ],
       dependencies: [
         .sdk(name: "AppIntents", type: .framework, status: .optional),
         .external(name: "Sentry"),
@@ -81,9 +78,6 @@ let project = Project(
       buildableFolders: [
         "ABPlayer/Sources",
         "ABPlayer/Resources",
-      ],
-      copyFiles: [
-        .executables(name: "ffmpeg", files: [.glob(pattern: "Binaries/ffmpeg")]),
       ],
       dependencies: [
         .sdk(name: "AppIntents", type: .framework, status: .optional),

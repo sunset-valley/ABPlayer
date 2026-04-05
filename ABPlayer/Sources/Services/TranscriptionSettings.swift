@@ -53,14 +53,6 @@ final class TranscriptionSettings {
     set { withMutation(keyPath: \.modelDirectory) { _modelDirectory = newValue } }
   }
 
-  /// Custom ffmpeg path (empty = auto-detect)
-  @ObservationIgnored
-  @AppStorage("transcription_ffmpeg_path") private var _ffmpegPath: String = ""
-  var ffmpegPath: String {
-    get { access(keyPath: \.ffmpegPath); return _ffmpegPath }
-    set { withMutation(keyPath: \.ffmpegPath) { _ffmpegPath = newValue } }
-  }
-
   /// Custom HuggingFace endpoint or mirror (empty = official HuggingFace)
   @ObservationIgnored
   @AppStorage("transcription_download_endpoint") private var _downloadEndpoint: String = ""
@@ -158,9 +150,11 @@ final class TranscriptionSettings {
         isDir.boolValue
       else { return false }
 
-      guard Self.detectedModelID(from: url.lastPathComponent) == modelName else {
-        return false
-      }
+      let folderName = url.lastPathComponent
+      let matchedModelID = Self.detectedModelID(from: folderName)
+      let matchesTarget = matchedModelID == modelName || folderName == modelName
+
+      guard matchesTarget else { return false }
 
       return Self.hasRequiredModelFiles(at: url, fileManager: fileManager)
     }
@@ -347,58 +341,5 @@ final class TranscriptionSettings {
     formatter.allowedUnits = [.useMB, .useGB]
     formatter.countStyle = .file
     return formatter.string(fromByteCount: bytes)
-  }
-
-  // MARK: - FFmpeg Path Management
-
-  /// Get the effective ffmpeg path (custom → bundled → system)
-  func effectiveFFmpegPath() -> String? {
-    // 1. User override
-    if !ffmpegPath.isEmpty, Self.isFFmpegValid(at: ffmpegPath) {
-      return ffmpegPath
-    }
-    // 2. Bundled binary (primary — notarization-safe)
-    if let bundledURL = Bundle.main.url(forAuxiliaryExecutable: "ffmpeg"),
-       Self.isFFmpegValid(at: bundledURL.path) {
-      return bundledURL.path
-    }
-    // 3. System install (Homebrew fallback)
-    return Self.autoDetectFFmpegPath()
-  }
-
-  /// Check if ffmpeg is valid and executable at the given path
-  static func isFFmpegValid(at path: String) -> Bool {
-    let fileManager = FileManager.default
-    var isDirectory: ObjCBool = false
-
-    guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory),
-      !isDirectory.boolValue
-    else {
-      return false
-    }
-
-    guard fileManager.isExecutableFile(atPath: path) else {
-      return false
-    }
-
-    return true
-  }
-
-  /// Auto-detect ffmpeg installation path
-  static func autoDetectFFmpegPath() -> String? {
-    let possiblePaths = [
-      "/opt/homebrew/bin/ffmpeg",
-      "/usr/local/bin/ffmpeg",
-      "/opt/local/bin/ffmpeg",
-      "/sw/bin/ffmpeg",
-    ]
-
-    for path in possiblePaths {
-      if isFFmpegValid(at: path) {
-        return path
-      }
-    }
-
-    return nil
   }
 }

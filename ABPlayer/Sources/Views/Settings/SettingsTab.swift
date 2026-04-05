@@ -20,15 +20,6 @@ enum SettingsTab: String, CaseIterable, Identifiable {
   }
 }
 
-enum FFmpegStatus {
-  case unchecked
-  case valid
-  case invalid
-  case notFound
-}
-
 enum FileImportType {
-  case ffmpegPath
   case modelDirectory
-  case libraryDirectory
 }

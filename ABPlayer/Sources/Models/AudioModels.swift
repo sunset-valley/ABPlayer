@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import SwiftData
+import UniformTypeIdentifiers
 
 enum FileType: String, Codable {
   case audio
@@ -169,11 +170,28 @@ extension ABFile {
     return FileManager.default.fileExists(atPath: url.path)
   }
 
-  static let videoExtensions: Set<String> = ["mp4", "mov", "m4v", "avi", "mkv"]
-
   static func inferFileType(from displayName: String) -> FileType {
     let ext = (displayName as NSString).pathExtension.lowercased()
-    return videoExtensions.contains(ext) ? .video : .audio
+    guard !ext.isEmpty,
+      let type = UTType(filenameExtension: ext)
+    else {
+      return .audio
+    }
+
+    return type.conforms(to: .movie) ? .video : .audio
+  }
+
+  static func inferFileType(from url: URL) -> FileType {
+    if let contentType = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType {
+      if contentType.conforms(to: .movie) {
+        return .video
+      }
+      if contentType.conforms(to: .audio) {
+        return .audio
+      }
+    }
+
+    return inferFileType(from: url.lastPathComponent)
   }
 
   var isVideo: Bool {

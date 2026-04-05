@@ -89,17 +89,6 @@ jobs:
                   mise install tuist@4.171.2
                   mise use -g tuist@4.171.2
 
-            - name: Prepare ffmpeg (ad-hoc)
-              if: steps.compare_versions.outputs.should_release == 'true'
-              run: |
-                  FFMPEG_VERSION="7.1"
-                  curl -L "https://evermeet.cx/ffmpeg/ffmpeg-${FFMPEG_VERSION}.zip" -o /tmp/ffmpeg-arm64.zip
-                  rm -rf /tmp/ffmpeg-arm64
-                  unzip -o /tmp/ffmpeg-arm64.zip ffmpeg -d /tmp/ffmpeg-arm64/
-                  mkdir -p "$WORKSPACE_DIR/Binaries"
-                  cp /tmp/ffmpeg-arm64/ffmpeg "$WORKSPACE_DIR/Binaries/ffmpeg"
-                  codesign --force --sign - "$WORKSPACE_DIR/Binaries/ffmpeg"
-
             - name: Generate Xcode Project
               if: steps.compare_versions.outputs.should_release == 'true'
               env:

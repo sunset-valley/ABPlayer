@@ -60,6 +60,7 @@ final class ImportService {
       let audioFile = ABFile(
         id: deterministicID,
         displayName: fileURL.lastPathComponent,
+        fileType: ABFile.inferFileType(from: fileURL),
         bookmarkData: bookmarkData,
         folder: targetFolder,
         relativePath: relativePath

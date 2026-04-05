@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Observation
 @preconcurrency import WhisperKit
@@ -22,9 +23,29 @@ final class TranscriptionManager {
   private let runtime = TranscriptionRuntime()
   private var loadedModelName: String?
   private var downloadTask: Task<Void, Error>?
-  var state: TranscriptionState = .idle
+  private var audioExtractionTask: Task<URL, Error>?
+  private var transcriptionTask: Task<[SubtitleCue], Error>?
+  private var cancellationRequested = false
+  private var stateObservers: [UUID: @MainActor (TranscriptionState) -> Void] = [:]
+  var state: TranscriptionState = .idle {
+    didSet {
+      notifyStateObservers()
+    }
+  }
   /// Name of the most recently failed-to-load model (corrupt/incomplete files), nil if none
   var invalidModelName: String?
+
+  @discardableResult
+  func addStateObserver(_ observer: @escaping @MainActor (TranscriptionState) -> Void) -> UUID {
+    let observerID = UUID()
+    stateObservers[observerID] = observer
+    observer(state)
+    return observerID
+  }
+
+  func removeStateObserver(_ observerID: UUID) {
+    stateObservers.removeValue(forKey: observerID)
+  }
 
   /// Whether the model is loaded and ready
   var isModelLoaded: Bool {
@@ -93,6 +114,15 @@ final class TranscriptionManager {
     state = .cancelled
   }
 
+  func cancelTranscription() {
+    cancellationRequested = true
+    transcriptionTask?.cancel()
+    transcriptionTask = nil
+    audioExtractionTask?.cancel()
+    audioExtractionTask = nil
+    state = .cancelled
+  }
+
   /// Initialize WhisperKit with the specified model and download folder
   func loadModel(
     modelName: String = "distil-large-v3",
@@ -158,8 +188,13 @@ final class TranscriptionManager {
     audioURL: URL,
     settings: TranscriptionSettings
   ) async throws -> [SubtitleCue] {
+    cancellationRequested = false
+    defer { cancellationRequested = false }
+
     let fileName = audioURL.lastPathComponent
     let runtimeConfig = RuntimeConfig(settings: settings)
+
+    try throwIfCancellationRequested()
 
     if !(await runtime.hasLoadedModel(named: runtimeConfig.modelName)) {
       do {
@@ -193,6 +228,8 @@ final class TranscriptionManager {
       }
     }
 
+    try throwIfCancellationRequested()
+
     state = .transcribing(progress: 0, fileName: fileName)
 
     var extractedWavURL: URL?
@@ -203,17 +240,33 @@ final class TranscriptionManager {
         throw TranscriptionError.accessDenied
       }
 
-      if isVideoFile(audioURL) {
-        let extractedURL = try await extractAudio(from: audioURL, ffmpegPath: runtimeConfig.ffmpegPath)
+      try throwIfCancellationRequested()
+
+      if try await shouldExtractAudio(from: audioURL) {
+        try throwIfCancellationRequested()
+        let extractedURL = try await extractAudio(from: audioURL)
         extractedWavURL = extractedURL
         workingURL = extractedURL
       }
 
-      let cues = try await runtime.transcribe(
-        audioPath: workingURL.path,
-        language: runtimeConfig.language,
-        audioFileID: audioFileID
-      )
+      try throwIfCancellationRequested()
+
+      let transcribeTask = Task { [runtime] in
+        try Task.checkCancellation()
+        return try await runtime.transcribe(
+          audioPath: workingURL.path,
+          language: runtimeConfig.language,
+          audioFileID: audioFileID
+        )
+      }
+      transcriptionTask = transcribeTask
+      defer { transcriptionTask = nil }
+
+      let cues = try await withTaskCancellationHandler {
+        try await transcribeTask.value
+      } onCancel: {
+        transcribeTask.cancel()
+      }
 
       audioURL.stopAccessingSecurityScopedResource()
 
@@ -228,6 +281,7 @@ final class TranscriptionManager {
       if let wavURL = extractedWavURL {
         try? FileManager.default.removeItem(at: wavURL)
       }
+      state = .cancelled
       throw CancellationError()
     } catch {
       audioURL.stopAccessingSecurityScopedResource()
@@ -241,76 +295,194 @@ final class TranscriptionManager {
 
   /// Reset state to idle
   func reset() {
+    cancellationRequested = false
+    downloadTask?.cancel()
+    downloadTask = nil
+    transcriptionTask?.cancel()
+    transcriptionTask = nil
+    audioExtractionTask?.cancel()
+    audioExtractionTask = nil
     state = .idle
   }
 
   // MARK: - Audio Extraction
 
-  private func extractAudio(from videoURL: URL, ffmpegPath: String?) async throws -> URL {
-    let fileName = videoURL.lastPathComponent
+  private func extractAudio(from mediaURL: URL) async throws -> URL {
+    let fileName = mediaURL.lastPathComponent
     state = .extractingAudio(progress: 0, fileName: fileName)
 
     let tempDir = FileManager.default.temporaryDirectory
-    let wavFileName = videoURL.deletingPathExtension().lastPathComponent + "_extracted.wav"
+    let wavFileName = mediaURL.deletingPathExtension().lastPathComponent + "_extracted.wav"
     let wavURL = tempDir.appendingPathComponent(wavFileName)
 
     try? FileManager.default.removeItem(at: wavURL)
 
-    guard let ffmpegPath else {
-      throw TranscriptionError.audioExtractionFailed(
-        "FFmpeg not found. Please install FFmpeg or configure the path in Settings."
-      )
-    }
+    let extractionTask = Task.detached(priority: .background) {
+      try Task.checkCancellation()
 
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: ffmpegPath)
-    process.arguments = [
-      "-i", videoURL.path,
-      "-vn",
-      "-ar", "16000",
-      "-ac", "1",
-      "-c:a", "pcm_s16le",
-      "-y",
-      wavURL.path,
-    ]
+      let asset = AVURLAsset(url: mediaURL)
+      let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+      guard let audioTrack = audioTracks.first else {
+        throw TranscriptionError.audioExtractionFailed("No audio track found in media file")
+      }
 
-    let errorPipe = Pipe()
-    process.standardError = errorPipe
-    process.standardOutput = Pipe()
+      let outputSettings: [String: Any] = [
+        AVFormatIDKey: kAudioFormatLinearPCM,
+        AVSampleRateKey: 16000,
+        AVNumberOfChannelsKey: 1,
+        AVLinearPCMBitDepthKey: 16,
+        AVLinearPCMIsBigEndianKey: false,
+        AVLinearPCMIsFloatKey: false,
+        AVLinearPCMIsNonInterleaved: false,
+      ]
 
-    return try await withCheckedThrowingContinuation { continuation in
-      Task.detached {
-        do {
-          try process.run()
-          process.waitUntilExit()
+      let reader = try AVAssetReader(asset: asset)
+      let trackOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: outputSettings)
+      trackOutput.alwaysCopiesSampleData = false
 
-          let exitCode = process.terminationStatus
-          if exitCode == 0 {
-            await MainActor.run {
-              self.state = .extractingAudio(progress: 1.0, fileName: fileName)
-            }
-            continuation.resume(returning: wavURL)
-          } else {
-            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"
-            continuation.resume(
-              throwing: TranscriptionError.audioExtractionFailed(
-                "ffmpeg failed with code \(exitCode): \(errorMessage)"
+      guard reader.canAdd(trackOutput) else {
+        throw TranscriptionError.audioExtractionFailed("Cannot read audio track")
+      }
+      reader.add(trackOutput)
+
+      guard reader.startReading() else {
+        let reason = reader.error?.localizedDescription ?? "Unknown reader error"
+        throw TranscriptionError.audioExtractionFailed("Failed to start reading audio: \(reason)")
+      }
+
+      do {
+        var outputFile: AVAudioFile?
+        var wroteSamples = false
+        var processedBufferCount = 0
+        var pendingBuffers: [AVAudioPCMBuffer] = []
+        pendingBuffers.reserveCapacity(8)
+
+        func flushPendingBuffers() throws {
+          for buffer in pendingBuffers {
+            if outputFile == nil {
+              outputFile = try AVAudioFile(
+                forWriting: wavURL,
+                settings: buffer.format.settings,
+                commonFormat: buffer.format.commonFormat,
+                interleaved: buffer.format.isInterleaved
               )
-            )
+            }
+
+            if buffer.frameLength > 0 {
+              try outputFile?.write(from: buffer)
+              wroteSamples = true
+            }
           }
-        } catch {
-          continuation.resume(throwing: error)
+          pendingBuffers.removeAll(keepingCapacity: true)
         }
+
+        while let sampleBuffer = trackOutput.copyNextSampleBuffer() {
+          try Task.checkCancellation()
+          processedBufferCount += 1
+
+          guard let pcmBuffer = Self.makePCMBuffer(from: sampleBuffer) else {
+            continue
+          }
+
+          pendingBuffers.append(pcmBuffer)
+
+          if pendingBuffers.count >= 8 {
+            try flushPendingBuffers()
+            await Task.yield()
+          } else if processedBufferCount.isMultiple(of: 16) {
+            await Task.yield()
+          }
+        }
+
+        if !pendingBuffers.isEmpty {
+          try flushPendingBuffers()
+        }
+
+        if reader.status == .failed {
+          let reason = reader.error?.localizedDescription ?? "Unknown reader failure"
+          throw TranscriptionError.audioExtractionFailed("Audio reading failed: \(reason)")
+        }
+
+        guard wroteSamples else {
+          throw TranscriptionError.audioExtractionFailed("No audio samples were extracted")
+        }
+
+        return wavURL
+      } catch is CancellationError {
+        reader.cancelReading()
+        throw CancellationError()
       }
     }
+
+    audioExtractionTask = extractionTask
+    defer { audioExtractionTask = nil }
+
+    let extractedURL = try await withTaskCancellationHandler {
+      try await extractionTask.value
+    } onCancel: {
+      extractionTask.cancel()
+    }
+
+    state = .extractingAudio(progress: 1.0, fileName: fileName)
+    return extractedURL
   }
 
-  private func isVideoFile(_ url: URL) -> Bool {
-    let videoExtensions: Set<String> = ["mp4", "mov", "m4v", "avi", "mkv", "webm"]
-    return videoExtensions.contains(url.pathExtension.lowercased())
+  private func throwIfCancellationRequested() throws {
+    if cancellationRequested {
+      throw CancellationError()
+    }
   }
 
+  private func notifyStateObservers() {
+    let currentState = state
+    for observer in stateObservers.values {
+      observer(currentState)
+    }
+  }
+
+  private func shouldExtractAudio(from mediaURL: URL) async throws -> Bool {
+    let asset = AVURLAsset(url: mediaURL)
+    let videoTracks = try await asset.loadTracks(withMediaType: .video)
+    return !videoTracks.isEmpty
+  }
+
+  private nonisolated static func makePCMBuffer(from sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {
+    guard let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer),
+          let streamDescriptionPointer = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription)
+    else {
+      return nil
+    }
+
+    var streamDescription = streamDescriptionPointer.pointee
+    guard let format = AVAudioFormat(streamDescription: &streamDescription) else {
+      return nil
+    }
+
+    let sampleCount = CMSampleBufferGetNumSamples(sampleBuffer)
+    guard sampleCount > 0,
+          let pcmBuffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: AVAudioFrameCount(sampleCount)
+          )
+    else {
+      return nil
+    }
+
+    pcmBuffer.frameLength = AVAudioFrameCount(sampleCount)
+
+    let status = CMSampleBufferCopyPCMDataIntoAudioBufferList(
+      sampleBuffer,
+      at: 0,
+      frameCount: Int32(sampleCount),
+      into: pcmBuffer.mutableAudioBufferList
+    )
+
+    guard status == 0 else {
+      return nil
+    }
+
+    return pcmBuffer
+  }
 }
 
 private extension TranscriptionManager {
@@ -319,7 +491,6 @@ private extension TranscriptionManager {
     let downloadBase: URL
     let endpoint: String
     let language: String?
-    let ffmpegPath: String?
 
     @MainActor
     init(settings: TranscriptionSettings) {
@@ -327,7 +498,6 @@ private extension TranscriptionManager {
       downloadBase = settings.modelDirectoryURL
       endpoint = settings.effectiveDownloadEndpoint
       language = settings.language == "auto" ? nil : settings.language
-      ffmpegPath = settings.effectiveFFmpegPath()
     }
   }
 }
@@ -383,7 +553,7 @@ private actor TranscriptionRuntime {
         let cleanedText = Self.cleanTranscriptionText(segment.text)
 
         guard !cleanedText.isEmpty,
-          segment.end > segment.start
+              segment.end > segment.start
         else {
           return nil
         }
@@ -438,13 +608,23 @@ private actor TranscriptionRuntime {
     let knownModels = TranscriptionSettings.availableModels.map(\.id)
       .sorted { $0.count > $1.count }
 
-    return contents.first { url in
+    let matchedByModelID = contents.first { url in
       let folderName = url.lastPathComponent
       guard let bestMatch = knownModels.first(where: { folderName.contains($0) }) else {
         return false
       }
       return bestMatch == modelName
-    }?.path
+    }
+
+    if let matchedByModelID {
+      return matchedByModelID.path
+    }
+
+    let fallbackByExactName = contents.first { url in
+      url.lastPathComponent == modelName
+    }
+
+    return fallbackByExactName?.path
   }
 }
 
