@@ -17,9 +17,6 @@ struct MainSplitPaneContentView: View {
 
       case .transcription:
         TranscriptionView(audioFile: audioFile)
-          .resizePlaceholder {
-            transcriptionDragPlaceholder
-          }
 
       case .pdf:
         #if os(macOS)
