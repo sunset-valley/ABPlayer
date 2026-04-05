@@ -1,3 +1,15 @@
+## [0.4.2.131] - 2026-04-05
+
+### Features
+- add new landing page
+
+### Improvements
+- remove resize placeholder wrapper
+
+### Other
+- rename LandingPage
+
+
 ## [0.4.1.130] - 2026-04-05
 
 ### Bug Fixes
