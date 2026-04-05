@@ -60,18 +60,9 @@ ABPlayer is distributed outside the Mac App Store via Developer ID signing and N
 
 ## TODO: Medium-Priority Issues (UX / future hardening)
 
-- [ ] **Address FFmpeg runtime download and execution**
-  - The app downloads `ffmpeg` from `evermeet.cx` at runtime, writes it to `~/.abplayer/bin/`, sets `0o755`, and runs it via `Process()`.
-  - On macOS Ventura+, Gatekeeper will quarantine unsigned downloaded executables. Users will see a system security dialog on first run.
-  - Options (choose one):
-    1. Bundle a pre-signed, pre-notarized `ffmpeg` binary inside `ABPlayer.app/Contents/Resources/`.
-    2. Guide users to install via Homebrew and detect it at the standard paths (already supported: `/opt/homebrew/bin/ffmpeg`, `/usr/local/bin/ffmpeg`).
-    3. Download and immediately run `xattr -d com.apple.quarantine` — fragile and requires entitlement.
-  - Option 2 is the lowest-effort path if FFmpeg bundling is too large.
-
-- [ ] **Validate custom download endpoints**
-  - `transcription_download_endpoint` (UserDefaults) and the FFmpeg mirror URL are user-configurable.
-  - Currently no URL validation; a malicious or misconfigured value could redirect model/binary downloads.
+- [ ] **Validate custom transcription download endpoints**
+  - `transcription_download_endpoint` (UserDefaults) is user-configurable.
+  - Currently no URL validation; a malicious or misconfigured value could redirect model downloads to untrusted infrastructure.
   - Add a domain allowlist or at minimum enforce HTTPS scheme before use.
 
 ---
@@ -86,7 +77,6 @@ ABPlayer is distributed outside the Mac App Store via Developer ID signing and N
 | No `PrivacyInfo.xcprivacy` | — | App Store rejection; expected for all distributions |
 | ATS HTTP exception | `Project.swift:31` | Notarization flag; potential MITM on update feed |
 | `sendDefaultPii = true` | `ABPlayerApp.swift:163` | PII data sent to US servers without explicit disclosure |
-| FFmpeg runtime download | Services layer | Gatekeeper quarantine dialog on first run |
 | Unconstrained custom endpoints | UserDefaults | Open redirect to untrusted sources |
 
 ---

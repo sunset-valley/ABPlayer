@@ -3,6 +3,7 @@ name: Beta
 on:
     push:
         branches: [main]
+    workflow_dispatch:
 
 jobs:
     beta:
@@ -100,8 +101,45 @@ jobs:
                   tuist generate
                   echo "Generated Xcode project"
 
-            - name: Build App
+            - name: Import Signing Certificate
               if: steps.compare_versions.outputs.should_release == 'true'
+              env:
+                  APPLE_SIGNING_CERTIFICATE: ${{ secrets.APPLE_SIGNING_CERTIFICATE }}
+                  APPLE_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_SIGNING_CERTIFICATE_PASSWORD }}
+              run: |
+                  KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+                  KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+                  CERT_PATH="$RUNNER_TEMP/apple_signing_certificate.p12"
+
+                  printf "%s" "$APPLE_SIGNING_CERTIFICATE" | base64 --decode > "$CERT_PATH" 2>/dev/null || printf "%s" "$APPLE_SIGNING_CERTIFICATE" | base64 -D > "$CERT_PATH"
+
+                  security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+                  security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+                  security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+                  security list-keychains -d user -s "$KEYCHAIN_PATH"
+                  security default-keychain -d user -s "$KEYCHAIN_PATH"
+
+                  security import "$CERT_PATH" \
+                    -k "$KEYCHAIN_PATH" \
+                    -P "$APPLE_SIGNING_CERTIFICATE_PASSWORD" \
+                    -T /usr/bin/codesign \
+                    -T /usr/bin/security \
+                    -T /usr/bin/xcodebuild
+
+                  security set-key-partition-list \
+                    -S apple-tool:,apple:,codesign: \
+                    -s \
+                    -k "$KEYCHAIN_PASSWORD" \
+                    "$KEYCHAIN_PATH"
+
+                  security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+                  echo "APPLE_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+            - name: Build Signed App
+              if: steps.compare_versions.outputs.should_release == 'true'
+              env:
+                  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
               run: |
                   xcodebuild build \
                     -workspace "$WORKSPACE_DIR/ABPlayer.xcworkspace" \
@@ -109,15 +147,42 @@ jobs:
                     -configuration Release \
                     -destination 'platform=macOS' \
                     -derivedDataPath "$DERIVED_DATA_DIR" \
-                    CODE_SIGNING_REQUIRED=NO \
-                    CODE_SIGNING_ALLOWED=NO \
-                    CODE_SIGN_IDENTITY="-"
+                    CODE_SIGN_STYLE=Manual \
+                    CODE_SIGN_IDENTITY="Developer ID Application" \
+                    DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+                    ENABLE_HARDENED_RUNTIME=YES \
+                    OTHER_CODE_SIGN_FLAGS="--keychain $APPLE_KEYCHAIN_PATH"
 
-            - name: Ad-hoc Sign App Bundle
+            - name: Verify Signed App Bundle
               if: steps.compare_versions.outputs.should_release == 'true'
               run: |
-                  codesign --force --deep --sign - "$RELEASE_DIR/ABPlayer.app"
                   codesign --verify --deep --strict --verbose=2 "$RELEASE_DIR/ABPlayer.app"
+                  codesign -dv --verbose=4 "$RELEASE_DIR/ABPlayer.app"
+
+            - name: Notarize App Bundle
+              if: steps.compare_versions.outputs.should_release == 'true'
+              env:
+                  APPLE_ID: ${{ secrets.APPLE_ID }}
+                  APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+                  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+              run: |
+                  SUBMIT_ZIP="$RELEASE_DIR/ABPlayer-notarize.zip"
+
+                  rm -f "$SUBMIT_ZIP"
+                  ditto -c -k --sequesterRsrc --keepParent "$RELEASE_DIR/ABPlayer.app" "$SUBMIT_ZIP"
+
+                  xcrun notarytool submit "$SUBMIT_ZIP" \
+                    --apple-id "$APPLE_ID" \
+                    --password "$APPLE_ID_PASSWORD" \
+                    --team-id "$APPLE_TEAM_ID" \
+                    --wait
+
+            - name: Staple Notarization Ticket
+              if: steps.compare_versions.outputs.should_release == 'true'
+              run: |
+                  xcrun stapler staple "$RELEASE_DIR/ABPlayer.app"
+                  xcrun stapler validate "$RELEASE_DIR/ABPlayer.app"
+                  spctl --assess --type execute --verbose=4 "$RELEASE_DIR/ABPlayer.app"
 
             - name: Prepare Release Artifact
               if: steps.compare_versions.outputs.should_release == 'true'
@@ -126,7 +191,7 @@ jobs:
               run: |
                   cd "$RELEASE_DIR"
 
-                  ditto -c -k --keepParent ABPlayer.app ABPlayer.zip
+                  ditto -c -k --sequesterRsrc --keepParent ABPlayer.app ABPlayer.zip
 
                   echo "$SPARKLE_PRIVATE_KEY" > sparkle_key
 
@@ -143,6 +208,7 @@ jobs:
                   fi
 
                   rm sparkle_key
+                  rm -f ABPlayer-notarize.zip
 
                   mv ABPlayer.zip "$WORKSPACE_DIR/"
                   mv appcast.xml "$WORKSPACE_DIR/"
@@ -233,3 +299,9 @@ jobs:
                   VERSION="${{ steps.get_version.outputs.version }}"
                   MESSAGE="Beta Build: $VERSION"
                   curl -s -X POST https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage -d chat_id=$TELEGRAM_TO -d text="$MESSAGE"
+
+            - name: Cleanup Signing Material
+              if: always() && steps.compare_versions.outputs.should_release == 'true'
+              run: |
+                  rm -f "$RUNNER_TEMP/apple_signing_certificate.p12"
+                  security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true

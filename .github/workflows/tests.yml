@@ -35,14 +35,6 @@ jobs:
                   mise install tuist@4.171.2
                   mise use -g tuist@4.171.2
 
-            # ffmpeg binary is not committed; compile a minimal Mach-O placeholder
-            # and ad-hoc sign it so the app bundle deep-sign succeeds during tests.
-            - name: Create placeholder ffmpeg for tests
-              run: |
-                  mkdir -p Binaries
-                  echo 'int main(){return 0;}' | cc -x c - -o Binaries/ffmpeg
-                  codesign --force --sign - Binaries/ffmpeg
-
             - name: Generate Xcode Project
               env:
                   TUIST_CONFIG_TOKEN: ${{ secrets.TUIST_CONFIG_TOKEN }}
