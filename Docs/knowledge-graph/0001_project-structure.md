@@ -136,14 +136,14 @@ User trigger → TranscriptionQueueManager.enqueue(audioFile)
   → processQueue() (one task at a time)
     → TranscriptionManager.transcribe(audioURL, settings)
       → download model if needed (progress tracking)
-      → extract audio for video files (FFmpeg)
+      → extract audio for video files in-process (AVAssetReader -> WAV)
       → WhisperKit.transcribe() → [TranscriptionResult]
       → map to [SubtitleCue]
     → write .srt file + upsert Transcription record
   → UI observes task status changes
 ```
 
-`TranscriptionSettings` configures model selection (tiny→large-v3), language, download endpoint (official/HuggingFace mirror), and FFmpeg path.
+`TranscriptionSettings` configures model selection (tiny→large-v3), language, model directory, auto-transcribe, pause-after-lookup behavior, and download endpoint (official/HuggingFace mirror/custom). For the current media extraction details, see [0010_transcription-media-extraction.md](./0010_transcription-media-extraction.md).
 
 #### 3. Subtitle Display
 
