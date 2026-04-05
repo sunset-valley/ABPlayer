@@ -242,6 +242,10 @@ jobs:
               run: |
                   cd "$RELEASE_DIR"
 
+                  # generate_appcast scans the whole directory and rejects duplicate
+                  # archives with the same bundle version.
+                  rm -f ABPlayer-notarize.zip
+
                   ditto -c -k --sequesterRsrc --keepParent ABPlayer.app ABPlayer.zip
 
                   echo "$SPARKLE_PRIVATE_KEY" > sparkle_key
@@ -259,8 +263,6 @@ jobs:
                   fi
 
                   rm sparkle_key
-                  rm -f ABPlayer-notarize.zip
-
                   mv ABPlayer.zip "$WORKSPACE_DIR/"
                   mv appcast.xml "$WORKSPACE_DIR/"
 
