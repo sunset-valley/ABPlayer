@@ -171,18 +171,46 @@ jobs:
                   rm -f "$SUBMIT_ZIP"
                   ditto -c -k --sequesterRsrc --keepParent "$RELEASE_DIR/ABPlayer.app" "$SUBMIT_ZIP"
 
-                  xcrun notarytool submit "$SUBMIT_ZIP" \
+                  NOTARY_OUTPUT=$(xcrun notarytool submit "$SUBMIT_ZIP" \
                     --apple-id "$APPLE_ID" \
                     --password "$APPLE_ID_PASSWORD" \
                     --team-id "$APPLE_TEAM_ID" \
-                    --wait
+                    --wait \
+                    --output-format json)
+
+                  echo "$NOTARY_OUTPUT"
+
+                  NOTARY_SUBMISSION_ID=$(echo "$NOTARY_OUTPUT" | jq -r '.id // empty')
+                  NOTARY_STATUS=$(echo "$NOTARY_OUTPUT" | jq -r '.status // empty')
+
+                  if [ "$NOTARY_STATUS" != "Accepted" ]; then
+                    echo "Notarization status is '$NOTARY_STATUS'"
+                    if [ -n "$NOTARY_SUBMISSION_ID" ]; then
+                      xcrun notarytool log "$NOTARY_SUBMISSION_ID" \
+                        --apple-id "$APPLE_ID" \
+                        --password "$APPLE_ID_PASSWORD" \
+                        --team-id "$APPLE_TEAM_ID" || true
+                    fi
+                    exit 1
+                  fi
+
+                  echo "NOTARY_SUBMISSION_ID=$NOTARY_SUBMISSION_ID" >> "$GITHUB_ENV"
 
             - name: Staple Notarization Ticket
               if: steps.compare_versions.outputs.should_release == 'true'
               run: |
-                  xcrun stapler staple "$RELEASE_DIR/ABPlayer.app"
-                  xcrun stapler validate "$RELEASE_DIR/ABPlayer.app"
-                  spctl --assess --type execute --verbose=4 "$RELEASE_DIR/ABPlayer.app"
+                  for attempt in {1..6}; do
+                    if xcrun stapler staple "$RELEASE_DIR/ABPlayer.app" && xcrun stapler validate "$RELEASE_DIR/ABPlayer.app"; then
+                      spctl --assess --type execute --verbose=4 "$RELEASE_DIR/ABPlayer.app"
+                      exit 0
+                    fi
+
+                    echo "Stapling not ready yet (attempt $attempt/6), retrying..."
+                    sleep $((attempt * 20))
+                  done
+
+                  echo "Failed to staple notarization ticket after retries"
+                  exit 1
 
             - name: Prepare Release Artifact
               if: steps.compare_versions.outputs.should_release == 'true'
