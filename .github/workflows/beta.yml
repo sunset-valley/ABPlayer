@@ -140,7 +140,13 @@ jobs:
               if: steps.compare_versions.outputs.should_release == 'true'
               env:
                   APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+                  SIGN_CERT_NAME: ${{ secrets.SIGN_CERT_NAME }}
               run: |
+                  if [ -z "$SIGN_CERT_NAME" ]; then
+                    echo "Missing SIGN_CERT_NAME secret"
+                    exit 1
+                  fi
+
                   xcodebuild build \
                     -workspace "$WORKSPACE_DIR/ABPlayer.xcworkspace" \
                     -scheme ABPlayer \
@@ -148,16 +154,33 @@ jobs:
                     -destination 'platform=macOS' \
                     -derivedDataPath "$DERIVED_DATA_DIR" \
                     CODE_SIGN_STYLE=Manual \
-                    CODE_SIGN_IDENTITY="Developer ID Application" \
+                    CODE_SIGN_IDENTITY="$SIGN_CERT_NAME" \
                     DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
                     ENABLE_HARDENED_RUNTIME=YES \
                     OTHER_CODE_SIGN_FLAGS="--keychain $APPLE_KEYCHAIN_PATH"
+
+            - name: Re-sign App Bundle For Notarization
+              if: steps.compare_versions.outputs.should_release == 'true'
+              env:
+                  SIGN_CERT_NAME: ${{ secrets.SIGN_CERT_NAME }}
+              run: |
+                  if [ -z "$SIGN_CERT_NAME" ]; then
+                    echo "Missing SIGN_CERT_NAME secret"
+                    exit 1
+                  fi
+
+                  xcrun codesign --deep --force --verify --verbose \
+                    --sign "$SIGN_CERT_NAME" \
+                    --options runtime \
+                    --timestamp \
+                    "$RELEASE_DIR/ABPlayer.app"
 
             - name: Verify Signed App Bundle
               if: steps.compare_versions.outputs.should_release == 'true'
               run: |
                   codesign --verify --deep --strict --verbose=2 "$RELEASE_DIR/ABPlayer.app"
                   codesign -dv --verbose=4 "$RELEASE_DIR/ABPlayer.app"
+                  codesign -dv --verbose=4 "$RELEASE_DIR/ABPlayer.app/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Installer.xpc/Contents/MacOS/Installer"
 
             - name: Notarize App Bundle
               if: steps.compare_versions.outputs.should_release == 'true'
