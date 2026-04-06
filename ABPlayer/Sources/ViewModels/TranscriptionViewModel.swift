@@ -1,5 +1,4 @@
 import Foundation
-import OSLog
 import SwiftData
 import SwiftUI
 import Observation
@@ -80,21 +79,24 @@ final class TranscriptionViewModel {
   
   func loadCachedTranscription() async {
     guard let audioFile = audioFile, let subtitleLoader = subtitleLoader else { return }
-    
+
     loadCachedTask?.cancel()
-    loadCachedTask = Task {
+    let task = Task { [audioFile, subtitleLoader] in
       isLoadingCache = true
       defer { isLoadingCache = false }
 
-      // Artificial delay for smooth UI if needed, or remove
       try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
       guard !Task.isCancelled else { return }
 
-      // Load subtitles from file using SubtitleLoader
       let cues = await subtitleLoader.loadSubtitles(for: audioFile)
+      guard !Task.isCancelled else { return }
+
       cachedCues = cues
       hasCheckedCache = true
     }
+
+    loadCachedTask = task
+    await task.value
   }
   
   func startTranscription() {
@@ -107,38 +109,21 @@ final class TranscriptionViewModel {
     // Enqueue the transcription task
     queueManager.enqueue(audioFile: audioFile)
   }
+
+  func retryTranscriptionFromStart() {
+    guard let audioFile = audioFile, let queueManager = queueManager, let modelContext = modelContext else {
+      return
+    }
+
+    if queueManager.modelContext == nil {
+      queueManager.modelContext = modelContext
+    }
+
+    queueManager.enqueue(audioFile: audioFile, forceTranscription: true)
+  }
   
   func clearAndRetranscribe() async {
-    guard let audioFile = audioFile, let modelContext = modelContext else { return }
-    
-    let audioFileId = audioFile.id.uuidString
-    let descriptor = FetchDescriptor<Transcription>(
-      predicate: #Predicate { $0.audioFileId == audioFileId }
-    )
-
-    if let existing = try? modelContext.fetch(descriptor).first {
-      modelContext.delete(existing)
-      do {
-        try modelContext.save()
-      } catch {
-        Logger.data.error("⚠️ Failed to delete transcription cache: \(error.localizedDescription)")
-      }
-    }
-
-    if let srtURL = audioFile.srtFileURL {
-      withSecurityScopedAccess(to: audioFile.bookmarkData) {
-        do {
-          try FileManager.default.removeItem(at: srtURL)
-        } catch {
-          Logger.data.error("⚠️ Failed to remove SRT file at \(srtURL.path): \(error.localizedDescription)")
-        }
-      }
-    }
-    audioFile.hasTranscriptionRecord = false
-
-    // Reset state and start fresh transcription
-    resetState()
-    startTranscription()
+    retryTranscriptionFromStart()
   }
 
   func updateSubtitle(cueID: UUID, subtitle: String) async {
@@ -153,42 +138,4 @@ final class TranscriptionViewModel {
     }
   }
 
-  private func withSecurityScopedAccess(to bookmarkData: Data, _ body: () -> Void) {
-    guard let audioURL = resolveURL(from: bookmarkData) else { return }
-
-    let gotAccess = audioURL.startAccessingSecurityScopedResource()
-    defer {
-      if gotAccess {
-        audioURL.stopAccessingSecurityScopedResource()
-      }
-    }
-
-    body()
-  }
-
-  private func resolveURL(from bookmarkData: Data) -> URL? {
-    var isStale = false
-
-    if let scopedURL = try? URL(
-      resolvingBookmarkData: bookmarkData,
-      options: [.withSecurityScope],
-      relativeTo: nil,
-      bookmarkDataIsStale: &isStale
-    ) {
-      return scopedURL
-    }
-
-    if let legacyURL = try? URL(
-      resolvingBookmarkData: bookmarkData,
-      options: [],
-      relativeTo: nil,
-      bookmarkDataIsStale: &isStale
-    ) {
-      return legacyURL
-    }
-
-    Logger.data.error("⚠️ Failed to resolve bookmark URL")
-    return nil
-  }
-  
 }

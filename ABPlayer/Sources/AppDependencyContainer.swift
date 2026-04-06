@@ -101,7 +101,8 @@ final class AppDependencyContainer {
 
     let queueManager = TranscriptionQueueManager(
       transcriptionManager: transcriptionManager,
-      settings: transcriptionSettings
+      settings: transcriptionSettings,
+      subtitleLoader: subtitleLoader
     )
     queueManager.modelContext = modelContainer.mainContext
     playerManager.playerSettings = playerSettings

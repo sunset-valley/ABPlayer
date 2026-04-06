@@ -113,6 +113,7 @@ struct TranscriptionSettingsView: View {
               .foregroundStyle(.green)
             Text("Downloaded")
               .foregroundStyle(.secondary)
+              .accessibilityIdentifier("transcription-model-status-downloaded")
           }
         } else {
           Button {
@@ -123,6 +124,7 @@ struct TranscriptionSettingsView: View {
               Text("Download")
             }
           }
+          .accessibilityIdentifier("transcription-model-status-download-button")
           .buttonStyle(.borderedProminent)
           .controlSize(.small)
         }

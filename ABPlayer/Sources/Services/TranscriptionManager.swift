@@ -131,8 +131,9 @@ final class TranscriptionManager {
     downloadBase: URL,
     endpoint: String
   ) async throws {
-    if await runtime.hasLoadedModel(named: modelName) {
+    if await runtime.hasLoadedModel(named: modelName, downloadBase: downloadBase) {
       loadedModelName = modelName
+      invalidModelName = nil
       return
     }
 
@@ -166,8 +167,9 @@ final class TranscriptionManager {
     downloadBase: URL,
     endpoint: String
   ) async throws -> Bool {
-    if await runtime.hasLoadedModel(named: modelName) {
+    if await runtime.hasLoadedModel(named: modelName, downloadBase: downloadBase) {
       loadedModelName = modelName
+      invalidModelName = nil
       return true
     }
     do {
@@ -198,7 +200,7 @@ final class TranscriptionManager {
 
     try throwIfCancellationRequested()
 
-    if !(await runtime.hasLoadedModel(named: runtimeConfig.modelName)) {
+    if !(await runtime.hasLoadedModel(named: runtimeConfig.modelName, downloadBase: runtimeConfig.downloadBase)) {
       do {
         try await loadModel(
           modelName: runtimeConfig.modelName,
@@ -233,7 +235,6 @@ final class TranscriptionManager {
     try throwIfCancellationRequested()
 
     lastPublishedTranscriptionProgressPercent = 0
-    state = .transcribing(progress: 0, fileName: fileName)
 
     var extractedWavURL: URL?
     var workingURL = audioURL
@@ -253,6 +254,7 @@ final class TranscriptionManager {
       }
 
       try throwIfCancellationRequested()
+      state = .transcribing(progress: 0, fileName: fileName)
 
       let transcribeTask = Task { [runtime] in
         try Task.checkCancellation()
@@ -315,6 +317,15 @@ final class TranscriptionManager {
     audioExtractionTask = nil
     lastPublishedTranscriptionProgressPercent = nil
     state = .idle
+  }
+
+  /// Invalidate runtime cache so next load uses latest model/directory settings
+  func invalidateLoadedModel() {
+    loadedModelName = nil
+    invalidModelName = nil
+    Task {
+      await runtime.invalidateLoadedModel()
+    }
   }
 
   // MARK: - Audio Extraction
@@ -542,6 +553,7 @@ private extension TranscriptionManager {
 private actor TranscriptionRuntime {
   private var whisperKit: WhisperKit?
   private var loadedModelName: String?
+  private var loadedModelDirectoryPath: String?
 
   private final class ProgressRelay: @unchecked Sendable {
     private let lock = NSLock()
@@ -563,8 +575,11 @@ private actor TranscriptionRuntime {
     }
   }
 
-  func hasLoadedModel(named modelName: String) -> Bool {
-    whisperKit != nil && loadedModelName == modelName
+  func hasLoadedModel(named modelName: String, downloadBase: URL) -> Bool {
+    let normalizedBasePath = downloadBase.standardizedFileURL.path
+    return whisperKit != nil
+      && loadedModelName == modelName
+      && loadedModelDirectoryPath == normalizedBasePath
   }
 
   func loadModel(
@@ -572,7 +587,11 @@ private actor TranscriptionRuntime {
     downloadBase: URL,
     endpoint: String
   ) async throws {
-    if whisperKit != nil, loadedModelName == modelName {
+    let normalizedBasePath = downloadBase.standardizedFileURL.path
+    if whisperKit != nil,
+      loadedModelName == modelName,
+      loadedModelDirectoryPath == normalizedBasePath
+    {
       return
     }
 
@@ -585,8 +604,22 @@ private actor TranscriptionRuntime {
       download: false
     )
 
-    whisperKit = try await WhisperKit(config)
-    loadedModelName = modelName
+    do {
+      whisperKit = try await WhisperKit(config)
+      loadedModelName = modelName
+      loadedModelDirectoryPath = normalizedBasePath
+    } catch {
+      whisperKit = nil
+      loadedModelName = nil
+      loadedModelDirectoryPath = nil
+      throw error
+    }
+  }
+
+  func invalidateLoadedModel() {
+    whisperKit = nil
+    loadedModelName = nil
+    loadedModelDirectoryPath = nil
   }
 
   func transcribe(

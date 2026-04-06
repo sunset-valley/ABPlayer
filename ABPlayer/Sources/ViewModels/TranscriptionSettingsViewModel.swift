@@ -127,6 +127,7 @@ final class TranscriptionSettingsViewModel {
         modelEndpointTestStatus = .idle
       }
     case .modelNameChanged:
+      transcriptionManager?.invalidateLoadedModel()
       checkAndRefreshModels()
     case .mirrorSelectionChanged(let mirror):
       handleMirrorChange(mirror)
@@ -241,7 +242,8 @@ final class TranscriptionSettingsViewModel {
     }
 
     settings.modelDirectory = newPath
-    refreshModels()
+    transcriptionManager?.invalidateLoadedModel()
+    checkAndRefreshModels()
   }
 
   private func migrateModels(from oldPath: String, to newPath: String) {
@@ -259,7 +261,7 @@ final class TranscriptionSettingsViewModel {
         self.migrationError = "Failed to migrate models: \(error.localizedDescription)"
       }
       self.isMigrating = false
-      self.refreshModels()
+      self.checkAndRefreshModels()
       self.updateOutput()
     }
   }

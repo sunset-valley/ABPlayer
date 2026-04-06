@@ -1,3 +1,9 @@
+## [0.4.3.132] - 2026-04-05
+
+### Bug Fixes
+- harden retry and subtitle commit flow
+
+
 ## [0.4.2.131] - 2026-04-05
 
 ### Features
