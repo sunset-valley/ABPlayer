@@ -1,3 +1,13 @@
+## [0.4.4.133] - 2026-04-06
+
+### Bug Fixes
+- show play/pause HUD before toggle and trim agent guide
+- prevent screen sleep during playback
+
+### Other
+- add working philosophy
+
+
 ## [0.4.3.132] - 2026-04-05
 
 ### Bug Fixes
