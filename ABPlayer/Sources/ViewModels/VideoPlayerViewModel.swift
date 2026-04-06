@@ -44,6 +44,11 @@ final class VideoPlayerViewModel: BasePlayerViewModel {
     showHUDMessage("+ 10s")
   }
 
+  func showPlayPauseHUD() {
+    let message = (playerManager?.isPlaying ?? false) ? "Pause" : "Play"
+    showHUDMessage(message)
+  }
+
   // MARK: - HUD
 
   func showHUDMessage(_ message: String) {

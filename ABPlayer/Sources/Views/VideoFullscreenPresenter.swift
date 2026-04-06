@@ -120,11 +120,9 @@ private struct FullscreenVideoContent: View {
       pendingSingleTap = Task { @MainActor in
         try? await Task.sleep(for: .milliseconds(300))
         guard !Task.isCancelled else { return }
+        showHUD(playerManager.isPlaying ? "pause.fill" : "play.fill")
         onSingleTap()
       }
-    }
-    .onChange(of: playerManager.isPlaying) { _, isPlaying in
-      showHUD(isPlaying ? "play.fill" : "pause.fill")
     }
   }
 
