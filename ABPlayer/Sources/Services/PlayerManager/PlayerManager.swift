@@ -52,6 +52,10 @@ final class PlayerManager {
   private var playbackTimeObservers: [UUID: @MainActor (Double) -> Void] = [:]
   private var sleepActivity: NSObjectProtocol?
 
+  var isSleepPreventionActiveForTest: Bool {
+    sleepActivity != nil
+  }
+
   var hasValidLoopRange: Bool {
     guard let pointA, let pointB else {
       return false
@@ -68,6 +72,7 @@ final class PlayerManager {
     sessionTracker?.handlePlaybackStateChanged(isPlaying: false)
     await sessionTracker?.endSessionAndWait()
     isPlaying = false
+    updateSleepPrevention()
     player = nil
     await _engine.teardown()
   }
@@ -97,6 +102,7 @@ final class PlayerManager {
     currentFile = audioFile
     currentTime = 0
     isPlaying = false
+    updateSleepPrevention()
     clearLoop()
     lastPersistedTime = 0
 
@@ -174,6 +180,7 @@ final class PlayerManager {
     let success = await _engine.play()
     if success {
       self.isPlaying = true
+      updateSleepPrevention()
       sessionTracker?.handlePlaybackStateChanged(isPlaying: true)
       if let file = self.currentFile {
         touchPlaybackRecord(for: file)
@@ -186,6 +193,7 @@ final class PlayerManager {
 
     await _engine.pause()
     self.isPlaying = false
+    updateSleepPrevention()
     self.sessionTracker?.handlePlaybackStateChanged(isPlaying: false)
   }
 
@@ -336,11 +344,14 @@ final class PlayerManager {
   }
 
   func updateSleepPrevention() {
-    let shouldPrevent = isPlaying && (playerSettings?.preventSleep ?? false)
+    let shouldPrevent = isPlaying
+      && currentFile?.isVideo == true
+      && (playerSettings?.preventSleep ?? false)
+
     if shouldPrevent && sleepActivity == nil {
       sleepActivity = ProcessInfo.processInfo.beginActivity(
-        options: .idleSystemSleepDisabled,
-        reason: "Media playback in progress"
+        options: [.idleDisplaySleepDisabled, .idleSystemSleepDisabled],
+        reason: "Video playback in progress"
       )
     } else if !shouldPrevent, let activity = sleepActivity {
       ProcessInfo.processInfo.endActivity(activity)
@@ -357,10 +368,12 @@ final class PlayerManager {
     switch playbackQueue.loopMode {
     case .none:
       isPlaying = false
+      updateSleepPrevention()
       sessionTracker?.handlePlaybackStateChanged(isPlaying: false)
 
     case .repeatOne:
       isPlaying = false
+      updateSleepPrevention()
       sessionTracker?.handlePlaybackStateChanged(isPlaying: false)
       await seek(to: 0)
       await play()

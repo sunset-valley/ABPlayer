@@ -952,6 +952,83 @@ actor MockAudioPlayerEngine: PlayerEngineProtocol {
 struct PlayerManagerIntegrationTests {
 
   @Test
+  func testVideoPlaybackEnablesSleepPreventionWhenSettingEnabled() async {
+    let mockEngine = MockAudioPlayerEngine()
+    let manager = PlayerManager(engine: mockEngine)
+    let settings = PlayerSettings()
+    settings.preventSleep = true
+    manager.playerSettings = settings
+
+    let (videoFile, videoURL) = makeBookmarkedAudioFile(displayName: "video.mp4")
+    defer { try? FileManager.default.removeItem(at: videoURL) }
+
+    await manager.load(audioFile: videoFile)
+    await manager.play()
+
+    #expect(manager.isSleepPreventionActiveForTest == true)
+  }
+
+  @Test
+  func testAudioPlaybackDoesNotEnableSleepPrevention() async {
+    let mockEngine = MockAudioPlayerEngine()
+    let manager = PlayerManager(engine: mockEngine)
+    let settings = PlayerSettings()
+    settings.preventSleep = true
+    manager.playerSettings = settings
+
+    let (audioFile, audioURL) = makeBookmarkedAudioFile(displayName: "audio.mp3")
+    defer { try? FileManager.default.removeItem(at: audioURL) }
+
+    await manager.load(audioFile: audioFile)
+    await manager.play()
+
+    #expect(manager.isSleepPreventionActiveForTest == false)
+  }
+
+  @Test
+  func testPauseReleasesSleepPreventionForVideoPlayback() async {
+    let mockEngine = MockAudioPlayerEngine()
+    let manager = PlayerManager(engine: mockEngine)
+    let settings = PlayerSettings()
+    settings.preventSleep = true
+    manager.playerSettings = settings
+
+    let (videoFile, videoURL) = makeBookmarkedAudioFile(displayName: "video.mp4")
+    defer { try? FileManager.default.removeItem(at: videoURL) }
+
+    await manager.load(audioFile: videoFile)
+    await manager.play()
+    #expect(manager.isSleepPreventionActiveForTest == true)
+
+    await manager.pause()
+
+    #expect(manager.isSleepPreventionActiveForTest == false)
+  }
+
+  @Test
+  func testLoadResetsSleepPreventionImmediately() async {
+    let mockEngine = MockAudioPlayerEngine()
+    let manager = PlayerManager(engine: mockEngine)
+    let settings = PlayerSettings()
+    settings.preventSleep = true
+    manager.playerSettings = settings
+
+    let (videoFile, videoURL) = makeBookmarkedAudioFile(displayName: "video.mp4")
+    defer { try? FileManager.default.removeItem(at: videoURL) }
+    let (audioFile, audioURL) = makeBookmarkedAudioFile(displayName: "audio.mp3")
+    defer { try? FileManager.default.removeItem(at: audioURL) }
+
+    await manager.load(audioFile: videoFile)
+    await manager.play()
+    #expect(manager.isSleepPreventionActiveForTest == true)
+
+    await manager.load(audioFile: audioFile)
+
+    #expect(manager.isPlaying == false)
+    #expect(manager.isSleepPreventionActiveForTest == false)
+  }
+
+  @Test
   func testSwitchingFileResetsPlayingState() async {
     // Given
     let mockEngine = MockAudioPlayerEngine()
