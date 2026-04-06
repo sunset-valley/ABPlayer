@@ -102,6 +102,7 @@ struct VideoPlayerView: View {
         pendingSingleTap = Task { @MainActor in
           try? await Task.sleep(for: .milliseconds(300))
           guard !Task.isCancelled else { return }
+          viewModel.showPlayPauseHUD()
           viewModel.togglePlayPause()
         }
       }
