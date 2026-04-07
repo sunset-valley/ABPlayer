@@ -4,6 +4,7 @@ import SwiftUI
 struct VideoSubtitleToggleDemoView: View {
   @Environment(SubtitleLoader.self) private var subtitleLoader
   @Environment(PlayerManager.self) private var playerManager
+  @Environment(LibrarySettings.self) private var librarySettings
 
   @State private var withSubtitleFile: ABFile?
   @State private var withoutSubtitleFile: ABFile?
@@ -78,9 +79,14 @@ struct VideoSubtitleToggleDemoView: View {
   }
 
   private func makeDemoFile(baseName: String, writeSubtitle: Bool) throws -> ABFile {
-    let mediaURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(baseName)
-      .appendingPathExtension("mp4")
+    let relativePath = "ui-testing/\(baseName).mp4"
+    let mediaURL = librarySettings.libraryDirectoryURL
+      .appendingPathComponent(relativePath)
+
+    try FileManager.default.createDirectory(
+      at: mediaURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
 
     if !FileManager.default.fileExists(atPath: mediaURL.path) {
       let emptyData = Data()
@@ -101,12 +107,6 @@ struct VideoSubtitleToggleDemoView: View {
       try FileManager.default.removeItem(at: srtURL)
     }
 
-    let bookmarkData = try mediaURL.bookmarkData(
-      options: [.withSecurityScope],
-      includingResourceValuesForKeys: nil,
-      relativeTo: nil
-    )
-
-    return ABFile(displayName: "\(baseName).mp4", bookmarkData: bookmarkData)
+    return ABFile(displayName: "\(baseName).mp4", bookmarkData: Data(), relativePath: relativePath)
   }
 }

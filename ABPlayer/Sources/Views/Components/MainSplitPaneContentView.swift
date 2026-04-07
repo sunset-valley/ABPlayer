@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct MainSplitPaneContentView: View {
+  @Environment(LibrarySettings.self) private var librarySettings
+
   let content: PaneContent
   let audioFile: ABFile
 
@@ -20,8 +22,9 @@ struct MainSplitPaneContentView: View {
 
       case .pdf:
         #if os(macOS)
-          if let pdfData = audioFile.pdfBookmarkData {
-            PDFContentView(pdfBookmarkData: pdfData)
+          let pdfURL = librarySettings.pdfFileURL(for: audioFile)
+          if FileManager.default.fileExists(atPath: pdfURL.path) {
+            PDFContentView(pdfURL: pdfURL)
           } else {
             PDFEmptyView()
           }

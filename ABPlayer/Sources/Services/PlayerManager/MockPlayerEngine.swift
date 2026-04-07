@@ -18,7 +18,7 @@ actor MockPlayerEngine: PlayerEngineProtocol {
   }
 
   func load(
-    bookmarkData _: Data,
+    fileURL _: URL,
     resumeTime: Double,
     onDurationLoaded: @MainActor @Sendable @escaping (Double) -> Void,
     onTimeUpdate: @MainActor @Sendable @escaping (Double) -> Void,

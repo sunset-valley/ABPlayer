@@ -6,6 +6,12 @@ import OSLog
 @Observable
 @MainActor
 final class SubtitleLoader {
+  let librarySettings: LibrarySettings
+
+  init(librarySettings: LibrarySettings) {
+    self.librarySettings = librarySettings
+  }
+
   enum LoadResult: Equatable {
     case loaded([SubtitleCue])
     case notFound
@@ -36,20 +42,11 @@ final class SubtitleLoader {
   }
 
   func loadSubtitlesResult(for audioFile: ABFile) async -> LoadResult {
-    guard let srtURL = audioFile.srtFileURL else {
+    let audioURL = librarySettings.mediaFileURL(for: audioFile)
+    let srtURL = audioURL.deletingPathExtension().appendingPathExtension("srt")
+    guard FileManager.default.fileExists(atPath: audioURL.path) else {
       cacheSubtitles([], for: audioFile.id)
       return .notFound
-    }
-
-    guard let audioURL = try? resolveURL(from: audioFile.bookmarkData) else {
-      return .failed("Failed to resolve audio file bookmark")
-    }
-
-    let gotAccess = audioURL.startAccessingSecurityScopedResource()
-    defer {
-      if gotAccess {
-        audioURL.stopAccessingSecurityScopedResource()
-      }
     }
 
     if !FileManager.default.fileExists(atPath: srtURL.path) {
@@ -99,7 +96,8 @@ final class SubtitleLoader {
     guard let index = cues.firstIndex(where: { $0.id == cueID }) else {
       return nil
     }
-    guard let srtURL = audioFile.srtFileURL else {
+    let srtURL = librarySettings.subtitleFileURL(for: audioFile)
+    guard FileManager.default.fileExists(atPath: srtURL.path) else {
       return nil
     }
 
@@ -114,9 +112,7 @@ final class SubtitleLoader {
     updatedCues[index] = updatedCue
 
     do {
-      try withSecurityScopedAccess(to: audioFile.bookmarkData) {
-        try SubtitleParser.writeSRT(cues: updatedCues, to: srtURL)
-      }
+      try SubtitleParser.writeSRT(cues: updatedCues, to: srtURL)
       cacheSubtitles(updatedCues, for: audioFile.id)
       return updatedCues
     } catch {
@@ -163,26 +159,4 @@ final class SubtitleLoader {
     }.value
   }
 
-  private func withSecurityScopedAccess<T>(to bookmarkData: Data, _ body: () throws -> T) throws -> T {
-    let audioURL = try resolveURL(from: bookmarkData)
-    let gotAccess = audioURL.startAccessingSecurityScopedResource()
-    defer {
-      if gotAccess {
-        audioURL.stopAccessingSecurityScopedResource()
-      }
-    }
-
-    return try body()
-  }
-
-  /// Resolve URL from bookmark data
-  private func resolveURL(from bookmarkData: Data) throws -> URL {
-    var isStale = false
-    return try URL(
-      resolvingBookmarkData: bookmarkData,
-      options: [.withSecurityScope],
-      relativeTo: nil,
-      bookmarkDataIsStale: &isStale
-    )
-  }
 }

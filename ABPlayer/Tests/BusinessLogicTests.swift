@@ -885,13 +885,20 @@ private func makeBookmarkedAudioFile(displayName: String) -> (ABFile, URL) {
       includingResourceValuesForKeys: nil,
       relativeTo: nil
     )
-    let file = ABFile(displayName: displayName, bookmarkData: bookmarkData)
+    let file = ABFile(displayName: displayName, bookmarkData: bookmarkData, relativePath: fileName)
     return (file, fileURL)
   } catch {
     assertionFailure("Failed to create bookmark for \(displayName): \(error)")
-    let file = ABFile(displayName: displayName, bookmarkData: Data())
+    let file = ABFile(displayName: displayName, bookmarkData: Data(), relativePath: fileName)
     return (file, fileURL)
   }
+}
+
+@MainActor
+private func makePlayerManager(engine: any PlayerEngineProtocol) -> PlayerManager {
+  let settings = LibrarySettings()
+  settings.libraryPath = FileManager.default.temporaryDirectory.path
+  return PlayerManager(librarySettings: settings, engine: engine)
 }
 
 actor MockAudioPlayerEngine: PlayerEngineProtocol {
@@ -899,7 +906,7 @@ actor MockAudioPlayerEngine: PlayerEngineProtocol {
 
   // Call tracking
   var loadCallCount = 0
-  var lastLoadedBookmarkData: Data?
+  var lastLoadedFileURL: URL?
   var playCallCount = 0
   var pauseCallCount = 0
 
@@ -908,7 +915,7 @@ actor MockAudioPlayerEngine: PlayerEngineProtocol {
   var shouldPlayFail = false
 
   func load(
-    bookmarkData: Data,
+    fileURL: URL,
     resumeTime: Double,
     onDurationLoaded: @MainActor @Sendable @escaping (Double) -> Void,
     onTimeUpdate: @MainActor @Sendable @escaping (Double) -> Void,
@@ -917,7 +924,7 @@ actor MockAudioPlayerEngine: PlayerEngineProtocol {
     onPlayerReady: @MainActor @Sendable @escaping (AVPlayer) -> Void
   ) async throws -> AVPlayerItem? {
     loadCallCount += 1
-    lastLoadedBookmarkData = bookmarkData
+    lastLoadedFileURL = fileURL
 
     if loadDelay > 0 {
       try? await Task.sleep(nanoseconds: loadDelay)
@@ -954,7 +961,7 @@ struct PlayerManagerIntegrationTests {
   @Test
   func testVideoPlaybackEnablesSleepPreventionWhenSettingEnabled() async {
     let mockEngine = MockAudioPlayerEngine()
-    let manager = PlayerManager(engine: mockEngine)
+    let manager = makePlayerManager(engine: mockEngine)
     let settings = PlayerSettings()
     settings.preventSleep = true
     manager.playerSettings = settings
@@ -971,7 +978,7 @@ struct PlayerManagerIntegrationTests {
   @Test
   func testAudioPlaybackDoesNotEnableSleepPrevention() async {
     let mockEngine = MockAudioPlayerEngine()
-    let manager = PlayerManager(engine: mockEngine)
+    let manager = makePlayerManager(engine: mockEngine)
     let settings = PlayerSettings()
     settings.preventSleep = true
     manager.playerSettings = settings
@@ -988,7 +995,7 @@ struct PlayerManagerIntegrationTests {
   @Test
   func testPauseReleasesSleepPreventionForVideoPlayback() async {
     let mockEngine = MockAudioPlayerEngine()
-    let manager = PlayerManager(engine: mockEngine)
+    let manager = makePlayerManager(engine: mockEngine)
     let settings = PlayerSettings()
     settings.preventSleep = true
     manager.playerSettings = settings
@@ -1008,7 +1015,7 @@ struct PlayerManagerIntegrationTests {
   @Test
   func testLoadResetsSleepPreventionImmediately() async {
     let mockEngine = MockAudioPlayerEngine()
-    let manager = PlayerManager(engine: mockEngine)
+    let manager = makePlayerManager(engine: mockEngine)
     let settings = PlayerSettings()
     settings.preventSleep = true
     manager.playerSettings = settings
@@ -1032,7 +1039,7 @@ struct PlayerManagerIntegrationTests {
   func testSwitchingFileResetsPlayingState() async {
     // Given
     let mockEngine = MockAudioPlayerEngine()
-    let manager = PlayerManager(engine: mockEngine)
+    let manager = makePlayerManager(engine: mockEngine)
 
     // Setup dummy file A
     let (fileA, fileAURL) = makeBookmarkedAudioFile(displayName: "A.mp3")
@@ -1061,7 +1068,7 @@ struct PlayerManagerIntegrationTests {
   func testCurrentFileUpdatesCorrectly() async {
     // Given
     let mockEngine = MockAudioPlayerEngine()
-    let manager = PlayerManager(engine: mockEngine)
+    let manager = makePlayerManager(engine: mockEngine)
 
     let (fileA, fileAURL) = makeBookmarkedAudioFile(displayName: "A.mp3")
     defer { try? FileManager.default.removeItem(at: fileAURL) }
@@ -1089,7 +1096,7 @@ struct PlayerManagerIntegrationTests {
     // 100ms delay
     await mockEngine.setDelay(100_000_000)
 
-    let manager = PlayerManager(engine: mockEngine)
+    let manager = makePlayerManager(engine: mockEngine)
     let (fileA, fileAURL) = makeBookmarkedAudioFile(displayName: "A.mp3")
     defer { try? FileManager.default.removeItem(at: fileAURL) }
     let (fileB, fileBURL) = makeBookmarkedAudioFile(displayName: "B.mp3")
@@ -1107,15 +1114,15 @@ struct PlayerManagerIntegrationTests {
 
     #expect(manager.currentFile?.displayName == "B")
 
-    let lastBookmark = await mockEngine.lastLoadedBookmarkData
-    #expect(lastBookmark == fileB.bookmarkData)
+    let lastFileURL = await mockEngine.lastLoadedFileURL
+    #expect(lastFileURL?.lastPathComponent == fileB.relativePath)
   }
 
   @Test
   func testTogglePlayPauseWhilePlayingCallsPauseReference() async {
     // Given: Playing
     let mockEngine = MockAudioPlayerEngine()
-    let manager = PlayerManager(engine: mockEngine)
+    let manager = makePlayerManager(engine: mockEngine)
     manager.isPlaying = true
 
     // When: Toggle
@@ -1134,7 +1141,7 @@ struct PlayerManagerIntegrationTests {
   @Test
   func testPlayWithoutCurrentFileDoesNotStartPlayback() async {
     let mockEngine = MockAudioPlayerEngine()
-    let manager = PlayerManager(engine: mockEngine)
+    let manager = makePlayerManager(engine: mockEngine)
 
     await manager.play()
 
@@ -1146,7 +1153,7 @@ struct PlayerManagerIntegrationTests {
   @Test
   func testTogglePlayPauseWithoutCurrentFileDoesNothing() async {
     let mockEngine = MockAudioPlayerEngine()
-    let manager = PlayerManager(engine: mockEngine)
+    let manager = makePlayerManager(engine: mockEngine)
 
     await manager.togglePlayPause()
 
@@ -1159,7 +1166,7 @@ struct PlayerManagerIntegrationTests {
   func testRapidFileSwitchingCancelsOldLoad() async {
     // Given
     let mockEngine = MockAudioPlayerEngine()
-    let manager = PlayerManager(engine: mockEngine)
+    let manager = makePlayerManager(engine: mockEngine)
     // Set a delay to simulate async loading
     await mockEngine.setDelay(50_000_000)  // 50ms
 
@@ -1192,6 +1199,29 @@ struct PlayerManagerIntegrationTests {
     // Verify that even after A 'finishes' (in background), the manager state is still B
     #expect(manager.currentFile?.displayName == "B")
     #expect(manager.duration != 0)  // Should have loaded duration for B
+  }
+
+  @Test
+  func testLoadDoesNotDependOnBookmarkData() async throws {
+    let mockEngine = MockAudioPlayerEngine()
+    let manager = makePlayerManager(engine: mockEngine)
+
+    let librarySettings = manager.librarySettings
+    let relativePath = "library-only.mp3"
+    let mediaURL = librarySettings.libraryDirectoryURL.appendingPathComponent(relativePath)
+    try Data("audio".utf8).write(to: mediaURL)
+    defer { try? FileManager.default.removeItem(at: mediaURL) }
+
+    let file = ABFile(
+      displayName: "library-only.mp3",
+      bookmarkData: Data(),
+      relativePath: relativePath
+    )
+
+    await manager.load(audioFile: file)
+
+    let loadedURL = await mockEngine.lastLoadedFileURL
+    #expect(loadedURL?.lastPathComponent == "library-only.mp3")
   }
 }
 

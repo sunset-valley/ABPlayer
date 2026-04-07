@@ -111,6 +111,104 @@ struct TranscriptionStateTests {
   }
 }
 
+@MainActor
+struct TranscriptionQueueManagedLibraryTests {
+
+  @Test
+  func enqueueStoresRelativePathAndIgnoresBookmarkData() {
+    let transcriptionManager = TranscriptionManager()
+    let settings = TranscriptionSettings()
+    let librarySettings = LibrarySettings()
+    let subtitleLoader = SubtitleLoader(librarySettings: librarySettings)
+    let queueManager = TranscriptionQueueManager(
+      transcriptionManager: transcriptionManager,
+      settings: settings,
+      subtitleLoader: subtitleLoader,
+      librarySettings: librarySettings
+    )
+
+    let audioFile = ABFile(
+      displayName: "chapter.mp3",
+      bookmarkData: Data([0xAA, 0xBB]),
+      relativePath: "book/chapter.mp3"
+    )
+
+    queueManager.enqueue(audioFile: audioFile)
+
+    let task = queueManager.tasks.first
+    #expect(task != nil)
+    #expect(task?.audioRelativePath == "book/chapter.mp3")
+    #expect(task?.bookmarkData.isEmpty == true)
+  }
+
+  @Test
+  func processQueueUsesRelativePathWhenBookmarkIsEmpty() async throws {
+    let transcriptionManager = TranscriptionManager()
+    let settings = TranscriptionSettings()
+
+    let libraryRoot = FileManager.default.temporaryDirectory
+      .appendingPathComponent("TranscriptionQueueManagedLibraryTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: libraryRoot, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: libraryRoot) }
+
+    let librarySettings = LibrarySettings()
+    librarySettings.libraryPath = libraryRoot.path
+    let subtitleLoader = SubtitleLoader(librarySettings: librarySettings)
+    let queueManager = TranscriptionQueueManager(
+      transcriptionManager: transcriptionManager,
+      settings: settings,
+      subtitleLoader: subtitleLoader,
+      librarySettings: librarySettings
+    )
+
+    let relativePath = "book/chapter.mp3"
+    let audioURL = libraryRoot.appendingPathComponent(relativePath)
+    try FileManager.default.createDirectory(at: audioURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data("audio".utf8).write(to: audioURL)
+
+    let srtURL = audioURL.deletingPathExtension().appendingPathExtension("srt")
+    let srt = [
+      "1",
+      "00:00:00,000 --> 00:00:01,000",
+      "Line",
+      "",
+    ].joined(separator: "\n")
+    try srt.write(to: srtURL, atomically: true, encoding: .utf8)
+
+    let audioFile = ABFile(
+      displayName: "chapter.mp3",
+      bookmarkData: Data([0xAA, 0xBB]),
+      relativePath: relativePath
+    )
+
+    queueManager.enqueue(audioFile: audioFile)
+
+    let didComplete = await waitUntil {
+      queueManager.tasks.first?.status == .completed
+    }
+
+    #expect(didComplete)
+    #expect(queueManager.tasks.first?.bookmarkData.isEmpty == true)
+    #expect(!subtitleLoader.cachedSubtitles(for: audioFile.id).isEmpty)
+  }
+}
+
+@MainActor
+private func waitUntil(
+  timeoutSteps: Int = 300,
+  stepNanoseconds: UInt64 = 10_000_000,
+  condition: @escaping @MainActor () -> Bool
+) async -> Bool {
+  for _ in 0..<timeoutSteps {
+    if condition() {
+      return true
+    }
+    await Task.yield()
+    try? await Task.sleep(nanoseconds: stepNanoseconds)
+  }
+  return condition()
+}
+
 // MARK: - Transcription Settings Tests
 
 @MainActor

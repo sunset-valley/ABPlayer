@@ -12,6 +12,8 @@ final class Folder {
   var relativePath: String
 
   /// Security-scoped bookmark for root folders (stored only for roots)
+  /// Legacy field kept for store compatibility.
+  /// Managed-library mode resolves folders from LibrarySettings + relativePath.
   @Attribute(.externalStorage)
   var bookmarkData: Data?
 
@@ -54,17 +56,9 @@ extension Folder {
     DeterministicID.generate(from: relativePath)
   }
 
+  /// Legacy helper retained for compatibility with old call sites.
+  /// Managed-library mode resolves folder URLs via LibrarySettings + relativePath.
   func resolveURL() throws -> URL? {
-    guard let bookmarkData else { return nil }
-
-    var isStale = false
-    let url = try URL(
-      resolvingBookmarkData: bookmarkData,
-      options: [.withSecurityScope],
-      relativeTo: nil,
-      bookmarkDataIsStale: &isStale
-    )
-
-    return url
+    nil
   }
 }

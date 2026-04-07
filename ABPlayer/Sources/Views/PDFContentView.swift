@@ -5,7 +5,7 @@ import SwiftUI
 
   /// Displays a PDF file in a panel view
   struct PDFContentView: View {
-    let pdfBookmarkData: Data
+    let pdfURL: URL
 
     @State private var pdfDocument: PDFDocument?
     @State private var loadError: String?
@@ -30,33 +30,12 @@ import SwiftUI
     }
 
     private func loadPDF() async {
-      do {
-        var isStale = false
-        let url = try URL(
-          resolvingBookmarkData: pdfBookmarkData,
-          options: [.withSecurityScope],
-          relativeTo: nil,
-          bookmarkDataIsStale: &isStale
-        )
-
-        guard url.startAccessingSecurityScopedResource() else {
-          loadError = "Unable to access PDF file"
-          return
+      if let document = PDFDocument(url: pdfURL) {
+        await MainActor.run {
+          pdfDocument = document
         }
-
-        defer {
-          url.stopAccessingSecurityScopedResource()
-        }
-
-        if let document = PDFDocument(url: url) {
-          await MainActor.run {
-            pdfDocument = document
-          }
-        } else {
-          loadError = "Unable to read PDF document"
-        }
-      } catch {
-        loadError = error.localizedDescription
+      } else {
+        loadError = "Unable to read PDF document"
       }
     }
   }

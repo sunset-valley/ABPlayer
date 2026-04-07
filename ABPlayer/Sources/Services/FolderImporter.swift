@@ -24,19 +24,25 @@ final class FolderImporter {
   /// Syncs a folder (supports first import and rescans)
   /// - Parameter url: Root folder URL
   /// - Returns: Root `Folder` ID after sync
-  func syncFolder(at url: URL, parentFolder: Folder?) async throws -> PersistentIdentifier? {
+  func syncFolder(
+    at url: URL,
+    parentFolder: Folder?,
+    copyExternalIntoLibrary: Bool = true,
+    onProgressMessage: (@MainActor (String) -> Void)? = nil
+  ) async throws -> PersistentIdentifier? {
     let alreadyInLibrary = librarySettings.isInLibrary(url)
+    let needsCopyIntoLibrary = !alreadyInLibrary && copyExternalIntoLibrary
 
     // Library-internal URLs don't carry a security-scoped bookmark;
     // the app already has natural access to Application Support.
-    if !alreadyInLibrary {
+    if needsCopyIntoLibrary {
       guard url.startAccessingSecurityScopedResource() else {
         throw ImportError.accessDenied
       }
     }
 
     defer {
-      if !alreadyInLibrary {
+      if needsCopyIntoLibrary {
         url.stopAccessingSecurityScopedResource()
       }
     }
@@ -44,11 +50,11 @@ final class FolderImporter {
     try librarySettings.ensureLibraryDirectoryExists()
 
     let destinationURL: URL
-    if alreadyInLibrary {
-      destinationURL = url
-    } else {
+    if needsCopyIntoLibrary {
       let destinationDirectory = folderLibraryURL(for: parentFolder) ?? librarySettings.libraryDirectoryURL
       destinationURL = try copyItemToLibrary(from: url, destinationDirectory: destinationDirectory)
+    } else {
+      destinationURL = url
     }
 
     let libraryURL = librarySettings.libraryDirectoryURL.standardizedFileURL
@@ -57,7 +63,12 @@ final class FolderImporter {
         .dropFirst(libraryURL.path.count)
         .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     )
-    let folder = try await processDirectory(at: destinationURL, relativePath: rootPath, parent: parentFolder)
+    let folder = try await processDirectory(
+      at: destinationURL,
+      relativePath: rootPath,
+      parent: parentFolder,
+      onProgressMessage: onProgressMessage
+    )
 
     try modelContext.save()
 
@@ -67,9 +78,16 @@ final class FolderImporter {
   // MARK: - Directory Processing
 
   /// Processes a directory recursively
-  private func processDirectory(at url: URL, relativePath: String, parent: Folder?) async throws
+  private func processDirectory(
+    at url: URL,
+    relativePath: String,
+    parent: Folder?,
+    onProgressMessage: (@MainActor (String) -> Void)?
+  ) async throws
     -> Folder
   {
+    onProgressMessage?("Scanning \(url.lastPathComponent)...")
+
     let folder = findOrCreateFolder(at: url, relativePath: relativePath)
 
     // Set parent-child relationship when needed
@@ -111,7 +129,21 @@ final class FolderImporter {
       }
     }
 
+    let expectedMediaRelativePaths = Set(mediaFiles.map { mediaURL in
+      relativePath.isEmpty ? mediaURL.lastPathComponent : "\(relativePath)/\(mediaURL.lastPathComponent)"
+    })
+    try pruneMissingAudioFiles(in: folder, expectedRelativePaths: expectedMediaRelativePaths)
+
+    let expectedSubfolderRelativePaths = Set(directories.map { dirURL in
+      relativePath.isEmpty ? dirURL.lastPathComponent : "\(relativePath)/\(dirURL.lastPathComponent)"
+    })
+    try pruneMissingSubfolders(in: folder, expectedRelativePaths: expectedSubfolderRelativePaths)
+
     // Process media files (insert or update)
+    if !mediaFiles.isEmpty {
+      onProgressMessage?("Syncing media in \(url.lastPathComponent)...")
+    }
+
     for mediaURL in mediaFiles {
       try await processAudioFile(
         at: mediaURL,
@@ -124,8 +156,15 @@ final class FolderImporter {
 
     // Recursively process subdirectories
     for dirURL in directories {
-      let subPath = "\(relativePath)/\(dirURL.lastPathComponent)"
-      _ = try await processDirectory(at: dirURL, relativePath: subPath, parent: folder)
+      let subPath = relativePath.isEmpty
+        ? dirURL.lastPathComponent
+        : "\(relativePath)/\(dirURL.lastPathComponent)"
+      _ = try await processDirectory(
+        at: dirURL,
+        relativePath: subPath,
+        parent: folder,
+        onProgressMessage: onProgressMessage
+      )
     }
 
     return folder
@@ -135,12 +174,29 @@ final class FolderImporter {
     let name = url.lastPathComponent
     let folderId = Folder.generateDeterministicID(from: relativePath)
 
-    let descriptor = FetchDescriptor<Folder>(
+    let idDescriptor = FetchDescriptor<Folder>(
       predicate: #Predicate<Folder> { $0.id == folderId }
     )
 
-    if let existing = try? modelContext.fetch(descriptor).first {
+    if let existing = try? modelContext.fetch(idDescriptor).first {
+      if existing.relativePath != relativePath {
+        existing.relativePath = relativePath
+      }
+      if existing.name != name {
+        existing.name = name
+      }
       return existing
+    }
+
+    let pathDescriptor = FetchDescriptor<Folder>(
+      predicate: #Predicate<Folder> { $0.relativePath == relativePath }
+    )
+
+    if let existingByPath = try? modelContext.fetch(pathDescriptor).first {
+      if existingByPath.name != name {
+        existingByPath.name = name
+      }
+      return existingByPath
     }
 
     // Create a new record
@@ -154,6 +210,66 @@ final class FolderImporter {
     return folder
   }
 
+  private func pruneMissingAudioFiles(in folder: Folder, expectedRelativePaths: Set<String>) throws {
+    let folderID = folder.id
+    let descriptor = FetchDescriptor<ABFile>(
+      predicate: #Predicate<ABFile> { candidate in
+        candidate.folder?.id == folderID
+      }
+    )
+
+    let existingFiles = try modelContext.fetch(descriptor)
+    for existing in existingFiles where !expectedRelativePaths.contains(existing.relativePath) {
+      if let subtitleFile = existing.subtitleFile {
+        modelContext.delete(subtitleFile)
+      }
+      modelContext.delete(existing)
+    }
+  }
+
+  private func pruneMissingSubfolders(in folder: Folder, expectedRelativePaths: Set<String>) throws {
+    let parentID = folder.id
+    let descriptor = FetchDescriptor<Folder>(
+      predicate: #Predicate<Folder> { candidate in
+        candidate.parent?.id == parentID
+      }
+    )
+
+    let existingSubfolders = try modelContext.fetch(descriptor)
+    for existing in existingSubfolders where !expectedRelativePaths.contains(existing.relativePath) {
+      try deleteFolderRecursively(existing)
+    }
+  }
+
+  private func deleteFolderRecursively(_ folder: Folder) throws {
+    let folderID = folder.id
+
+    let fileDescriptor = FetchDescriptor<ABFile>(
+      predicate: #Predicate<ABFile> { candidate in
+        candidate.folder?.id == folderID
+      }
+    )
+    let files = try modelContext.fetch(fileDescriptor)
+    for file in files {
+      if let subtitleFile = file.subtitleFile {
+        modelContext.delete(subtitleFile)
+      }
+      modelContext.delete(file)
+    }
+
+    let subfolderDescriptor = FetchDescriptor<Folder>(
+      predicate: #Predicate<Folder> { candidate in
+        candidate.parent?.id == folderID
+      }
+    )
+    let subfolders = try modelContext.fetch(subfolderDescriptor)
+    for subfolder in subfolders {
+      try deleteFolderRecursively(subfolder)
+    }
+
+    modelContext.delete(folder)
+  }
+
   // MARK: - Audio File Handling
 
   private func processAudioFile(
@@ -163,15 +279,11 @@ final class FolderImporter {
     subtitleFiles: [URL],
     pdfFiles: [URL]
   ) async throws {
-    let fileRelativePath = "\(relativePath)/\(url.lastPathComponent)"
+    let fileRelativePath = relativePath.isEmpty
+      ? url.lastPathComponent
+      : "\(relativePath)/\(url.lastPathComponent)"
     let deterministicID = ABFile.generateDeterministicID(from: fileRelativePath)
     
-    let bookmarkData = try url.bookmarkData(
-      options: [.withSecurityScope],
-      includingResourceValuesForKeys: nil,
-      relativeTo: nil
-    )
-
     let descriptor = FetchDescriptor<ABFile>(
       predicate: #Predicate<ABFile> { $0.id == deterministicID }
     )
@@ -192,7 +304,7 @@ final class FolderImporter {
         id: deterministicID,
         displayName: url.lastPathComponent,
         fileType: ABFile.inferFileType(from: url),
-        bookmarkData: bookmarkData,
+        bookmarkData: Data(),
         createdAt: getFileCreationDate(from: url),
         folder: folder,
         relativePath: fileRelativePath
@@ -218,14 +330,9 @@ final class FolderImporter {
     }
 
     // 2. Sync PDF File
-    if let pdfURL = findMatchingFile(baseName: baseName, in: pdfFiles) {
-      // Update bookmark even if exists to ensure valid access
-      let pdfBookmark = try pdfURL.bookmarkData(
-        options: [.withSecurityScope],
-        includingResourceValuesForKeys: nil,
-        relativeTo: nil
-      )
-      audioFile.pdfBookmarkData = pdfBookmark
+    if findMatchingFile(baseName: baseName, in: pdfFiles) != nil {
+      // Keep legacy bookmark field unused in managed-library mode.
+      audioFile.pdfBookmarkData = nil
     } else {
       // If PDF no longer exists, clear bookmark
       audioFile.pdfBookmarkData = nil
@@ -262,15 +369,9 @@ final class FolderImporter {
 
   /// Associates a subtitle file
   private func pairSubtitle(at url: URL, with audioFile: ABFile) async throws {
-    let bookmarkData = try url.bookmarkData(
-      options: [.withSecurityScope],
-      includingResourceValuesForKeys: nil,
-      relativeTo: nil
-    )
-
     let subtitleFile = SubtitleFile(
       displayName: url.lastPathComponent,
-      bookmarkData: bookmarkData,
+      bookmarkData: Data(),
       audioFile: audioFile
     )
 
@@ -284,15 +385,6 @@ final class FolderImporter {
   /// - Parameter url: File URL (must be accessible)
   /// - Returns: Duration in seconds, or nil if loading fails
   private func loadDuration(from url: URL) async -> Double? {
-    guard url.startAccessingSecurityScopedResource() else {
-      Logger.data.warning("[FolderImporter] Cannot access file for duration: \(url.lastPathComponent)")
-      return nil
-    }
-    
-    defer {
-      url.stopAccessingSecurityScopedResource()
-    }
-    
     let asset = AVURLAsset(url: url)
     
     do {

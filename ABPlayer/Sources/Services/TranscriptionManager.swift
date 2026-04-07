@@ -240,10 +240,6 @@ final class TranscriptionManager {
     var workingURL = audioURL
 
     do {
-      guard audioURL.startAccessingSecurityScopedResource() else {
-        throw TranscriptionError.accessDenied
-      }
-
       try throwIfCancellationRequested()
 
       if try await shouldExtractAudio(from: audioURL) {
@@ -278,8 +274,6 @@ final class TranscriptionManager {
         transcribeTask.cancel()
       }
 
-      audioURL.stopAccessingSecurityScopedResource()
-
       if let wavURL = extractedWavURL {
         try? FileManager.default.removeItem(at: wavURL)
       }
@@ -288,7 +282,6 @@ final class TranscriptionManager {
       state = .completed
       return cues
     } catch is CancellationError {
-      audioURL.stopAccessingSecurityScopedResource()
       if let wavURL = extractedWavURL {
         try? FileManager.default.removeItem(at: wavURL)
       }
@@ -296,7 +289,6 @@ final class TranscriptionManager {
       state = .cancelled
       throw CancellationError()
     } catch {
-      audioURL.stopAccessingSecurityScopedResource()
       if let wavURL = extractedWavURL {
         try? FileManager.default.removeItem(at: wavURL)
       }
@@ -737,15 +729,12 @@ private actor TranscriptionRuntime {
 
 enum TranscriptionError: LocalizedError {
   case modelNotLoaded
-  case accessDenied
   case audioExtractionFailed(String)
 
   var errorDescription: String? {
     switch self {
     case .modelNotLoaded:
       return "WhisperKit model is not loaded"
-    case .accessDenied:
-      return "Cannot access the audio file"
     case let .audioExtractionFailed(reason):
       return "Audio extraction failed: \(reason)"
     }

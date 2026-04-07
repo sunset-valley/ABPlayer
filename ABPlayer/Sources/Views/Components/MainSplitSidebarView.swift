@@ -30,7 +30,7 @@ struct MainSplitSidebarView: View {
     }
     .toolbar {
       ToolbarItemGroup(placement: .primaryAction) {
-        if viewModel.isImporting {
+        if viewModel.syncStatus.isRunning {
           ProgressView()
             .controlSize(.small)
         } else {
@@ -48,7 +48,6 @@ struct MainSplitSidebarView: View {
             } label: {
               Label("Refresh", systemImage: "arrow.clockwise")
             }
-            .disabled(viewModel.currentFolder == nil)
 
             Divider()
 

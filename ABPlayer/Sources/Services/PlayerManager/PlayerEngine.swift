@@ -14,7 +14,6 @@ actor PlayerEngine: PlayerEngineProtocol {
     }
   }
   private var timeObserverToken: Any?
-  private var currentScopedURL: URL?
   private var currentAsset: AVURLAsset?
   private var lastPlaybackTick: Double?
   private var rateObservation: NSKeyValueObservation?
@@ -24,7 +23,7 @@ actor PlayerEngine: PlayerEngineProtocol {
   var currentPlayer: AVPlayer? { player }
 
   func load(
-    bookmarkData: Data,
+    fileURL: URL,
     resumeTime: Double,
     onDurationLoaded: @MainActor @Sendable @escaping (Double) -> Void,
     onTimeUpdate: @MainActor @Sendable @escaping (Double) -> Void,
@@ -37,20 +36,7 @@ actor PlayerEngine: PlayerEngineProtocol {
 
     teardownPlayerInternal()
 
-    var isStale = false
-    let url = try URL(
-      resolvingBookmarkData: bookmarkData,
-      options: [.withSecurityScope],
-      relativeTo: nil,
-      bookmarkDataIsStale: &isStale
-    )
-
-    guard url.startAccessingSecurityScopedResource() else {
-      assertionFailure("Unable to access security scoped resource")
-      return nil
-    }
-
-    currentScopedURL = url
+    let url = fileURL
 
     let asset = AVURLAsset(url: url)
     currentAsset = asset
@@ -60,7 +46,6 @@ actor PlayerEngine: PlayerEngineProtocol {
     guard loadingID == myLoadID else {
       Logger.audio.debug(
         "[AudioPlayerEngine] Loading cancelled after duration load (id: \(myLoadID))")
-      url.stopAccessingSecurityScopedResource()
       return nil
     }
 
@@ -177,10 +162,6 @@ actor PlayerEngine: PlayerEngineProtocol {
     rateObservation?.invalidate()
     rateObservation = nil
 
-    if let currentScopedURL {
-      currentScopedURL.stopAccessingSecurityScopedResource()
-    }
-    currentScopedURL = nil
     currentAsset = nil
     player = nil
     lastPlaybackTick = nil

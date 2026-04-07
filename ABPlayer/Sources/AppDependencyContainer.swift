@@ -28,11 +28,13 @@ final class AppDependencyContainer {
     let transcriptionSettings = TranscriptionSettings()
     let librarySettings = LibrarySettings()
     let playerSettings = PlayerSettings()
-    let playerManager = PlayerManager()
-    let subtitleLoader = SubtitleLoader()
+    let playerManager = PlayerManager(librarySettings: librarySettings)
+    let subtitleLoader = SubtitleLoader(librarySettings: librarySettings)
     let updater = SparkleUpdater()
 
     URLSessionProxyInjector.install(settings: proxySettings)
+
+    librarySettings.beginLibraryAccessSession()
 
     if !isUITesting {
       let config = TelemetryDeck.Config(appID: "A4A99FD4-3F84-49FA-AF97-0806D61D0539")
@@ -102,7 +104,8 @@ final class AppDependencyContainer {
     let queueManager = TranscriptionQueueManager(
       transcriptionManager: transcriptionManager,
       settings: transcriptionSettings,
-      subtitleLoader: subtitleLoader
+      subtitleLoader: subtitleLoader,
+      librarySettings: librarySettings
     )
     queueManager.modelContext = modelContainer.mainContext
     playerManager.playerSettings = playerSettings

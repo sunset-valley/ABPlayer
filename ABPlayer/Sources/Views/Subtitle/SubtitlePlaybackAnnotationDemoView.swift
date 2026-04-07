@@ -5,8 +5,9 @@ struct SubtitlePlaybackAnnotationDemoView: View {
   @Environment(AnnotationService.self) private var annotationService
   @Environment(AnnotationStyleService.self) private var annotationStyleService
   @Environment(TranscriptionSettings.self) private var transcriptionSettings
+  @Environment(LibrarySettings.self) private var librarySettings
 
-  @State private var playerManager = PlayerManager(engine: MockPlayerEngine())
+  @State private var playerManager = PlayerManager(librarySettings: LibrarySettings(), engine: MockPlayerEngine())
   @State private var cues: [SubtitleCue] = Self.demoCues
   @State private var didSetup = false
   @State private var activeCueID: UUID?
@@ -92,24 +93,31 @@ struct SubtitlePlaybackAnnotationDemoView: View {
   }
 
   private func makeAudioFile() throws -> ABFile {
-    let fileURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("abplayer-ui-subtitle-annotation-audio")
-      .appendingPathExtension("m4a")
+    let relativePath = "ui-testing/subtitle-playback-annotation-audio.m4a"
+    let fileURL = librarySettings.libraryDirectoryURL
+      .appendingPathComponent(relativePath)
+
+    try FileManager.default.createDirectory(
+      at: fileURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
 
     if !FileManager.default.fileExists(atPath: fileURL.path) {
       let emptyData = Data()
       FileManager.default.createFile(atPath: fileURL.path, contents: emptyData)
     }
 
-    let bookmarkData = try fileURL.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
     let audioFile = ABFile(
       id: Self.audioFileID,
       displayName: "subtitle-playback-annotation-demo.m4a",
-      bookmarkData: bookmarkData
+      bookmarkData: Data(),
+      relativePath: relativePath
     )
     return audioFile
   }
+}
 
+extension SubtitlePlaybackAnnotationDemoView {
   private func clearDemoAnnotations() {
     for cue in cues {
       let groups = Set(annotationService.annotations(for: cue.id).map(\.groupID))

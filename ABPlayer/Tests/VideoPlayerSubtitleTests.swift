@@ -72,13 +72,14 @@ struct VideoPlayerSubtitleStateTests {
 struct SubtitleLoaderSyncTests {
   @Test
   func updateSubtitleRefreshesCacheAndRevision() async throws {
-    let subtitleLoader = SubtitleLoader()
-    let (audioFile, audioURL) = try makeBookmarkedAudioFile(displayName: "subtitle-sync.mp3")
+    let (audioFile, audioURL, librarySettings, libraryRoot) = try makeManagedLibraryAudioFile(
+      displayName: "subtitle-sync.mp3"
+    )
+    let subtitleLoader = SubtitleLoader(librarySettings: librarySettings)
     let srtURL = audioURL.deletingPathExtension().appendingPathExtension("srt")
 
     defer {
-      try? FileManager.default.removeItem(at: audioURL)
-      try? FileManager.default.removeItem(at: srtURL)
+      try? FileManager.default.removeItem(at: libraryRoot)
     }
 
     let originalSRT = [
@@ -115,17 +116,26 @@ struct SubtitleLoaderSyncTests {
   }
 }
 
-private func makeBookmarkedAudioFile(displayName: String) throws -> (ABFile, URL) {
-  let fileURL = FileManager.default.temporaryDirectory
-    .appendingPathComponent("\(UUID().uuidString)-\(displayName)")
+@MainActor
+private func makeManagedLibraryAudioFile(displayName: String) throws -> (ABFile, URL, LibrarySettings, URL)
+{
+  let libraryRoot = FileManager.default.temporaryDirectory
+    .appendingPathComponent("SubtitleLoaderSyncTests-\(UUID().uuidString)", isDirectory: true)
+  try FileManager.default.createDirectory(at: libraryRoot, withIntermediateDirectories: true)
+
+  let relativePath = "\(UUID().uuidString)-\(displayName)"
+  let fileURL = libraryRoot.appendingPathComponent(relativePath)
 
   try Data("audio".utf8).write(to: fileURL)
 
-  let bookmarkData = try fileURL.bookmarkData(
-    options: [.withSecurityScope],
-    includingResourceValuesForKeys: nil,
-    relativeTo: nil
+  let librarySettings = LibrarySettings()
+  librarySettings.libraryPath = libraryRoot.path
+
+  let audioFile = ABFile(
+    displayName: displayName,
+    bookmarkData: Data(),
+    relativePath: relativePath
   )
 
-  return (ABFile(displayName: displayName, bookmarkData: bookmarkData), fileURL)
+  return (audioFile, fileURL, librarySettings, libraryRoot)
 }

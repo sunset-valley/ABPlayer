@@ -69,6 +69,8 @@ final class SubtitleFile {
   var displayName: String
 
   @Attribute(.externalStorage)
+  /// Legacy field kept for store compatibility.
+  /// Managed-library mode derives subtitle path from media sibling .srt file.
   var bookmarkData: Data
 
   var createdAt: Date

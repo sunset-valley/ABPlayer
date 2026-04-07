@@ -41,6 +41,9 @@ struct TranscriptionTask: Identifiable, Equatable {
   let id: UUID
   let audioFileId: UUID
   let audioFileName: String
+  let audioRelativePath: String
+  /// Legacy field retained for store compatibility with historical queue semantics.
+  /// Managed-library mode does not consume per-file bookmark data.
   let bookmarkData: Data
   let forceTranscription: Bool
   var status: TranscriptionTaskStatus
@@ -49,13 +52,15 @@ struct TranscriptionTask: Identifiable, Equatable {
     id: UUID = UUID(),
     audioFileId: UUID,
     audioFileName: String,
-    bookmarkData: Data,
+    audioRelativePath: String,
+    bookmarkData: Data = Data(),
     forceTranscription: Bool = false,
     status: TranscriptionTaskStatus = .queued
   ) {
     self.id = id
     self.audioFileId = audioFileId
     self.audioFileName = audioFileName
+    self.audioRelativePath = audioRelativePath
     self.bookmarkData = bookmarkData
     self.forceTranscription = forceTranscription
     self.status = status
@@ -78,15 +83,18 @@ final class TranscriptionQueueManager {
 
   /// ModelContext for saving results
   var modelContext: ModelContext?
+  let librarySettings: LibrarySettings
 
   init(
     transcriptionManager: TranscriptionManager,
     settings: TranscriptionSettings,
-    subtitleLoader: SubtitleLoader
+    subtitleLoader: SubtitleLoader,
+    librarySettings: LibrarySettings
   ) {
     self.transcriptionManager = transcriptionManager
     self.settings = settings
     self.subtitleLoader = subtitleLoader
+    self.librarySettings = librarySettings
   }
 
   /// Get task for a specific audio file
@@ -106,7 +114,8 @@ final class TranscriptionQueueManager {
     let task = TranscriptionTask(
       audioFileId: audioFile.id,
       audioFileName: audioFile.displayName,
-      bookmarkData: audioFile.bookmarkData,
+      audioRelativePath: audioFile.relativePath,
+      bookmarkData: Data(),
       forceTranscription: forceTranscription
     )
 
@@ -179,7 +188,7 @@ final class TranscriptionQueueManager {
 
     do {
       // Resolve URL
-      let url = try resolveURL(from: task.bookmarkData)
+      let url = librarySettings.mediaFileURL(forRelativePath: task.audioRelativePath)
 
       // Track transcription manager state changes
       let observerID = transcriptionManager.addStateObserver { [weak self] state in
@@ -213,7 +222,7 @@ final class TranscriptionQueueManager {
       updateTaskStatus(.savingSubtitles, for: task.id)
       let commitContext = try await stageAndCommitSubtitles(
         audioFileID: task.audioFileId,
-        bookmarkData: task.bookmarkData,
+        audioRelativePath: task.audioRelativePath,
         cues: cues
       )
 
@@ -277,13 +286,6 @@ final class TranscriptionQueueManager {
     audioFileID: UUID,
     taskID: UUID
   ) async throws -> Bool {
-    let gotAccess = audioURL.startAccessingSecurityScopedResource()
-    defer {
-      if gotAccess {
-        audioURL.stopAccessingSecurityScopedResource()
-      }
-    }
-
     let srtURL = audioURL.deletingPathExtension().appendingPathExtension("srt")
     guard FileManager.default.fileExists(atPath: srtURL.path) else {
       return false
@@ -327,28 +329,12 @@ final class TranscriptionQueueManager {
     }
   }
 
-  private func resolveURL(from bookmarkData: Data) throws -> URL {
-    var isStale = false
-    return try URL(
-      resolvingBookmarkData: bookmarkData,
-      options: [.withSecurityScope],
-      relativeTo: nil,
-      bookmarkDataIsStale: &isStale
-    )
-  }
-
   private func stageAndCommitSubtitles(
     audioFileID: UUID,
-    bookmarkData: Data,
+    audioRelativePath: String,
     cues: [SubtitleCue]
   ) async throws -> SubtitleCommitContext {
-    let audioURL = try resolveURL(from: bookmarkData)
-    let gotAccess = audioURL.startAccessingSecurityScopedResource()
-    defer {
-      if gotAccess {
-        audioURL.stopAccessingSecurityScopedResource()
-      }
-    }
+    let audioURL = librarySettings.mediaFileURL(forRelativePath: audioRelativePath)
 
     let srtURL = audioURL.deletingPathExtension().appendingPathExtension("srt")
     let stagedURL = siblingTemporarySubtitleURL(for: srtURL, suffix: "staged-\(audioFileID.uuidString)-\(UUID().uuidString)")
