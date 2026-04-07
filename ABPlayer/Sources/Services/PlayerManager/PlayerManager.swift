@@ -9,8 +9,10 @@ import Observation
 @Observable
 final class PlayerManager {
   private let _engine: any PlayerEngineProtocol
+  let librarySettings: LibrarySettings
 
-  init(engine: (any PlayerEngineProtocol)? = nil) {
+  init(librarySettings: LibrarySettings, engine: (any PlayerEngineProtocol)? = nil) {
+    self.librarySettings = librarySettings
     self._engine = engine ?? PlayerEngine()
   }
 
@@ -86,8 +88,9 @@ final class PlayerManager {
   // MARK: - Public API
 
   func load(audioFile: ABFile, fromStart: Bool = false) async {
-    guard audioFile.isBookmarkValid else {
-      Logger.audio.error("Load aborted: Bookmark invalid or file missing for \(audioFile.displayName)")
+    let fileURL = librarySettings.mediaFileURL(for: audioFile)
+    guard FileManager.default.fileExists(atPath: fileURL.path) else {
+      Logger.audio.error("Load aborted: File missing for \(audioFile.displayName)")
       return
     }
 
@@ -109,12 +112,11 @@ final class PlayerManager {
     endOfFileTask?.cancel()
     endOfFileTask = nil
 
-    let bookmarkData = audioFile.bookmarkData
     let resumeTime = fromStart ? 0 : audioFile.currentPlaybackPosition
 
     do {
       let playerItem = try await _engine.load(
-        bookmarkData: bookmarkData,
+        fileURL: fileURL,
         resumeTime: resumeTime,
         onDurationLoaded: { [weak self] loadedDuration in
           guard let self, self.loadingFileID == fileID else { return }

@@ -30,31 +30,35 @@ struct MainSplitSidebarView: View {
     }
     .toolbar {
       ToolbarItemGroup(placement: .primaryAction) {
-        Menu {
-          Button(action: onImportFile) {
-            Label("Import Media File", systemImage: "tray.and.arrow.down")
-          }
+        if viewModel.syncStatus.isRunning {
+          ProgressView()
+            .controlSize(.small)
+        } else {
+          Menu {
+            Button(action: onImportFile) {
+              Label("Import Media File", systemImage: "tray.and.arrow.down")
+            }
 
-          Button(action: onImportFolder) {
-            Label("Import Folder", systemImage: "folder.badge.plus")
-          }
+            Button(action: onImportFolder) {
+              Label("Import Folder", systemImage: "folder.badge.plus")
+            }
 
-          Button {
-            Task { await onRefresh() }
+            Button {
+              Task { await onRefresh() }
+            } label: {
+              Label("Refresh", systemImage: "arrow.clockwise")
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+              Task { await onClearAllData() }
+            } label: {
+              Label("Clear All Data", systemImage: "trash")
+            }
           } label: {
-            Label("Refresh", systemImage: "arrow.clockwise")
+            Label("Add", systemImage: "plus")
           }
-          .disabled(viewModel.currentFolder == nil)
-
-          Divider()
-
-          Button(role: .destructive) {
-            Task { await onClearAllData() }
-          } label: {
-            Label("Clear All Data", systemImage: "trash")
-          }
-        } label: {
-          Label("Add", systemImage: "plus")
         }
       }
     }

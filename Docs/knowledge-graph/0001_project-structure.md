@@ -149,7 +149,8 @@ User trigger → TranscriptionQueueManager.enqueue(audioFile)
 
 ```
 SubtitleLoader.loadSubtitles(for: ABFile)
-  → resolve security-scoped bookmark
+  → resolve media URL from LibrarySettings.libraryDirectoryURL + ABFile.relativePath
+  → derive sibling .srt path from media basename
   → SubtitleParser.parse() (detects .srt/.vtt, background thread)
   → [SubtitleCue] → TranscriptionViewModel.cachedCues
     → TranscriptTextView (single NSTextView for all cues, enables cross-cue selection)
@@ -185,6 +186,12 @@ ImportService            → import from file picker, folder refresh; fires onIm
 Selection change → PlayerManager file load + subtitle load
 MainSplitViewModel.restoreLastSelectionIfNeeded() → restores navigation path + file selection on launch
 ```
+
+Permission boundary note:
+
+- Media access is **library-scoped**. `LibrarySettings` is the only permission owner.
+- `ABFile.relativePath` and `Folder.relativePath` are the source of truth for path resolution.
+- Bookmark fields in models are retained only for store compatibility and are not used by active media flows.
 
 `MainSplitViewModel` manages per-media-type pane allocation:
 

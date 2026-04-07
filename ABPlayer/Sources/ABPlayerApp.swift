@@ -77,6 +77,13 @@ struct ABPlayerApp: App {
         .environment(container.notesBrowserService)
         .environment(container.listeningStatsService)
         .environment(container.subtitleLoader)
+        .onChange(of: scenePhase) { _, newPhase in
+          if newPhase == .background {
+            container.librarySettings.endLibraryAccessSession()
+          } else if newPhase == .active {
+            container.librarySettings.beginLibraryAccessSession()
+          }
+        }
     }
     .defaultSize(width: 1600, height: 900)
     .windowResizability(.contentSize)

@@ -1,0 +1,579 @@
+import AVFoundation
+import Foundation
+import SwiftData
+import Testing
+
+@testable import ABPlayerDev
+
+// MARK: - Helpers
+
+@MainActor
+private func makeImportTestContext() throws -> (ModelContainer, ModelContext, LibrarySettings, URL) {
+  let config = ModelConfiguration(isStoredInMemoryOnly: true)
+  let container = try ModelContainer(
+    for: ABFile.self, LoopSegment.self, PlaybackRecord.self, Folder.self, SubtitleFile.self,
+      Transcription.self,
+    configurations: config
+  )
+  let context = ModelContext(container)
+  let libraryDir = FileManager.default.temporaryDirectory
+    .appendingPathComponent("ImportServiceTests-\(UUID().uuidString)")
+  try FileManager.default.createDirectory(at: libraryDir, withIntermediateDirectories: true)
+  let settings = LibrarySettings()
+  settings.libraryPath = libraryDir.path
+  return (container, context, settings, libraryDir)
+}
+
+@MainActor
+private func makeTempSourceFile(named name: String) throws -> URL {
+  let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+  try Data("audio".utf8).write(to: url)
+  return url
+}
+
+@MainActor
+private func makeTempRealMediaFile(named name: String) throws -> URL {
+  let url = FileManager.default.temporaryDirectory
+    .appendingPathComponent("\(UUID().uuidString)-\(name)")
+  try Data().write(to: url)
+  return url
+}
+
+@MainActor
+private func makeTempExternalFolder(named name: String) throws -> URL {
+  let folderURL = FileManager.default.temporaryDirectory
+    .appendingPathComponent("\(name)-\(UUID().uuidString)", isDirectory: true)
+  try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+  return folderURL
+}
+
+@MainActor
+private func waitUntil(
+  timeoutSteps: Int = 300,
+  stepNanoseconds: UInt64 = 10_000_000,
+  condition: @escaping @MainActor () -> Bool
+) async -> Bool {
+  for _ in 0..<timeoutSteps {
+    if condition() {
+      return true
+    }
+    await Task.yield()
+    try? await Task.sleep(nanoseconds: stepNanoseconds)
+  }
+  return condition()
+}
+
+actor SilentPlayerEngine: PlayerEngineProtocol {
+  var currentPlayer: AVPlayer? = AVPlayer()
+
+  func load(
+    fileURL: URL,
+    resumeTime: Double,
+    onDurationLoaded: @MainActor @Sendable @escaping (Double) -> Void,
+    onTimeUpdate: @MainActor @Sendable @escaping (Double) -> Void,
+    onLoopCheck: @MainActor @Sendable @escaping (Double) -> Void,
+    onPlaybackStateChange: @MainActor @Sendable @escaping (Bool) -> Void,
+    onPlayerReady: @MainActor @Sendable @escaping (AVPlayer) -> Void
+  ) async throws -> AVPlayerItem? {
+    return nil
+  }
+
+  func play() -> Bool { false }
+  func pause() {}
+  func syncPauseState() {}
+  func syncPlayState() {}
+  func seek(to time: Double) {}
+  func setVolume(_ volume: Float) async {}
+  func teardown() {}
+}
+
+// MARK: - Tests
+
+@Suite("ImportService — auto-wrap")
+@MainActor
+struct ImportServiceAutoWrapTests {
+
+  @Test("auto-wraps external file at root in a folder named after the file")
+  func autoWrapsFileAtRoot() throws {
+    let (_, ctx, settings, libraryDir) = try makeImportTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+    let service = ImportService(modelContext: ctx, librarySettings: settings)
+
+    let sourceFile = try makeTempSourceFile(named: "chapter1.mp3")
+    defer { try? FileManager.default.removeItem(at: sourceFile) }
+
+    service.addAudioFile(from: sourceFile, currentFolder: nil)
+
+    // Wrapper folder named after the file should exist inside the library
+    let wrapperDir = libraryDir.appendingPathComponent("chapter1")
+    #expect(FileManager.default.fileExists(atPath: wrapperDir.path))
+
+    // The file should be inside the wrapper
+    let copiedFile = wrapperDir.appendingPathComponent("chapter1.mp3")
+    #expect(FileManager.default.fileExists(atPath: copiedFile.path))
+
+    // ABFile should be persisted
+    let files = try ctx.fetch(FetchDescriptor<ABFile>())
+    #expect(files.count == 1)
+
+    // The file's folder should be named "chapter1"
+    #expect(files.first?.folder?.name == "chapter1")
+
+    // relativePath should be nested: chapter1/chapter1.mp3
+    #expect(files.first?.relativePath == "chapter1/chapter1.mp3")
+  }
+
+  @Test("imports external file directly into currentFolder — no extra wrapper")
+  func importsIntoCurrentFolderNoWrap() throws {
+    let (_, ctx, settings, libraryDir) = try makeImportTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+    let service = ImportService(modelContext: ctx, librarySettings: settings)
+
+    // Pre-create the subfolder in the library
+    let subfolderDir = libraryDir.appendingPathComponent("mybook")
+    try FileManager.default.createDirectory(at: subfolderDir, withIntermediateDirectories: true)
+    let targetFolder = Folder(name: "mybook", relativePath: "mybook")
+    ctx.insert(targetFolder)
+
+    let sourceFile = try makeTempSourceFile(named: "track.mp3")
+    defer { try? FileManager.default.removeItem(at: sourceFile) }
+
+    service.addAudioFile(from: sourceFile, currentFolder: targetFolder)
+
+    // File goes directly into mybook/
+    let copiedFile = subfolderDir.appendingPathComponent("track.mp3")
+    #expect(FileManager.default.fileExists(atPath: copiedFile.path))
+
+    // No spurious "track" subfolder at library root
+    let spuriousSubfolder = libraryDir.appendingPathComponent("track")
+    #expect(!FileManager.default.fileExists(atPath: spuriousSubfolder.path))
+
+    // ABFile's folder should be the target folder
+    let files = try ctx.fetch(FetchDescriptor<ABFile>())
+    #expect(files.first?.folder?.id == targetFolder.id)
+  }
+
+  @Test("file already inside library uses its existing path — no copy, no wrap")
+  func fileAlreadyInLibraryUsesExistingPath() throws {
+    let (_, ctx, settings, libraryDir) = try makeImportTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+    let service = ImportService(modelContext: ctx, librarySettings: settings)
+
+    // Place file directly inside library root (simulates already-imported file)
+    let fileInsideLibrary = libraryDir.appendingPathComponent("existing.mp3")
+    try Data("audio".utf8).write(to: fileInsideLibrary)
+
+    service.addAudioFile(from: fileInsideLibrary, currentFolder: nil)
+
+    // Only one file — no copy was made
+    let items = try FileManager.default.contentsOfDirectory(atPath: libraryDir.path)
+    #expect(items == ["existing.mp3"])
+
+    // ABFile should be created with no parent folder (file is at library root)
+    let files = try ctx.fetch(FetchDescriptor<ABFile>())
+    #expect(files.count == 1)
+    #expect(files.first?.folder == nil)
+  }
+}
+
+@Suite("ImportService — callbacks")
+@MainActor
+struct ImportServiceCallbackTests {
+
+  @Test("onImportCompleted fires on successful addAudioFile")
+  func completedCallbackFiresOnSuccess() throws {
+    let (_, ctx, settings, libraryDir) = try makeImportTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+    let service = ImportService(modelContext: ctx, librarySettings: settings)
+
+    var completedCount = 0
+    service.onImportCompleted = { completedCount += 1 }
+
+    let sourceFile = try makeTempSourceFile(named: "success.mp3")
+    defer { try? FileManager.default.removeItem(at: sourceFile) }
+
+    service.addAudioFile(from: sourceFile, currentFolder: nil)
+
+    #expect(completedCount == 1)
+  }
+
+  @Test("onImportCompleted fires on error in addAudioFile — isImporting never gets stuck")
+  func completedCallbackFiresOnError() throws {
+    let (_, ctx, settings, libraryDir) = try makeImportTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+    let service = ImportService(modelContext: ctx, librarySettings: settings)
+
+    var completedCount = 0
+    service.onImportCompleted = { completedCount += 1 }
+
+    // Non-existent source file forces a copyItem error
+    let missing = URL(fileURLWithPath: "/tmp/does_not_exist_\(UUID().uuidString).mp3")
+    service.addAudioFile(from: missing, currentFolder: nil)
+
+    #expect(service.importErrorMessage != nil)
+    // onImportCompleted MUST fire even on error so the loading indicator resets
+    #expect(completedCount == 1)
+  }
+
+  @Test("onImportStarted fires synchronously when handleImportResult triggers file import")
+  func startedCallbackFiresOnHandleImportResult() async throws {
+    let (_, ctx, settings, libraryDir) = try makeImportTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+    let service = ImportService(modelContext: ctx, librarySettings: settings)
+
+    var startedCount = 0
+    service.onImportStarted = { startedCount += 1 }
+
+    let sourceFile = try makeTempSourceFile(named: "start_test.mp3")
+    defer { try? FileManager.default.removeItem(at: sourceFile) }
+
+    service.handleImportResult(
+      .success([sourceFile]),
+      importType: .file,
+      currentFolder: nil
+    )
+
+    // onImportStarted is called synchronously before the import Task
+    #expect(startedCount == 1)
+
+    // Let the Task run so the test doesn't leak work
+    await Task.yield()
+  }
+
+  @Test("onImportStarted not called when import result is a failure")
+  func startedCallbackNotCalledOnFailure() {
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    guard let container = try? ModelContainer(
+      for: ABFile.self, LoopSegment.self, PlaybackRecord.self, Folder.self, SubtitleFile.self,
+        Transcription.self,
+      configurations: config
+    ) else { return }
+    let ctx = ModelContext(container)
+    let settings = LibrarySettings()
+    let service = ImportService(modelContext: ctx, librarySettings: settings)
+
+    var startedCount = 0
+    service.onImportStarted = { startedCount += 1 }
+
+    struct FakeError: Error {}
+    service.handleImportResult(.failure(FakeError()), importType: .file, currentFolder: nil)
+
+    #expect(startedCount == 0)
+    #expect(service.importErrorMessage != nil)
+  }
+
+  @Test("refreshFolder emits sync state and completion")
+  func refreshFolderEmitsStateAndCompletion() async throws {
+    let (_, ctx, settings, libraryDir) = try makeImportTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+    let service = ImportService(modelContext: ctx, librarySettings: settings)
+
+    let folderDir = libraryDir.appendingPathComponent("book")
+    try FileManager.default.createDirectory(at: folderDir, withIntermediateDirectories: true)
+
+    let folder = Folder(name: "book", relativePath: "book")
+    ctx.insert(folder)
+
+    var startedCount = 0
+    var completedCount = 0
+    var states: [(Bool, String?)] = []
+
+    service.onImportStarted = { startedCount += 1 }
+    service.onImportCompleted = { completedCount += 1 }
+    service.onSyncStateChanged = { isRunning, message in
+      states.append((isRunning, message))
+    }
+
+    await service.refreshFolder(folder)
+
+    #expect(startedCount == 1)
+    #expect(completedCount == 1)
+    #expect(states.first?.0 == true)
+    #expect(states.first?.1 == "Refreshing book...")
+    #expect(states.last?.0 == false)
+    #expect(states.last?.1 == nil)
+  }
+
+  @Test("refreshFolder imports new media added under existing folder")
+  func refreshFolderImportsNewMediaInExistingFolder() async throws {
+    let (_, ctx, settings, libraryDir) = try makeImportTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+    let service = ImportService(modelContext: ctx, librarySettings: settings)
+
+    let folder = Folder(name: "test", relativePath: "test")
+    ctx.insert(folder)
+
+    let folderDir = libraryDir.appendingPathComponent("test")
+    try FileManager.default.createDirectory(at: folderDir, withIntermediateDirectories: true)
+
+    let mediaURL = try makeTempRealMediaFile(named: "new_track.mp4")
+    defer { try? FileManager.default.removeItem(at: mediaURL) }
+    let destinationURL = folderDir.appendingPathComponent("new_track.mp4")
+    try FileManager.default.copyItem(at: mediaURL, to: destinationURL)
+
+    await service.refreshFolder(folder)
+
+    let descriptor = FetchDescriptor<ABFile>(
+      predicate: #Predicate<ABFile> { $0.relativePath == "test/new_track.mp4" }
+    )
+    let files = try ctx.fetch(descriptor)
+
+    #expect(files.count == 1)
+    #expect(files.first?.folder?.id == folder.id)
+  }
+
+  @Test("refreshFolder removes audio records deleted from disk")
+  func refreshFolderRemovesDeletedMediaFromDatabase() async throws {
+    let (_, ctx, settings, libraryDir) = try makeImportTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+    let service = ImportService(modelContext: ctx, librarySettings: settings)
+
+    let folder = Folder(name: "test", relativePath: "test")
+    ctx.insert(folder)
+
+    let folderDir = libraryDir.appendingPathComponent("test")
+    try FileManager.default.createDirectory(at: folderDir, withIntermediateDirectories: true)
+
+    let mediaA = try makeTempRealMediaFile(named: "a.mp4")
+    let mediaB = try makeTempRealMediaFile(named: "b.mp4")
+    defer {
+      try? FileManager.default.removeItem(at: mediaA)
+      try? FileManager.default.removeItem(at: mediaB)
+    }
+
+    let fileA = folderDir.appendingPathComponent("a.mp4")
+    let fileB = folderDir.appendingPathComponent("b.mp4")
+    try FileManager.default.copyItem(at: mediaA, to: fileA)
+    try FileManager.default.copyItem(at: mediaB, to: fileB)
+
+    await service.refreshFolder(folder)
+
+    var allFiles = try ctx.fetch(FetchDescriptor<ABFile>())
+    #expect(allFiles.count == 2)
+
+    try FileManager.default.removeItem(at: fileB)
+    await service.refreshFolder(folder)
+
+    allFiles = try ctx.fetch(FetchDescriptor<ABFile>())
+    #expect(allFiles.count == 1)
+    #expect(allFiles.first?.relativePath == "test/a.mp4")
+  }
+
+  @Test("refreshLibraryRoot does not import root-level media files")
+  func refreshLibraryRootDoesNotImportRootLevelMediaFiles() async throws {
+    let (_, ctx, settings, libraryDir) = try makeImportTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+    let service = ImportService(modelContext: ctx, librarySettings: settings)
+
+    let mediaURL = libraryDir.appendingPathComponent("root_track.mp3")
+    try Data("audio".utf8).write(to: mediaURL)
+
+    await service.refreshLibraryRoot()
+
+    let files = try ctx.fetch(FetchDescriptor<ABFile>())
+    #expect(files.isEmpty)
+  }
+
+  @Test("refreshLibraryRoot does not create suffixed duplicate root folders")
+  func refreshLibraryRootDoesNotCreateSuffixedDuplicateRootFolders() async throws {
+    let (_, ctx, settings, libraryDir) = try makeImportTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+    let service = ImportService(modelContext: ctx, librarySettings: settings)
+
+    let wooDir = libraryDir.appendingPathComponent("Woo")
+    try FileManager.default.createDirectory(at: wooDir, withIntermediateDirectories: true)
+    let mediaURL = try makeTempRealMediaFile(named: "track.mp4")
+    defer { try? FileManager.default.removeItem(at: mediaURL) }
+    try FileManager.default.copyItem(at: mediaURL, to: wooDir.appendingPathComponent("track.mp4"))
+
+    await service.refreshLibraryRoot()
+
+    let rootEntries = try FileManager.default.contentsOfDirectory(atPath: libraryDir.path)
+    #expect(rootEntries.contains("Woo"))
+    #expect(!rootEntries.contains("Woo 1"))
+    #expect(!rootEntries.contains("Woo1"))
+
+    let folders = try ctx.fetch(FetchDescriptor<Folder>())
+    #expect(folders.filter { $0.relativePath == "Woo" }.count == 1)
+  }
+
+}
+
+@Suite("ImportService — managed library semantics")
+@MainActor
+struct ImportServiceManagedLibraryTests {
+
+  @Test("importFolder copies external folder into library and indexes copied contents")
+  func importFolderCopiesExternalIntoLibrary() async throws {
+    let (_, ctx, settings, libraryDir) = try makeImportTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+    let service = ImportService(modelContext: ctx, librarySettings: settings)
+
+    let externalFolder = try makeTempExternalFolder(named: "book")
+    defer { try? FileManager.default.removeItem(at: externalFolder) }
+
+    let media = try makeTempRealMediaFile(named: "chapter.mp4")
+    defer { try? FileManager.default.removeItem(at: media) }
+    let externalMedia = externalFolder.appendingPathComponent("chapter.mp4")
+    try FileManager.default.copyItem(at: media, to: externalMedia)
+
+    var completed = false
+    service.onImportCompleted = { completed = true }
+    service.importFolder(from: externalFolder, currentFolder: nil)
+
+    let didComplete = await waitUntil { completed }
+    #expect(didComplete)
+
+    let copiedFolder = libraryDir.appendingPathComponent(externalFolder.lastPathComponent)
+    let copiedMedia = copiedFolder.appendingPathComponent("chapter.mp4")
+    #expect(FileManager.default.fileExists(atPath: copiedFolder.path))
+    #expect(FileManager.default.fileExists(atPath: copiedMedia.path))
+
+    let folders = try ctx.fetch(FetchDescriptor<Folder>())
+    #expect(folders.contains { $0.relativePath == externalFolder.lastPathComponent })
+
+    let expectedRelativePath = "\(externalFolder.lastPathComponent)/chapter.mp4"
+    let files = try ctx.fetch(FetchDescriptor<ABFile>())
+    #expect(files.contains { $0.relativePath == expectedRelativePath })
+  }
+
+  @Test("importFolder does not duplicate when source folder is already in library")
+  func importFolderDoesNotDuplicateInLibrarySource() async throws {
+    let (_, ctx, settings, libraryDir) = try makeImportTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+    let service = ImportService(modelContext: ctx, librarySettings: settings)
+
+    let inLibraryFolder = libraryDir.appendingPathComponent("test")
+    try FileManager.default.createDirectory(at: inLibraryFolder, withIntermediateDirectories: true)
+
+    let media = try makeTempRealMediaFile(named: "track.mp4")
+    defer { try? FileManager.default.removeItem(at: media) }
+    try FileManager.default.copyItem(at: media, to: inLibraryFolder.appendingPathComponent("track.mp4"))
+
+    var completed = false
+    service.onImportCompleted = { completed = true }
+    service.importFolder(from: inLibraryFolder, currentFolder: nil)
+
+    let didComplete = await waitUntil { completed }
+    #expect(didComplete)
+
+    let rootEntries = try FileManager.default.contentsOfDirectory(atPath: libraryDir.path)
+    #expect(rootEntries.contains("test"))
+    #expect(!rootEntries.contains("test 1"))
+    #expect(!rootEntries.contains("test1"))
+
+    let folders = try ctx.fetch(FetchDescriptor<Folder>())
+    #expect(folders.filter { $0.relativePath == "test" }.count == 1)
+  }
+
+  @Test("delete to trash then refresh does not resurrect removed file")
+  func deleteToTrashThenRefreshDoesNotResurrectFile() async throws {
+    let (_, ctx, settings, libraryDir) = try makeImportTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+    let importService = ImportService(modelContext: ctx, librarySettings: settings)
+
+    let externalFolder = try makeTempExternalFolder(named: "novel")
+    defer { try? FileManager.default.removeItem(at: externalFolder) }
+
+    let media = try makeTempRealMediaFile(named: "chapter.mp4")
+    defer { try? FileManager.default.removeItem(at: media) }
+    let externalMedia = externalFolder.appendingPathComponent("chapter.mp4")
+    try FileManager.default.copyItem(at: media, to: externalMedia)
+
+    var completed = false
+    importService.onImportCompleted = { completed = true }
+    importService.importFolder(from: externalFolder, currentFolder: nil)
+    let didComplete = await waitUntil { completed }
+    #expect(didComplete)
+
+    let folderDescriptor = FetchDescriptor<Folder>(
+      predicate: #Predicate<Folder> { $0.relativePath == externalFolder.lastPathComponent }
+    )
+    guard let folder = try ctx.fetch(folderDescriptor).first else {
+      Issue.record("Expected imported folder not found")
+      return
+    }
+
+    let expectedRelativePath = "\(externalFolder.lastPathComponent)/chapter.mp4"
+    let fileDescriptor = FetchDescriptor<ABFile>(
+      predicate: #Predicate<ABFile> { $0.relativePath == expectedRelativePath }
+    )
+    guard let importedFile = try ctx.fetch(fileDescriptor).first else {
+      Issue.record("Expected imported file not found")
+      return
+    }
+
+    let playerManager = PlayerManager(librarySettings: settings, engine: SilentPlayerEngine())
+    let deletionService = DeletionService(
+      modelContext: ctx,
+      playerManager: playerManager,
+      librarySettings: settings
+    )
+
+    var selectedFile: ABFile? = importedFile
+    deletionService.deleteAudioFile(
+      importedFile,
+      deleteFromDisk: true,
+      updateSelection: true,
+      checkPlayback: true,
+      selectedFile: &selectedFile
+    )
+
+    let copiedMedia = libraryDir
+      .appendingPathComponent(externalFolder.lastPathComponent)
+      .appendingPathComponent("chapter.mp4")
+    #expect(!FileManager.default.fileExists(atPath: copiedMedia.path))
+
+    await importService.refreshFolder(folder)
+
+    let filesAfterRefresh = try ctx.fetch(fileDescriptor)
+    #expect(filesAfterRefresh.isEmpty)
+  }
+
+  @Test("delete and refresh works even when bookmarkData is empty")
+  func deleteAndRefreshWorksWithEmptyBookmarkData() async throws {
+    let (_, ctx, settings, libraryDir) = try makeImportTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+
+    let folder = Folder(name: "book", relativePath: "book")
+    ctx.insert(folder)
+
+    let bookDir = libraryDir.appendingPathComponent("book")
+    try FileManager.default.createDirectory(at: bookDir, withIntermediateDirectories: true)
+
+    let mediaURL = bookDir.appendingPathComponent("chapter.mp3")
+    try Data("audio".utf8).write(to: mediaURL)
+
+    let file = ABFile(
+      displayName: "chapter.mp3",
+      bookmarkData: Data(),
+      folder: folder,
+      relativePath: "book/chapter.mp3"
+    )
+    ctx.insert(file)
+
+    let importService = ImportService(modelContext: ctx, librarySettings: settings)
+    let playerManager = PlayerManager(librarySettings: settings, engine: SilentPlayerEngine())
+    let deletionService = DeletionService(
+      modelContext: ctx,
+      playerManager: playerManager,
+      librarySettings: settings
+    )
+
+    var selected: ABFile? = file
+    deletionService.deleteAudioFile(
+      file,
+      deleteFromDisk: true,
+      updateSelection: true,
+      checkPlayback: true,
+      selectedFile: &selected
+    )
+
+    #expect(!FileManager.default.fileExists(atPath: mediaURL.path))
+
+    await importService.refreshFolder(folder)
+
+    let remaining = try ctx.fetch(FetchDescriptor<ABFile>())
+    #expect(remaining.isEmpty)
+  }
+}

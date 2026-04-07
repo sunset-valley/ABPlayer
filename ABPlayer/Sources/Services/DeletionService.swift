@@ -46,15 +46,13 @@ final class DeletionService {
     }
     
     if deleteFromDisk {
-      let url = (try? folder.resolveURL()) ?? folderLibraryURL(for: folder)
+      let url = folderLibraryURL(for: folder)
       if let url {
         do {
           try FileManager.default.removeItem(at: url)
         } catch {
           Logger.data.error("⚠️ Failed to delete folder \(folder.name) from disk: \(error.localizedDescription)")
         }
-      } else {
-        Logger.data.warning("⚠️ Could not resolve URL for folder \(folder.name) — folder may remain on disk")
       }
     }
     
@@ -69,17 +67,17 @@ final class DeletionService {
     selectedFile: inout ABFile?
   ) {
     if deleteFromDisk {
-      if let url = file.resolvedURL() {
+      let url = librarySettings.mediaFileURL(for: file)
+      if FileManager.default.fileExists(atPath: url.path) {
         do {
           try FileManager.default.removeItem(at: url)
         } catch {
           Logger.data.error("⚠️ Failed to delete audio file \(file.displayName) from disk: \(error.localizedDescription)")
         }
-      } else {
-        Logger.data.warning("⚠️ Could not resolve bookmark for \(file.displayName) — audio file may remain on disk")
       }
 
-      if let pdfURL = file.resolvedPDFURL() {
+      let pdfURL = librarySettings.pdfFileURL(for: file)
+      if FileManager.default.fileExists(atPath: pdfURL.path) {
         do {
           try FileManager.default.removeItem(at: pdfURL)
         } catch {
@@ -109,20 +107,13 @@ final class DeletionService {
     }
     
     if deleteFromDisk, let subtitleFile = file.subtitleFile {
-      var subtitleIsStale = false
-      if let subtitleURL = try? URL(
-        resolvingBookmarkData: subtitleFile.bookmarkData,
-        options: [.withSecurityScope],
-        relativeTo: nil,
-        bookmarkDataIsStale: &subtitleIsStale
-      ) {
+      let subtitleURL = librarySettings.subtitleFileURL(for: file)
+      if FileManager.default.fileExists(atPath: subtitleURL.path) {
         do {
           try FileManager.default.removeItem(at: subtitleURL)
         } catch {
           Logger.data.error("⚠️ Failed to delete subtitle \(subtitleFile.displayName) from disk: \(error.localizedDescription)")
         }
-      } else {
-        Logger.data.warning("⚠️ Could not resolve subtitle bookmark for \(file.displayName) — subtitle file may remain on disk")
       }
     }
     

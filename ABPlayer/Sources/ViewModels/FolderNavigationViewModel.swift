@@ -5,6 +5,11 @@ import SwiftUI
 @MainActor
 @Observable
 final class FolderNavigationViewModel {
+  struct SyncStatus {
+    var isRunning: Bool = false
+    var message: String?
+  }
+
   private let modelContext: ModelContext
   private let playerManager: PlayerManager
   
@@ -80,6 +85,8 @@ final class FolderNavigationViewModel {
     set { importService.importErrorMessage = newValue }
   }
 
+  var syncStatus = SyncStatus()
+
   var lastKnownSortOrder: SortOrder {
     guard
       let rawValue = UserDefaults.standard.string(forKey: UserDefaultsKey.folderNavigationSortOrder),
@@ -125,17 +132,20 @@ final class FolderNavigationViewModel {
     self.importService.onImportCompleted = { [weak self] in
       self?.refreshToken += 1
     }
+    self.importService.onSyncStateChanged = { [weak self] isRunning, message in
+      self?.syncStatus = SyncStatus(isRunning: isRunning, message: message)
+    }
   }
   
   func currentFolders() -> [Folder] {
     _ = refreshToken
-    let folders = currentFolder.map { Array($0.subfolders) } ?? rootFolders()
+    let folders = currentFolder.map { childFolders(in: $0) } ?? rootFolders()
     return SortingUtility.sortFolders(folders, by: sortOrder)
   }
 
   func currentAudioFiles() -> [ABFile] {
     _ = refreshToken
-    let files = currentFolder.map { Array($0.audioFiles) } ?? rootAudioFiles()
+    let files = currentFolder.map { audioFiles(in: $0) } ?? rootAudioFiles()
     return SortingUtility.sortAudioFiles(files, by: sortOrder)
   }
 
@@ -309,7 +319,11 @@ final class FolderNavigationViewModel {
   }
   
   func refreshCurrentFolder() async {
-    guard let currentFolder else { return }
+    guard let currentFolder else {
+      await importService.refreshLibraryRoot()
+      return
+    }
+
     await importService.refreshFolder(currentFolder)
   }
   
@@ -337,6 +351,26 @@ final class FolderNavigationViewModel {
     let descriptor = FetchDescriptor<ABFile>(
       predicate: #Predicate<ABFile> { $0.folder == nil },
       sortBy: [SortDescriptor(\ABFile.createdAt)]
+    )
+    return (try? modelContext.fetch(descriptor)) ?? []
+  }
+
+  private func childFolders(in folder: Folder) -> [Folder] {
+    let parentID = folder.id
+    let descriptor = FetchDescriptor<Folder>(
+      predicate: #Predicate<Folder> { candidate in
+        candidate.parent?.id == parentID
+      }
+    )
+    return (try? modelContext.fetch(descriptor)) ?? []
+  }
+
+  private func audioFiles(in folder: Folder) -> [ABFile] {
+    let folderID = folder.id
+    let descriptor = FetchDescriptor<ABFile>(
+      predicate: #Predicate<ABFile> { candidate in
+        candidate.folder?.id == folderID
+      }
     )
     return (try? modelContext.fetch(descriptor)) ?? []
   }

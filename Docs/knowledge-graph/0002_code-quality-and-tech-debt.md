@@ -19,10 +19,13 @@ Dependencies flow downward only: Views → ViewModels → Services → Models. N
 - `PlayerEngine` runs on a background `actor` so AVPlayer time callbacks never block the UI.
 
 **Deterministic file IDs**
-`DeterministicID.generate(from: relativePath)` produces SHA256-based UUIDs. Re-importing the same file always yields the same `ABFile` identity — essential for bookmark recovery and transcription cache hits.
+`DeterministicID.generate(from: relativePath)` produces SHA256-based UUIDs. Re-importing the same file always yields the same `ABFile` identity — essential for stable managed-library path mapping and transcription cache hits.
 
-**Security-scoped bookmarks**
-All media file access goes through `bookmark → URL resolution → scoped access → defer stopAccessing`. No known paths that bypass sandbox constraints.
+**Library-scoped permission model**
+Media access is now rooted at `LibrarySettings` (single permission boundary). Active flows resolve media/subtitle/PDF via `library root + relativePath` and sibling path derivation (`.srt`, `.pdf`).
+
+- `ABFile`, `Folder`, and `SubtitleFile` bookmark fields are retained as **legacy compatibility fields**.
+- New code should not read or write per-file/per-folder bookmark data for managed-library media operations.
 
 **Protocol boundary for testability**
 `PlayerEngineProtocol` lets `PlayerManager` tests use a mock engine without AVFoundation. Pattern should be extended if other hard-to-test I/O surfaces arise (e.g., WhisperKit in `TranscriptionManager`).
@@ -57,7 +60,7 @@ Resolved debt history was moved to archive:
 | `TranscriptionManager` orchestration | Partial — state machine only | No mock for WhisperKit calls (TD-006) |
 | `MainSplitViewModel` layout transitions | Not covered | Requires view integration test |
 | `FolderNavigationViewModel` sub-services | Not covered | `NavigationService`, `SelectionStateService`, `DeletionService`, `ImportService` each testable in isolation now — no tests yet |
-| Security-scoped bookmark resolution | Not covered | Requires sandboxed environment |
+| Library-scoped permission lifecycle | Partial | Session begin/end and relative-path resolution are covered by regression suites; full app relaunch scenario still needs integration coverage |
 
 ---
 

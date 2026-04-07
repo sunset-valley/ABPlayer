@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import SwiftData
 import SwiftUI
 
@@ -8,7 +9,9 @@ final class ImportService {
   private let librarySettings: LibrarySettings
   
   var importErrorMessage: String?
+  var onImportStarted: (@MainActor () -> Void)?
   var onImportCompleted: (@MainActor () -> Void)?
+  var onSyncStateChanged: (@MainActor (_ isRunning: Bool, _ message: String?) -> Void)?
   
   init(
     modelContext: ModelContext,
@@ -43,6 +46,13 @@ final class ImportService {
         fileURL = url
         let folderRelativePath = folderRelativePath(for: fileURL)
         targetFolder = findOrCreateFolder(relativePath: folderRelativePath)
+      } else if currentFolder == nil {
+        // Auto-wrap: copy into a new subfolder named after the file
+        let folderName = url.deletingPathExtension().lastPathComponent
+        let wrapperDirectory = librarySettings.libraryDirectoryURL.appendingPathComponent(folderName)
+        try FileManager.default.createDirectory(at: wrapperDirectory, withIntermediateDirectories: true)
+        fileURL = try copyItemToLibrary(from: url, destinationDirectory: wrapperDirectory)
+        targetFolder = findOrCreateFolder(relativePath: folderName)
       } else {
         let destinationDirectory = currentFolderLibraryURL(currentFolder) ?? librarySettings.libraryDirectoryURL
         fileURL = try copyItemToLibrary(from: url, destinationDirectory: destinationDirectory)
@@ -50,62 +60,115 @@ final class ImportService {
       }
       
       let relativePath = calculateRelativePath(for: fileURL)
-      let bookmarkData = try fileURL.bookmarkData(
-        options: [.withSecurityScope],
-        includingResourceValuesForKeys: nil,
-        relativeTo: nil
-      )
-      
+
       let deterministicID = ABFile.generateDeterministicID(from: relativePath)
       let audioFile = ABFile(
         id: deterministicID,
         displayName: fileURL.lastPathComponent,
         fileType: ABFile.inferFileType(from: fileURL),
-        bookmarkData: bookmarkData,
+        bookmarkData: Data(),
         folder: targetFolder,
         relativePath: relativePath
       )
       
       modelContext.insert(audioFile)
       targetFolder?.audioFiles.append(audioFile)
-      onImportCompleted?()
+      finishSync()
     } catch {
       importErrorMessage = "Failed to import file: \(error.localizedDescription)"
+      finishSync()
     }
   }
   
   func importFolder(from url: URL, currentFolder: Folder?) {
+    beginSync(message: "Importing folder...")
     Task { @MainActor in
-      let importer = FolderImporter(modelContext: modelContext, librarySettings: librarySettings)
-      
       do {
-        let targetParent: Folder?
-        if librarySettings.isInLibrary(url) {
-          let folderRelativePath = calculateRelativePath(for: url)
-          let parentRelativePath = parentRelativePath(for: folderRelativePath)
-          targetParent = findOrCreateFolder(relativePath: parentRelativePath)
-        } else {
-          targetParent = currentFolder
+        try await librarySettings.withLibraryAccess {
+          let importer = FolderImporter(modelContext: self.modelContext, librarySettings: self.librarySettings)
+          let targetParent: Folder?
+          if self.librarySettings.isInLibrary(url) {
+            let folderRelativePath = self.calculateRelativePath(for: url)
+            let parentRelativePath = self.parentRelativePath(for: folderRelativePath)
+            targetParent = self.findOrCreateFolder(relativePath: parentRelativePath)
+          } else {
+            targetParent = currentFolder
+          }
+          _ = try await importer.syncFolder(
+            at: url,
+            parentFolder: targetParent,
+            onProgressMessage: { [weak self] message in
+              self?.updateSyncMessage(message)
+            }
+          )
         }
-        _ = try await importer.syncFolder(at: url, parentFolder: targetParent)
-        onImportCompleted?()
+        finishSync()
       } catch {
-        await MainActor.run {
-          importErrorMessage = "Failed to import folder: \(error.localizedDescription)"
-        }
+        importErrorMessage = "Failed to import folder: \(error.localizedDescription)"
+        finishSync()
       }
     }
   }
   
   func refreshFolder(_ folder: Folder) async {
-    let folderURL = librarySettings.libraryDirectoryURL.appendingPathComponent(folder.relativePath)
-    let importer = FolderImporter(modelContext: modelContext, librarySettings: librarySettings)
-    
+    beginSync(message: "Refreshing \(folder.name)...")
+    defer { finishSync() }
+
     do {
-      _ = try await importer.syncFolder(at: folderURL, parentFolder: folder.parent)
-      onImportCompleted?()
+      try await librarySettings.withLibraryAccess {
+        let folderURL = self.librarySettings.libraryDirectoryURL.appendingPathComponent(folder.relativePath)
+        let importer = FolderImporter(modelContext: self.modelContext, librarySettings: self.librarySettings)
+
+        _ = try await importer.syncFolder(
+          at: folderURL,
+          parentFolder: folder.parent,
+          onProgressMessage: { [weak self] message in
+            self?.updateSyncMessage(message)
+          }
+        )
+      }
     } catch {
+      Logger.data.error("[ImportService] refreshFolder failed for \(folder.relativePath, privacy: .public): \(error.localizedDescription, privacy: .public)")
       importErrorMessage = "Failed to refresh folder: \(error.localizedDescription)"
+    }
+  }
+
+  func refreshLibraryRoot() async {
+    beginSync(message: "Refreshing library...")
+    defer { finishSync() }
+
+    do {
+      try await librarySettings.withLibraryAccess {
+        try self.librarySettings.ensureLibraryDirectoryExists()
+
+        let fileManager = FileManager.default
+        let rootURL = self.librarySettings.libraryDirectoryURL
+        let importer = FolderImporter(modelContext: self.modelContext, librarySettings: self.librarySettings)
+
+        let contents = try fileManager.contentsOfDirectory(
+          at: rootURL,
+          includingPropertiesForKeys: [.isDirectoryKey],
+          options: [.skipsHiddenFiles]
+        )
+
+        let directories = contents.filter {
+          (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        }
+
+        for directoryURL in directories {
+          _ = try await importer.syncFolder(
+            at: directoryURL,
+            parentFolder: nil,
+            copyExternalIntoLibrary: false,
+            onProgressMessage: { [weak self] message in
+              self?.updateSyncMessage(message)
+            }
+          )
+        }
+      }
+    } catch {
+      Logger.data.error("[ImportService] refreshLibraryRoot failed: \(error.localizedDescription, privacy: .public)")
+      importErrorMessage = "Failed to refresh library: \(error.localizedDescription)"
     }
   }
   
@@ -115,7 +178,10 @@ final class ImportService {
       importErrorMessage = error.localizedDescription
     case .success(let urls):
       guard let url = urls.first else { return }
-      addAudioFile(from: url, currentFolder: currentFolder)
+      beginSync(message: "Importing media...")
+      Task { @MainActor in
+        self.addAudioFile(from: url, currentFolder: currentFolder)
+      }
     }
   }
   
@@ -205,5 +271,19 @@ final class ImportService {
     
     return parent
   }
-  
+
+  private func beginSync(message: String) {
+    onImportStarted?()
+    onSyncStateChanged?(true, message)
+  }
+
+  private func finishSync() {
+    onSyncStateChanged?(false, nil)
+    onImportCompleted?()
+  }
+
+  private func updateSyncMessage(_ message: String) {
+    onSyncStateChanged?(true, message)
+  }
+
 }

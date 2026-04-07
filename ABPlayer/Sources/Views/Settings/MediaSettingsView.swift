@@ -95,19 +95,11 @@ struct MediaSettingsView: View {
     switch result {
     case .success(let urls):
       guard let url = urls.first else { return }
-      if (try? url.bookmarkData(
-        options: [.withSecurityScope],
-        includingResourceValuesForKeys: nil,
-        relativeTo: nil
-      )) != nil {
-        librarySettings.libraryPath = url.path
-        do {
-          try librarySettings.ensureLibraryDirectoryExists()
-        } catch {
-          libraryPathError = "Failed to create library directory: \(error.localizedDescription)"
-        }
-      } else {
-        libraryPathError = "Unable to access selected folder."
+      do {
+        try librarySettings.setLibraryDirectory(url)
+        try librarySettings.ensureLibraryDirectoryExists()
+      } catch {
+        libraryPathError = error.localizedDescription
       }
     case .failure(let error):
       libraryPathError = error.localizedDescription

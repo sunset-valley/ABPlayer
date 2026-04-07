@@ -63,6 +63,8 @@ struct FolderNavigationView: View {
       currentFolder: viewModel.currentFolder,
       canNavigateBack: !viewModel.navigationPath.isEmpty,
       sortOrder: viewModel.sortOrder,
+      syncMessage: viewModel.syncStatus.message,
+      isSyncRunning: viewModel.syncStatus.isRunning,
       onNavigateBack: {
         viewModel.navigationPath.removeLast()
         viewModel.currentFolder = viewModel.navigationPath.last

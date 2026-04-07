@@ -24,6 +24,8 @@ final class ABFile {
   var fileType: FileType
 
   @Attribute(.externalStorage)
+  /// Legacy field kept for store compatibility.
+  /// Managed-library mode no longer uses per-file bookmarks for access.
   var bookmarkData: Data
 
   var createdAt: Date
@@ -58,6 +60,8 @@ final class ABFile {
 
   /// Related PDF bookmark
   @Attribute(.externalStorage)
+  /// Legacy field kept for store compatibility.
+  /// PDF is now derived from sibling path (<media basename>.pdf) in library.
   var pdfBookmarkData: Data?
 
   /// Cached media duration in seconds to avoid repeated reads
@@ -134,40 +138,28 @@ extension ABFile {
     DeterministicID.generate(from: relativePath)
   }
 
+  /// Legacy helper retained for API compatibility.
+  /// Managed-library mode derives subtitle URL from sibling `.srt` path.
   var srtFileURL: URL? {
-    guard let audioURL = resolvedURL() else { return nil }
-    return audioURL.deletingPathExtension().appendingPathExtension("srt")
+    nil
   }
 
+  /// Legacy helper retained for compatibility with old call sites.
+  /// New code should resolve media URLs via LibrarySettings + relativePath.
   func resolvedURL() -> URL? {
-    try? resolveURL()
+    nil
   }
 
+  /// Legacy helper retained for compatibility with old call sites.
+  /// New code should derive PDF URL from sibling `.pdf` path.
   func resolvedPDFURL() -> URL? {
-    guard let pdfBookmarkData else { return nil }
-    var isStale = false
-    return try? URL(
-      resolvingBookmarkData: pdfBookmarkData,
-      options: [.withSecurityScope],
-      relativeTo: nil,
-      bookmarkDataIsStale: &isStale
-    )
+    nil
   }
 
-  private func resolveURL() throws -> URL {
-    var isStale = false
-    return try URL(
-      resolvingBookmarkData: bookmarkData,
-      options: [.withSecurityScope],
-      relativeTo: nil,
-      bookmarkDataIsStale: &isStale
-    )
-  }
-
-  /// Checks whether the bookmark is still valid (file exists)
+  /// Legacy compatibility flag.
+  /// In managed-library mode, actual file existence is checked by services using LibrarySettings.
   var isBookmarkValid: Bool {
-    guard let url = resolvedURL() else { return false }
-    return FileManager.default.fileExists(atPath: url.path)
+    !relativePath.isEmpty
   }
 
   static func inferFileType(from displayName: String) -> FileType {

@@ -3,13 +3,21 @@ import SwiftUI
 // MARK: - Audio File Row
 
 struct FileRowView: View {
+  @Environment(LibrarySettings.self) private var librarySettings
+
   let file: ABFile
   let isSelected: Bool
   var isFailed: Bool = false
   let onDelete: () -> Void
 
+  private var fileExistsOnDisk: Bool {
+    guard !file.relativePath.isEmpty else { return false }
+    let fileURL = librarySettings.mediaFileURL(for: file)
+    return FileManager.default.fileExists(atPath: fileURL.path)
+  }
+
   private var isAvailable: Bool {
-    file.isBookmarkValid && !isFailed
+    fileExistsOnDisk && !isFailed
   }
 
   private var hasPlayed: Bool {
@@ -29,7 +37,7 @@ struct FileRowView: View {
             .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
         } else {
           Image(systemName: "exclamationmark.triangle.fill")
-            .foregroundStyle(file.isBookmarkValid ? .red : .orange)
+            .foregroundStyle(fileExistsOnDisk ? .red : .orange)
         }
 
         VStack(alignment: .leading) {
@@ -39,7 +47,7 @@ struct FileRowView: View {
             .bodyStyle()
 
           HStack(spacing: 4) {
-            if !file.isBookmarkValid {
+            if !fileExistsOnDisk {
               Text("文件不可用")
                 .foregroundStyle(.orange)
             } else if isFailed {

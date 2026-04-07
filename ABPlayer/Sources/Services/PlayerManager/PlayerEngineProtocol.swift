@@ -7,7 +7,7 @@ protocol PlayerEngineProtocol: Actor {
   var currentPlayer: AVPlayer? { get }
 
   func load(
-    bookmarkData: Data,
+    fileURL: URL,
     resumeTime: Double,
     onDurationLoaded: @MainActor @Sendable @escaping (Double) -> Void,
     onTimeUpdate: @MainActor @Sendable @escaping (Double) -> Void,
