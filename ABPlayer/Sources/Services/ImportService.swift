@@ -8,6 +8,7 @@ final class ImportService {
   private let librarySettings: LibrarySettings
   
   var importErrorMessage: String?
+  var onImportStarted: (@MainActor () -> Void)?
   var onImportCompleted: (@MainActor () -> Void)?
   
   init(
@@ -43,6 +44,13 @@ final class ImportService {
         fileURL = url
         let folderRelativePath = folderRelativePath(for: fileURL)
         targetFolder = findOrCreateFolder(relativePath: folderRelativePath)
+      } else if currentFolder == nil {
+        // Auto-wrap: copy into a new subfolder named after the file
+        let folderName = url.deletingPathExtension().lastPathComponent
+        let wrapperDirectory = librarySettings.libraryDirectoryURL.appendingPathComponent(folderName)
+        try FileManager.default.createDirectory(at: wrapperDirectory, withIntermediateDirectories: true)
+        fileURL = try copyItemToLibrary(from: url, destinationDirectory: wrapperDirectory)
+        targetFolder = findOrCreateFolder(relativePath: folderName)
       } else {
         let destinationDirectory = currentFolderLibraryURL(currentFolder) ?? librarySettings.libraryDirectoryURL
         fileURL = try copyItemToLibrary(from: url, destinationDirectory: destinationDirectory)
@@ -71,13 +79,15 @@ final class ImportService {
       onImportCompleted?()
     } catch {
       importErrorMessage = "Failed to import file: \(error.localizedDescription)"
+      onImportCompleted?()
     }
   }
   
   func importFolder(from url: URL, currentFolder: Folder?) {
+    onImportStarted?()
     Task { @MainActor in
       let importer = FolderImporter(modelContext: modelContext, librarySettings: librarySettings)
-      
+
       do {
         let targetParent: Folder?
         if librarySettings.isInLibrary(url) {
@@ -90,9 +100,8 @@ final class ImportService {
         _ = try await importer.syncFolder(at: url, parentFolder: targetParent)
         onImportCompleted?()
       } catch {
-        await MainActor.run {
-          importErrorMessage = "Failed to import folder: \(error.localizedDescription)"
-        }
+        importErrorMessage = "Failed to import folder: \(error.localizedDescription)"
+        onImportCompleted?()
       }
     }
   }
@@ -115,7 +124,10 @@ final class ImportService {
       importErrorMessage = error.localizedDescription
     case .success(let urls):
       guard let url = urls.first else { return }
-      addAudioFile(from: url, currentFolder: currentFolder)
+      onImportStarted?()
+      Task { @MainActor in
+        self.addAudioFile(from: url, currentFolder: currentFolder)
+      }
     }
   }
   

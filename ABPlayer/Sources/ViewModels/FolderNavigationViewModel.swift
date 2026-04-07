@@ -80,6 +80,8 @@ final class FolderNavigationViewModel {
     set { importService.importErrorMessage = newValue }
   }
 
+  var isImporting: Bool = false
+
   var lastKnownSortOrder: SortOrder {
     guard
       let rawValue = UserDefaults.standard.string(forKey: UserDefaultsKey.folderNavigationSortOrder),
@@ -122,7 +124,11 @@ final class FolderNavigationViewModel {
     
     self.selectionService.selectedFile = selectedFile
     
+    self.importService.onImportStarted = { [weak self] in
+      self?.isImporting = true
+    }
     self.importService.onImportCompleted = { [weak self] in
+      self?.isImporting = false
       self?.refreshToken += 1
     }
   }
