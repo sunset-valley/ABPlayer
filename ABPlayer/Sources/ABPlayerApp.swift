@@ -119,7 +119,7 @@ struct ABPlayerApp: App {
   }
 
   private var settingsWindowScene: some Scene {
-    WindowGroup(id: "settings-window") {
+    Window("Settings", id: "settings-window") {
       SettingsView()
         .environment(container.transcriptionSettings)
         .environment(container.librarySettings)
@@ -136,7 +136,7 @@ struct ABPlayerApp: App {
   }
 
   private var annotationStyleManagerWindowScene: some Scene {
-    WindowGroup(id: "annotation-style-manager") {
+    Window("Annotation Styles", id: "annotation-style-manager") {
       AnnotationStyleManagerView()
         .environment(container.annotationStyleService)
         .environment(container.annotationService)
