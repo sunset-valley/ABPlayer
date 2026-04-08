@@ -25,6 +25,20 @@ private func makeImportTestContext() throws -> (ModelContainer, ModelContext, Li
 }
 
 @MainActor
+private func makeFolderNavigationViewModelTestContext() throws
+  -> (ModelContainer, ModelContext, LibrarySettings, PlayerManager, FolderNavigationViewModel, URL)
+{
+  let (container, context, settings, libraryDir) = try makeImportTestContext()
+  let playerManager = PlayerManager(librarySettings: settings, engine: SilentPlayerEngine())
+  let viewModel = FolderNavigationViewModel(
+    modelContext: context,
+    playerManager: playerManager,
+    librarySettings: settings
+  )
+  return (container, context, settings, playerManager, viewModel, libraryDir)
+}
+
+@MainActor
 private func makeTempSourceFile(named name: String) throws -> URL {
   let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
   try Data("audio".utf8).write(to: url)
@@ -575,5 +589,156 @@ struct ImportServiceManagedLibraryTests {
 
     let remaining = try ctx.fetch(FetchDescriptor<ABFile>())
     #expect(remaining.isEmpty)
+  }
+
+  @Test("refresh clears stale player and queue references for removed files")
+  func refreshClearsStalePlayerAndQueueReferencesForRemovedFiles() async throws {
+    let (_, ctx, settings, playerManager, viewModel, libraryDir) = try makeFolderNavigationViewModelTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+
+    let service = ImportService(modelContext: ctx, librarySettings: settings)
+
+    let folder = Folder(name: "book", relativePath: "book")
+    ctx.insert(folder)
+
+    let bookDir = libraryDir.appendingPathComponent("book")
+    try FileManager.default.createDirectory(at: bookDir, withIntermediateDirectories: true)
+
+    let mediaA = bookDir.appendingPathComponent("a.mp4")
+    let mediaB = bookDir.appendingPathComponent("b.mp4")
+    try Data("a".utf8).write(to: mediaA)
+    try Data("b".utf8).write(to: mediaB)
+
+    await service.refreshFolder(folder)
+
+    let files = try ctx.fetch(FetchDescriptor<ABFile>()).filter { $0.folder?.id == folder.id }
+    #expect(files.count == 2)
+
+    guard
+      let fileA = files.first(where: { $0.relativePath == "book/a.mp4" }),
+      let fileB = files.first(where: { $0.relativePath == "book/b.mp4" })
+    else {
+      Issue.record("Expected both imported files")
+      return
+    }
+
+    viewModel.currentFolder = folder
+    viewModel.selectedFile = fileB
+    playerManager.currentFile = fileB
+    playerManager.playbackQueue.updateQueue([fileA, fileB])
+    playerManager.playbackQueue.setCurrentFile(fileB)
+
+    try FileManager.default.removeItem(at: mediaB)
+
+    await viewModel.refreshCurrentFolder()
+
+    #expect(viewModel.selectedFile?.id == nil)
+    #expect(playerManager.currentFile?.id == nil)
+    #expect(playerManager.playbackQueue.queuedFiles.map(\.id) == [fileA.id])
+    #expect(playerManager.playbackQueue.currentFile == nil)
+  }
+
+  @Test("library switch clears stale selection and transient row states")
+  func librarySwitchClearsSelectionAndTransientStates() async throws {
+    let (_, ctx, settings, playerManager, viewModel, libraryDir) = try makeFolderNavigationViewModelTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+
+    let oldRoot = libraryDir.appendingPathComponent("old-lib")
+    let oldBook = oldRoot.appendingPathComponent("book")
+    try FileManager.default.createDirectory(at: oldBook, withIntermediateDirectories: true)
+    let oldMedia = oldBook.appendingPathComponent("old.mp4")
+    try Data("old".utf8).write(to: oldMedia)
+
+    let newRoot = libraryDir.appendingPathComponent("new-lib")
+    try FileManager.default.createDirectory(at: newRoot, withIntermediateDirectories: true)
+
+    settings.libraryPath = oldRoot.path
+
+    let oldFolder = Folder(name: "book", relativePath: "book")
+    let staleFile = ABFile(
+      displayName: "old.mp4",
+      bookmarkData: Data(),
+      folder: oldFolder,
+      relativePath: "book/old.mp4"
+    )
+    ctx.insert(oldFolder)
+    ctx.insert(staleFile)
+
+    viewModel.navigationPath = [oldFolder]
+    viewModel.currentFolder = oldFolder
+    viewModel.selection = .audioFile(staleFile)
+    viewModel.selectedFile = staleFile
+    viewModel.hovering = .audioFile(staleFile)
+    viewModel.pressing = .audioFile(staleFile)
+    viewModel.selectionBeforePress = .audioFile(staleFile)
+    viewModel.requestDelete(.audioFile(staleFile))
+
+    playerManager.currentFile = staleFile
+    playerManager.playbackQueue.updateQueue([staleFile])
+    playerManager.playbackQueue.setCurrentFile(staleFile)
+
+    settings.libraryPath = newRoot.path
+    await viewModel.handleLibraryPathChanged()
+
+    #expect(viewModel.selectedFile == nil)
+    #expect(viewModel.selection == nil)
+    #expect(viewModel.hovering == nil)
+    #expect(viewModel.pressing == nil)
+    #expect(viewModel.selectionBeforePress == nil)
+    #expect(viewModel.deleteTarget == nil)
+    #expect(viewModel.showDeleteConfirmation == false)
+    #expect(viewModel.currentFolder == nil)
+    #expect(viewModel.navigationPath.isEmpty)
+
+    #expect(playerManager.currentFile == nil)
+    #expect(playerManager.playbackQueue.queuedFiles.isEmpty)
+    #expect(playerManager.playbackQueue.currentFile == nil)
+  }
+
+  @Test("delete folder clears player and queue when selected file is inside")
+  func deleteFolderClearsPlayerAndQueueWhenSelectionInside() async throws {
+    let (_, ctx, _, playerManager, viewModel, libraryDir) = try makeFolderNavigationViewModelTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+
+    let root = Folder(name: "book", relativePath: "book")
+    let keep = ABFile(
+      displayName: "keep.mp4",
+      bookmarkData: Data(),
+      relativePath: "keep.mp4"
+    )
+    let doomed = ABFile(
+      displayName: "doomed.mp4",
+      bookmarkData: Data(),
+      folder: root,
+      relativePath: "book/doomed.mp4"
+    )
+    ctx.insert(root)
+    ctx.insert(keep)
+    ctx.insert(doomed)
+
+    viewModel.currentFolder = root
+    viewModel.navigationPath = [root]
+    viewModel.selection = .audioFile(doomed)
+    viewModel.selectedFile = doomed
+    viewModel.hovering = .audioFile(doomed)
+    viewModel.requestDelete(.folder(root))
+
+    playerManager.currentFile = doomed
+    playerManager.playbackQueue.updateQueue([keep, doomed])
+    playerManager.playbackQueue.setCurrentFile(doomed)
+
+    viewModel.deleteFolder(root, deleteFromDisk: false)
+
+    #expect(viewModel.selectedFile == nil)
+    #expect(viewModel.selection == nil)
+    #expect(viewModel.hovering == nil)
+    #expect(viewModel.deleteTarget == nil)
+    #expect(viewModel.showDeleteConfirmation == false)
+    #expect(viewModel.currentFolder == nil)
+    #expect(viewModel.navigationPath.isEmpty)
+
+    #expect(playerManager.currentFile == nil)
+    #expect(playerManager.playbackQueue.queuedFiles.map(\.id) == [keep.id])
+    #expect(playerManager.playbackQueue.currentFile == nil)
   }
 }

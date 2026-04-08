@@ -400,6 +400,41 @@ struct PlaybackQueueCurrentFileTrackingTests {
     let next = queue.navigateNext()
     #expect(next?.id == f1.id)
   }
+
+  @Test("removeFiles removes deleted IDs and clears current file")
+  func removeFilesClearsCurrentFileWhenRemoved() throws {
+    let (_, ctx) = try makeQueueTestContext()
+    let f1 = makeFile("ep1.mp4", in: ctx)
+    let f2 = makeFile("ep2.mp4", in: ctx)
+    let f3 = makeFile("ep3.mp4", in: ctx)
+
+    let queue = PlaybackQueue()
+    queue.updateQueue([f1, f2, f3])
+    queue.setCurrentFile(f2)
+
+    let changed = queue.removeFiles(withIDs: [f2.id, f3.id])
+
+    #expect(changed)
+    #expect(queue.queuedFiles.map(\.id) == [f1.id])
+    #expect(queue.currentFile == nil)
+  }
+
+  @Test("removeFiles returns false when nothing matches")
+  func removeFilesNoOpWhenIDsMissing() throws {
+    let (_, ctx) = try makeQueueTestContext()
+    let f1 = makeFile("ep1.mp4", in: ctx)
+    let f2 = makeFile("ep2.mp4", in: ctx)
+
+    let queue = PlaybackQueue()
+    queue.updateQueue([f1, f2])
+    queue.setCurrentFile(f1)
+
+    let changed = queue.removeFiles(withIDs: [UUID()])
+
+    #expect(changed == false)
+    #expect(queue.queuedFiles.map(\.id) == [f1.id, f2.id])
+    #expect(queue.currentFile?.id == f1.id)
+  }
 }
 
 @Suite("PlaybackQueue — snapshot and source context")
