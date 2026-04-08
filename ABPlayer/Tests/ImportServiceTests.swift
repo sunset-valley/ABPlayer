@@ -741,4 +741,86 @@ struct ImportServiceManagedLibraryTests {
     #expect(playerManager.playbackQueue.queuedFiles.map(\.id) == [keep.id])
     #expect(playerManager.playbackQueue.currentFile == nil)
   }
+
+  @Test("refreshLibraryRoot prunes stale root folders from previous library")
+  func refreshLibraryRootPrunesStaleRootFolders() async throws {
+    let (_, ctx, settings, _, _, libraryDir) = try makeFolderNavigationViewModelTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+
+    let oldRoot = libraryDir.appendingPathComponent("old-lib")
+    let oldBook = oldRoot.appendingPathComponent("book")
+    try FileManager.default.createDirectory(at: oldBook, withIntermediateDirectories: true)
+    try Data("old".utf8).write(to: oldBook.appendingPathComponent("old.mp4"))
+
+    let newRoot = libraryDir.appendingPathComponent("new-lib")
+    let newShelf = newRoot.appendingPathComponent("shelf")
+    try FileManager.default.createDirectory(at: newShelf, withIntermediateDirectories: true)
+    try Data("new".utf8).write(to: newShelf.appendingPathComponent("new.mp4"))
+
+    settings.libraryPath = oldRoot.path
+    let service = ImportService(modelContext: ctx, librarySettings: settings)
+    await service.refreshLibraryRoot()
+
+    var rootFolders = try ctx.fetch(
+      FetchDescriptor<Folder>(predicate: #Predicate<Folder> { $0.parent == nil })
+    )
+    #expect(rootFolders.map(\.relativePath).contains("book"))
+
+    settings.libraryPath = newRoot.path
+    await service.refreshLibraryRoot()
+
+    rootFolders = try ctx.fetch(
+      FetchDescriptor<Folder>(predicate: #Predicate<Folder> { $0.parent == nil })
+    )
+    let rootPaths = Set(rootFolders.map(\.relativePath))
+    #expect(rootPaths.contains("shelf"))
+    #expect(rootPaths.contains("book") == false)
+  }
+
+  @Test("switch library then delete previously selected stale folder is safe")
+  func switchLibraryThenDeletePreviouslySelectedStaleFolderIsSafe() async throws {
+    let (_, ctx, settings, playerManager, viewModel, libraryDir) = try makeFolderNavigationViewModelTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+
+    let oldRoot = libraryDir.appendingPathComponent("old-lib")
+    let oldBook = oldRoot.appendingPathComponent("book")
+    try FileManager.default.createDirectory(at: oldBook, withIntermediateDirectories: true)
+    try Data("old".utf8).write(to: oldBook.appendingPathComponent("old.mp4"))
+
+    let newRoot = libraryDir.appendingPathComponent("new-lib")
+    let newShelf = newRoot.appendingPathComponent("shelf")
+    try FileManager.default.createDirectory(at: newShelf, withIntermediateDirectories: true)
+    try Data("new".utf8).write(to: newShelf.appendingPathComponent("new.mp4"))
+
+    let oldFolder = Folder(name: "book", relativePath: "book")
+    let staleFile = ABFile(
+      displayName: "old.mp4",
+      bookmarkData: Data(),
+      folder: oldFolder,
+      relativePath: "book/old.mp4"
+    )
+    ctx.insert(oldFolder)
+    ctx.insert(staleFile)
+
+    viewModel.navigationPath = [oldFolder]
+    viewModel.currentFolder = oldFolder
+    viewModel.selection = .audioFile(staleFile)
+    viewModel.selectedFile = staleFile
+    playerManager.currentFile = staleFile
+    playerManager.playbackQueue.updateQueue([staleFile])
+    playerManager.playbackQueue.setCurrentFile(staleFile)
+
+    settings.libraryPath = newRoot.path
+    await viewModel.handleLibraryPathChanged()
+
+    // Simulate stale delete target kept by UI timing/race and ensure deletion path remains safe.
+    viewModel.deleteFolder(oldFolder, deleteFromDisk: false)
+
+    let allFolders = try ctx.fetch(FetchDescriptor<Folder>())
+    #expect(allFolders.contains(where: { $0.relativePath == "book" }) == false)
+    #expect(viewModel.selectedFile == nil)
+    #expect(viewModel.selection == nil)
+    #expect(playerManager.currentFile == nil)
+    #expect(playerManager.playbackQueue.currentFile == nil)
+  }
 }
