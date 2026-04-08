@@ -109,9 +109,11 @@ struct ABPlayerApp: App {
           ])
         }
 
-        Button("Check for Updates...") {
-          container.updater.checkForUpdates()
-        }
+        #if !APPSTORE
+          Button("Check for Updates...") {
+            container.updater.checkForUpdates()
+          }
+        #endif
       }
     }
   }
@@ -125,7 +127,9 @@ struct ABPlayerApp: App {
         .environment(container.proxySettings)
         .environment(container.annotationStyleService)
         .environment(container.transcriptionManager)
-        .environment(container.updater)
+        #if !APPSTORE
+          .environment(container.updater)
+        #endif
     }
     .defaultPosition(.center)
     .commandsRemoved()

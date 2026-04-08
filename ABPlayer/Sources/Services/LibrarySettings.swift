@@ -50,16 +50,37 @@ public final class LibrarySettings {
   }
 
   func setLibraryDirectory(_ url: URL) throws {
-    let bookmarkData = try url.bookmarkData(
-      options: [.withSecurityScope],
-      includingResourceValuesForKeys: nil,
-      relativeTo: nil
-    )
-    libraryPath = url.path
-    libraryBookmarkData = bookmarkData
+    let didStartAccessing = url.startAccessingSecurityScopedResource()
+    defer {
+      if didStartAccessing {
+        url.stopAccessingSecurityScopedResource()
+      }
+    }
+
+    do {
+      let bookmarkData = try url.bookmarkData(
+        options: [.withSecurityScope],
+        includingResourceValuesForKeys: nil,
+        relativeTo: nil
+      )
+      libraryPath = url.path
+      libraryBookmarkData = bookmarkData
+    } catch {
+      if Self.isInsideUserHomeDirectory(url) {
+        libraryPath = url.path
+        libraryBookmarkData = nil
+        endLibraryAccessSession()
+        return
+      }
+      throw error
+    }
+
+    beginLibraryAccessSession()
   }
 
   func withLibraryAccess<T>(_ operation: () async throws -> T) async throws -> T {
+    alignLibraryAccessSessionWithCurrentPath()
+
     if isLibraryAccessActive {
       return try await operation()
     }
@@ -86,9 +107,19 @@ public final class LibrarySettings {
   }
 
   func beginLibraryAccessSession() {
-    if isLibraryAccessActive {
+    guard !libraryPath.isEmpty else {
+      endLibraryAccessSession()
       return
     }
+
+    if isLibraryAccessActive,
+      let scopedLibraryURL,
+      scopedLibraryURL.standardizedFileURL.path == libraryDirectoryURL.standardizedFileURL.path
+    {
+      return
+    }
+
+    endLibraryAccessSession()
 
     do {
       if let scopedURL = try resolveScopedLibraryURL(),
@@ -198,5 +229,24 @@ public final class LibrarySettings {
     }
 
     return nil
+  }
+
+  private func alignLibraryAccessSessionWithCurrentPath() {
+    guard isLibraryAccessActive, let scopedLibraryURL else {
+      return
+    }
+
+    let activePath = scopedLibraryURL.standardizedFileURL.path
+    let targetPath = libraryDirectoryURL.standardizedFileURL.path
+    if activePath != targetPath {
+      endLibraryAccessSession()
+      beginLibraryAccessSession()
+    }
+  }
+
+  private static func isInsideUserHomeDirectory(_ url: URL) -> Bool {
+    let homePath = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
+    let candidatePath = url.standardizedFileURL.path
+    return candidatePath == homePath || candidatePath.hasPrefix(homePath + "/")
   }
 }

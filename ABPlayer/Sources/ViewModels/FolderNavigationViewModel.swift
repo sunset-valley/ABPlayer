@@ -130,6 +130,7 @@ final class FolderNavigationViewModel {
     self.selectionService.selectedFile = selectedFile
     
     self.importService.onImportCompleted = { [weak self] in
+      self?.rebindPersistentReferences()
       self?.refreshToken += 1
     }
     self.importService.onSyncStateChanged = { [weak self] isRunning, message in
@@ -319,12 +320,16 @@ final class FolderNavigationViewModel {
   }
   
   func refreshCurrentFolder() async {
+    let selectedFileIDBeforeRefresh = selectedFile?.id
+
     guard let currentFolder else {
       await importService.refreshLibraryRoot()
+      restoreSelectedFileIfPossible(selectedFileIDBeforeRefresh)
       return
     }
 
     await importService.refreshFolder(currentFolder)
+    restoreSelectedFileIfPossible(selectedFileIDBeforeRefresh)
   }
   
   func syncSelectedFileWithPlayer() {
@@ -334,9 +339,60 @@ final class FolderNavigationViewModel {
       return
     }
 
-    guard let matchedFile = fetchAudioFile(id: newFileID) else { return }
+    guard let matchedFile = fetchAudioFile(id: newFileID) else {
+      if selectedFile?.id == newFileID {
+        selectedFile = nil
+      }
+      if case .audioFile(let file) = selection, file.id == newFileID {
+        selection = nil
+      }
+      return
+    }
 
     selectedFile = matchedFile
+  }
+
+  private func restoreSelectedFileIfPossible(_ id: UUID?) {
+    guard let id, let file = fetchAudioFile(id: id) else { return }
+    selectedFile = file
+  }
+
+  private func rebindPersistentReferences() {
+    if let currentFolder {
+      if let reboundFolder = fetchFolder(id: currentFolder.id) {
+        self.currentFolder = reboundFolder
+      } else {
+        self.currentFolder = nil
+      }
+    }
+
+    let reboundPath = navigationPath.compactMap { fetchFolder(id: $0.id) }
+    navigationPath = reboundPath
+    if let currentFolder, !reboundPath.contains(where: { $0.id == currentFolder.id }) {
+      navigationPath.append(currentFolder)
+    }
+
+    if let selectedFile {
+      if let reboundFile = fetchAudioFile(id: selectedFile.id) {
+        self.selectedFile = reboundFile
+        if case .audioFile = selection {
+          selection = .audioFile(reboundFile)
+        }
+      } else {
+        self.selectedFile = nil
+        if case .audioFile = selection {
+          selection = nil
+        }
+      }
+    }
+
+    if case .folder(let selectedFolder) = selection,
+      let reboundFolder = fetchFolder(id: selectedFolder.id)
+    {
+      selection = .folder(reboundFolder)
+    } else if case .folder = selection {
+      selection = nil
+    }
   }
 
   private func rootFolders() -> [Folder] {

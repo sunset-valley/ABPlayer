@@ -3,7 +3,9 @@ import SwiftUI
 /// Settings view for configuring application options
 struct SettingsView: View {
   @State private var selectedTab: SettingsTab? = .media
-  @Environment(SparkleUpdater.self) private var updater
+  #if !APPSTORE
+    @Environment(SparkleUpdater.self) private var updater
+  #endif
 
   var body: some View {
     NavigationSplitView {
@@ -25,9 +27,11 @@ struct SettingsView: View {
             MediaSettingsView()
           case .network:
             NetworkSettingsView()
-          case .update:
-            UpdateSettingsView()
-              .environment(updater)
+          #if !APPSTORE
+            case .update:
+              UpdateSettingsView()
+                .environment(updater)
+          #endif
           case .shortcuts:
             ShortcutsSettingsView()
           case .transcription:
@@ -54,6 +58,8 @@ struct SettingsView: View {
     .environment(PlayerSettings())
     .environment(ProxySettings())
     .environment(TranscriptionManager())
-    .environment(SparkleUpdater())
+    #if !APPSTORE
+      .environment(SparkleUpdater())
+    #endif
     .frame(width: 800, height: 600)
 }

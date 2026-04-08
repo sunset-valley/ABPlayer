@@ -8,7 +8,6 @@ let project = Project(
   settings: .settings(
     base: [
       "SWIFT_VERSION": "6.2",
-      "CODE_SIGN_ENTITLEMENTS": "ABPlayer/Resources/ABPlayer.entitlements",
     ],
     configurations: [
       .debug(name: "Debug"),
@@ -50,7 +49,37 @@ let project = Project(
         .external(name: "KeyboardShortcuts"),
         .external(name: "Sparkle"),
         .external(name: "TelemetryDeck"),
-      ]
+      ],
+      settings: .settings(base: [
+        "CODE_SIGN_ENTITLEMENTS": "ABPlayer/Resources/ABPlayer.entitlements",
+      ])
+    ),
+    .target(
+      name: "ABPlayerMAS",
+      destinations: .macOS,
+      product: .app,
+      bundleId: "cc.ihugo.app.ABPlayerMAS",
+      deploymentTargets: .macOS("26.0"),
+      infoPlist: .extendingDefault(with: [
+        "CFBundleVersion": .string(buildVersionString),
+        "CFBundleShortVersionString": .string(shortVersionString),
+        "NSMainStoryboardFile": "",
+      ]),
+      buildableFolders: [
+        "ABPlayer/Sources",
+        "ABPlayer/Resources",
+      ],
+      dependencies: [
+        .sdk(name: "AppIntents", type: .framework, status: .optional),
+        .external(name: "Sentry"),
+        .external(name: "WhisperKit"),
+        .external(name: "KeyboardShortcuts"),
+        .external(name: "TelemetryDeck"),
+      ],
+      settings: .settings(base: [
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "$(inherited) APPSTORE",
+        "CODE_SIGN_ENTITLEMENTS": "ABPlayer/Resources/ABPlayer-MAS.entitlements",
+      ])
     ),
     .target(
       name: "ABPlayerDev",
@@ -86,7 +115,10 @@ let project = Project(
         .external(name: "KeyboardShortcuts"),
         .external(name: "Sparkle"),
         .external(name: "TelemetryDeck"),
-      ]
+      ],
+      settings: .settings(base: [
+        "CODE_SIGN_ENTITLEMENTS": "ABPlayer/Resources/ABPlayer.entitlements",
+      ])
     ),
     .target(
       name: "ABPlayerTests",
@@ -120,6 +152,13 @@ let project = Project(
       buildAction: .buildAction(targets: ["ABPlayerDev"]),
       testAction: .targets(["ABPlayerTests", "ABPlayerUITests"]),
       runAction: .runAction(executable: "ABPlayerDev"),
+      archiveAction: .archiveAction(configuration: .release)
+    ),
+    .scheme(
+      name: "ABPlayerMAS",
+      shared: true,
+      buildAction: .buildAction(targets: ["ABPlayerMAS"]),
+      runAction: .runAction(executable: "ABPlayerMAS"),
       archiveAction: .archiveAction(configuration: .release)
     ),
   ]
