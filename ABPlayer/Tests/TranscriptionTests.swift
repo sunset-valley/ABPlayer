@@ -409,13 +409,42 @@ struct TranscriptionSettingsTests {
     #expect(!isDownloaded, "Should require all model indicator files")
   }
 
-  @Test(.enabled(if: ProcessInfo.processInfo.environment["CI"] == nil))
-  func testDefaultModelDirectoryIsInUserHome() {
-    let defaultDir = TranscriptionSettings.defaultModelDirectory
+  @Test
+  func testPerformLegacyMigrationReturnsFalseWhenMoveFails() throws {
+    let modelDirectoryKey = UserDefaultsKey.transcriptionModelDirectory
+    let previousModelDirectory = UserDefaults.standard.string(forKey: modelDirectoryKey)
+    UserDefaults.standard.removeObject(forKey: modelDirectoryKey)
+    defer {
+      if let previousModelDirectory {
+        UserDefaults.standard.set(previousModelDirectory, forKey: modelDirectoryKey)
+      } else {
+        UserDefaults.standard.removeObject(forKey: modelDirectoryKey)
+      }
+    }
+
+    let settings = TranscriptionSettings(performInitialMigration: false)
+
+    let tempRoot = FileManager.default.temporaryDirectory
+      .appendingPathComponent("TranscriptionLegacyMigrationFailure-\(UUID().uuidString)", isDirectory: true)
+    let legacyDirectory = tempRoot.appendingPathComponent("legacy", isDirectory: true)
+    let newDirectory = tempRoot.appendingPathComponent("new", isDirectory: false)
+
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    try FileManager.default.createDirectory(at: legacyDirectory, withIntermediateDirectories: true)
+    let legacySubdirectory = legacyDirectory.appendingPathComponent("openai_whisper-tiny", isDirectory: true)
+    try FileManager.default.createDirectory(at: legacySubdirectory, withIntermediateDirectories: true)
+
+    try Data("blocking".utf8).write(to: newDirectory)
+
+    let migrated = settings.performLegacyDefaultModelDirectoryMigration(
+      from: legacyDirectory,
+      to: newDirectory
+    )
 
     #expect(
-      defaultDir.path.contains(".abplayer"),
-      "Default directory should be in ~/.abplayer"
+      migrated == false,
+      "Migration helper should return false when destination path blocks model move"
     )
   }
 

@@ -111,6 +111,28 @@ public final class PlaybackQueue {
     clearPersistedSnapshot()
   }
 
+  @discardableResult
+  func removeFiles(withIDs ids: Set<UUID>) -> Bool {
+    guard !ids.isEmpty else { return false }
+
+    let originalCount = files.count
+    files.removeAll { ids.contains($0.id) }
+
+    if let currentFileID, ids.contains(currentFileID) {
+      self.currentFileID = nil
+    }
+
+    if files.isEmpty {
+      sourceFolderID = nil
+    }
+
+    let changed = files.count != originalCount
+    if changed {
+      persistSnapshot()
+    }
+    return changed
+  }
+
   func setCurrentFile(_ file: ABFile?) {
     currentFileID = file?.id
     persistSnapshot()

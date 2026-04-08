@@ -1,14 +1,13 @@
 import ProjectDescription
 
-let buildVersionString = "135"
-let shortVersionString = "0.4.6"
+let buildVersionString = "136"
+let shortVersionString = "0.4.7"
 
 let project = Project(
   name: "ABPlayer",
   settings: .settings(
     base: [
       "SWIFT_VERSION": "6.2",
-      "CODE_SIGN_ENTITLEMENTS": "ABPlayer/Resources/ABPlayer.entitlements",
     ],
     configurations: [
       .debug(name: "Debug"),
@@ -50,7 +49,43 @@ let project = Project(
         .external(name: "KeyboardShortcuts"),
         .external(name: "Sparkle"),
         .external(name: "TelemetryDeck"),
-      ]
+      ],
+      settings: .settings(base: [
+        "CODE_SIGN_ENTITLEMENTS": "ABPlayer/Resources/ABPlayer.entitlements",
+      ])
+    ),
+    .target(
+      name: "ABPlayerMAS",
+      destinations: .macOS,
+      product: .app,
+      bundleId: "cc.ihugo.app.ABPlayerMAS",
+      deploymentTargets: .macOS("26.0"),
+      infoPlist: .extendingDefault(with: [
+        "CFBundleVersion": .string(buildVersionString),
+        "CFBundleShortVersionString": .string(shortVersionString),
+        "CFBundleDisplayName": "ABPlayer",
+        "NSMainStoryboardFile": "",
+        "LSApplicationCategoryType": "public.app-category.education",
+        "ITSAppUsesNonExemptEncryption": false,
+      ]),
+      buildableFolders: [
+        "ABPlayer/Sources",
+        "ABPlayer/Resources",
+      ],
+      dependencies: [
+        .sdk(name: "AppIntents", type: .framework, status: .optional),
+        .external(name: "Sentry"),
+        .external(name: "WhisperKit"),
+        .external(name: "KeyboardShortcuts"),
+        .external(name: "TelemetryDeck"),
+      ],
+      settings: .settings(base: [
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "$(inherited) APPSTORE",
+        "CODE_SIGN_ENTITLEMENTS": "ABPlayer/Resources/ABPlayer-MAS.entitlements",
+        "CODE_SIGN_STYLE": "Automatic",
+        "DEVELOPMENT_TEAM": "Z7SKC87T6Q",
+        "CODE_SIGN_IDENTITY": "Apple Development",
+      ])
     ),
     .target(
       name: "ABPlayerDev",
@@ -86,7 +121,10 @@ let project = Project(
         .external(name: "KeyboardShortcuts"),
         .external(name: "Sparkle"),
         .external(name: "TelemetryDeck"),
-      ]
+      ],
+      settings: .settings(base: [
+        "CODE_SIGN_ENTITLEMENTS": "ABPlayer/Resources/ABPlayer.entitlements",
+      ])
     ),
     .target(
       name: "ABPlayerTests",
@@ -120,6 +158,13 @@ let project = Project(
       buildAction: .buildAction(targets: ["ABPlayerDev"]),
       testAction: .targets(["ABPlayerTests", "ABPlayerUITests"]),
       runAction: .runAction(executable: "ABPlayerDev"),
+      archiveAction: .archiveAction(configuration: .release)
+    ),
+    .scheme(
+      name: "ABPlayerMAS",
+      shared: true,
+      buildAction: .buildAction(targets: ["ABPlayerMAS"]),
+      runAction: .runAction(executable: "ABPlayerMAS"),
       archiveAction: .archiveAction(configuration: .release)
     ),
   ]

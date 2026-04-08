@@ -23,6 +23,9 @@ final class DeletionService {
     deleteFromDisk: Bool = true,
     selectedFile: inout ABFile?
   ) {
+    let affectedFileIDs = collectFileIDs(in: folder)
+    preparePlaybackStateForDeletedFiles(affectedFileIDs)
+
     deleteFolderContents(
       folder,
       deleteFromDisk: deleteFromDisk,
@@ -34,15 +37,6 @@ final class DeletionService {
     } catch {
       Logger.data.error(
         "⚠️ Failed to save context before folder deletion: \(error.localizedDescription)")
-    }
-    
-    if isCurrentFileInFolder(folder) {
-      if playerManager.isPlaying {
-        Task {
-          await playerManager.togglePlayPause()
-        }
-      }
-      playerManager.currentFile = nil
     }
     
     if deleteFromDisk {
@@ -87,6 +81,8 @@ final class DeletionService {
     }
     
     if checkPlayback {
+      preparePlaybackStateForDeletedFiles([file.id])
+
       do {
         try modelContext.save()
       } catch {
@@ -94,16 +90,9 @@ final class DeletionService {
           "⚠️ Failed to save context before file deletion: \(error.localizedDescription)")
       }
     }
-    
-    if checkPlayback && playerManager.isPlaying && playerManager.currentFile?.id == file.id {
-      Task {
-        await playerManager.togglePlayPause()
-      }
-    }
-    
+
     if updateSelection && selectedFile?.id == file.id {
       selectedFile = nil
-      playerManager.currentFile = nil
     }
     
     if deleteFromDisk, let subtitleFile = file.subtitleFile {
@@ -138,22 +127,27 @@ final class DeletionService {
     modelContext.delete(file)
   }
   
-  func isSelectedFileInFolder(_ folder: Folder, selectedFile: ABFile?) -> Bool {
-    guard let selectedFile else { return false }
-    guard !selectedFile.relativePath.isEmpty else { return false }
-    
-    let folderPath = folder.relativePath.isEmpty ? "" : folder.relativePath + "/"
-    return selectedFile.relativePath.hasPrefix(folderPath)
-  }
-  
-  private func isCurrentFileInFolder(_ folder: Folder) -> Bool {
-    guard let currentFile = playerManager.currentFile else {
-      return false
+  private func collectFileIDs(in folder: Folder) -> Set<UUID> {
+    var ids = Set(folder.audioFiles.map(\.id))
+    for subfolder in folder.subfolders {
+      ids.formUnion(collectFileIDs(in: subfolder))
     }
-    guard !currentFile.relativePath.isEmpty else { return false }
-    
-    let folderPath = folder.relativePath.isEmpty ? "" : folder.relativePath + "/"
-    return currentFile.relativePath.hasPrefix(folderPath)
+    return ids
+  }
+
+  private func preparePlaybackStateForDeletedFiles(_ fileIDs: Set<UUID>) {
+    guard !fileIDs.isEmpty else { return }
+
+    if let currentFileID = playerManager.currentFile?.id, fileIDs.contains(currentFileID) {
+      if playerManager.isPlaying {
+        Task {
+          await playerManager.togglePlayPause()
+        }
+      }
+      playerManager.currentFile = nil
+    }
+
+    _ = playerManager.playbackQueue.removeFiles(withIDs: fileIDs)
   }
   
   private func deleteFolderContents(

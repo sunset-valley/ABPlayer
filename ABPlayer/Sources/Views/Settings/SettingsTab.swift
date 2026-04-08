@@ -3,7 +3,9 @@ import SwiftUI
 enum SettingsTab: String, CaseIterable, Identifiable {
   case media = "Media"
   case network = "Network"
-  case update = "Update"
+  #if !APPSTORE
+    case update = "Update"
+  #endif
   case shortcuts = "Shortcuts"
   case transcription = "Transcription"
 
@@ -13,7 +15,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     switch self {
     case .media: return "books.vertical"
     case .network: return "network"
-    case .update: return "arrow.triangle.2.circlepath"
+    #if !APPSTORE
+      case .update: return "arrow.triangle.2.circlepath"
+    #endif
     case .shortcuts: return "keyboard"
     case .transcription: return "text.bubble"
     }

@@ -9,10 +9,13 @@ enum UserDefaultsKey {
   static let proxyHost = "proxy_host"
   static let proxyPort = "proxy_port"
   static let proxyType = "proxy_type"
+  static let transcriptionModelDirectory = "transcription_model_directory"
   static let updateFeedSource = "update_feed_source"
   static let sparkleFeedURL = "SUFeedURL"
   static let legacyPersistentStoreResetCompleted = "legacy_persistent_store_reset_completed"
   static let playbackQueueSnapshot = "playback_queue_snapshot"
+  static let transcriptionLegacyDefaultModelDirectoryMigrated =
+    "transcription_legacy_default_model_directory_migrated"
 
   enum MainSplitSuffix: String {
     case showContentPanel = "ShowContentPanel"

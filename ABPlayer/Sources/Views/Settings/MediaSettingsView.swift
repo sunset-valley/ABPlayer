@@ -58,7 +58,12 @@ struct MediaSettingsView: View {
           Text("Library stored at:")
           Button {
             let url = librarySettings.libraryDirectoryURL
-            NSWorkspace.shared.open(url)
+            do {
+              try librarySettings.ensureLibraryDirectoryExists()
+              NSWorkspace.shared.open(url)
+            } catch {
+              libraryPathError = error.localizedDescription
+            }
           } label: {
             Text(displayLibraryDirectory)
               .underline()

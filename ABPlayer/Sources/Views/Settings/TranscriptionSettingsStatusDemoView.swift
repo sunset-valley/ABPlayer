@@ -27,7 +27,9 @@ struct TranscriptionSettingsStatusDemoView: View {
         .environment(PlayerSettings())
         .environment(ProxySettings())
         .environment(manager)
-        .environment(SparkleUpdater())
+        #if !APPSTORE
+          .environment(SparkleUpdater())
+        #endif
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     .padding(16)

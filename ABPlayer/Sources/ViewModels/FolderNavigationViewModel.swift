@@ -130,6 +130,7 @@ final class FolderNavigationViewModel {
     self.selectionService.selectedFile = selectedFile
     
     self.importService.onImportCompleted = { [weak self] in
+      self?.rebindPersistentReferences()
       self?.refreshToken += 1
     }
     self.importService.onSyncStateChanged = { [weak self] isRunning, message in
@@ -269,6 +270,10 @@ final class FolderNavigationViewModel {
     _ folder: Folder,
     deleteFromDisk: Bool = true
   ) {
+    let folderIDs = collectFolderIDs(in: folder)
+    let fileIDs = collectFileIDs(in: folder)
+    clearReferences(fileIDs: fileIDs, folderIDs: folderIDs)
+
     updateSelectedFile { selectedFile in
       deletionService.deleteFolder(
         folder,
@@ -277,17 +282,11 @@ final class FolderNavigationViewModel {
       )
     }
 
-    if deletionService.isSelectedFileInFolder(folder, selectedFile: selectedFile) {
-      selectionService.clearSelection()
-    }
-
-    if currentFolder?.id == folder.id {
-      navigationService.navigateBack()
-    }
-
-    if lastFolderID == folder.id.uuidString {
+    if lastFolderID == folder.id.uuidString || folderIDs.contains(where: { $0.uuidString == lastFolderID }) {
       lastFolderID = nil
     }
+
+    refreshToken += 1
   }
   
   func deleteAudioFile(
@@ -297,6 +296,11 @@ final class FolderNavigationViewModel {
     checkPlayback: Bool = true,
     selectedFile: inout ABFile?
   ) {
+    clearReferences(fileIDs: [file.id], folderIDs: [])
+    if selectedFile?.id == file.id {
+      selectedFile = nil
+    }
+
     deletionService.deleteAudioFile(
       file,
       deleteFromDisk: deleteFromDisk,
@@ -308,6 +312,8 @@ final class FolderNavigationViewModel {
     if updateSelection && selectedFile == nil {
       selectionService.clearSelection()
     }
+
+    refreshToken += 1
   }
   
   func handleImportResult(_ result: Result<[URL], Error>) {
@@ -319,12 +325,37 @@ final class FolderNavigationViewModel {
   }
   
   func refreshCurrentFolder() async {
+    let selectedFileIDBeforeRefresh = selectedFile?.id
+
     guard let currentFolder else {
       await importService.refreshLibraryRoot()
+      reconcileAfterModelMutation(preferredSelectedFileID: selectedFileIDBeforeRefresh)
       return
     }
 
     await importService.refreshFolder(currentFolder)
+    reconcileAfterModelMutation(preferredSelectedFileID: selectedFileIDBeforeRefresh)
+  }
+
+  func handleLibraryPathChanged() async {
+    clearReferences(fileIDs: [], folderIDs: Set(navigationPath.map(\.id)))
+    hovering = nil
+    pressing = nil
+    selectionBeforePress = nil
+    deleteTarget = nil
+    showDeleteConfirmation = false
+    selectionService.clearSelection()
+    navigationPath = []
+    currentFolder = nil
+
+    if playerManager.isPlaying {
+      await playerManager.togglePlayPause()
+    }
+    playerManager.currentFile = nil
+    playerManager.playbackQueue.clearQueue()
+
+    await importService.refreshLibraryRoot()
+    reconcileAfterModelMutation(preferredSelectedFileID: nil)
   }
   
   func syncSelectedFileWithPlayer() {
@@ -334,9 +365,178 @@ final class FolderNavigationViewModel {
       return
     }
 
-    guard let matchedFile = fetchAudioFile(id: newFileID) else { return }
+    guard let matchedFile = fetchAudioFile(id: newFileID) else {
+      if selectedFile?.id == newFileID {
+        selectedFile = nil
+      }
+      if case .audioFile(let file) = selection, file.id == newFileID {
+        selection = nil
+      }
+      return
+    }
 
     selectedFile = matchedFile
+  }
+
+  private func restoreSelectedFileIfPossible(_ id: UUID?) {
+    guard let id, let file = fetchAudioFile(id: id) else { return }
+    selectedFile = file
+  }
+
+  private func reconcileAfterModelMutation(preferredSelectedFileID: UUID?) {
+    rebindPersistentReferences()
+
+    if selectedFile == nil,
+      let preferredSelectedFileID,
+      let file = fetchAudioFile(id: preferredSelectedFileID)
+    {
+      selectedFile = file
+    }
+
+    let existingFileIDs = fetchAllAudioFileIDs()
+    if let currentFileID = playerManager.currentFile?.id,
+      !existingFileIDs.contains(currentFileID)
+    {
+      if playerManager.isPlaying {
+        Task {
+          await playerManager.togglePlayPause()
+        }
+      }
+      playerManager.currentFile = nil
+    }
+
+    let queuedIDs = Set(playerManager.playbackQueue.queuedFiles.map(\.id))
+    let missingQueuedIDs = queuedIDs.subtracting(existingFileIDs)
+    if !missingQueuedIDs.isEmpty {
+      _ = playerManager.playbackQueue.removeFiles(withIDs: missingQueuedIDs)
+    }
+  }
+
+  private func rebindPersistentReferences() {
+    if let currentFolder {
+      if let reboundFolder = fetchFolder(id: currentFolder.id) {
+        self.currentFolder = reboundFolder
+      } else {
+        self.currentFolder = nil
+      }
+    }
+
+    let reboundPath = navigationPath.compactMap { fetchFolder(id: $0.id) }
+    navigationPath = reboundPath
+    if let currentFolder, !reboundPath.contains(where: { $0.id == currentFolder.id }) {
+      navigationPath.append(currentFolder)
+    }
+
+    if let selectedFile {
+      if let reboundFile = fetchAudioFile(id: selectedFile.id) {
+        self.selectedFile = reboundFile
+        if case .audioFile = selection {
+          selection = .audioFile(reboundFile)
+        }
+      } else {
+        self.selectedFile = nil
+        if case .audioFile = selection {
+          selection = nil
+        }
+      }
+    }
+
+    if case .folder(let selectedFolder) = selection,
+      let reboundFolder = fetchFolder(id: selectedFolder.id)
+    {
+      selection = .folder(reboundFolder)
+    } else if case .folder = selection {
+      selection = nil
+    }
+
+    hovering = rebindSelectionItem(hovering)
+    pressing = rebindSelectionItem(pressing)
+    selectionBeforePress = rebindSelectionItem(selectionBeforePress)
+    deleteTarget = rebindSelectionItem(deleteTarget)
+    if deleteTarget == nil {
+      showDeleteConfirmation = false
+    }
+  }
+
+  private func rebindSelectionItem(_ item: SelectionItem?) -> SelectionItem? {
+    guard let item else { return nil }
+
+    switch item {
+    case .folder(let folder):
+      return fetchFolder(id: folder.id).map { .folder($0) }
+    case .audioFile(let file):
+      return fetchAudioFile(id: file.id).map { .audioFile($0) }
+    case .empty:
+      return .empty
+    }
+  }
+
+  private func clearReferences(fileIDs: Set<UUID>, folderIDs: Set<UUID>) {
+    if let selectedID = selectedFile?.id, fileIDs.contains(selectedID) {
+      selectedFile = nil
+    }
+
+    if matchesDeleted(selection, fileIDs: fileIDs, folderIDs: folderIDs) {
+      selection = nil
+    }
+    if matchesDeleted(hovering, fileIDs: fileIDs, folderIDs: folderIDs) {
+      hovering = nil
+    }
+    if matchesDeleted(pressing, fileIDs: fileIDs, folderIDs: folderIDs) {
+      pressing = nil
+    }
+    if matchesDeleted(selectionBeforePress, fileIDs: fileIDs, folderIDs: folderIDs) {
+      selectionBeforePress = nil
+    }
+    if matchesDeleted(deleteTarget, fileIDs: fileIDs, folderIDs: folderIDs) {
+      deleteTarget = nil
+      showDeleteConfirmation = false
+    }
+
+    if let currentFolderValue = currentFolder, folderIDs.contains(currentFolderValue.id) {
+      currentFolder = nil
+    }
+
+    if !folderIDs.isEmpty {
+      navigationPath.removeAll { folderIDs.contains($0.id) }
+      if currentFolder == nil {
+        currentFolder = navigationPath.last
+      }
+    }
+  }
+
+  private func matchesDeleted(_ item: SelectionItem?, fileIDs: Set<UUID>, folderIDs: Set<UUID>) -> Bool {
+    guard let item else { return false }
+
+    switch item {
+    case .folder(let folder):
+      return folderIDs.contains(folder.id)
+    case .audioFile(let file):
+      return fileIDs.contains(file.id)
+    case .empty:
+      return false
+    }
+  }
+
+  private func collectFolderIDs(in folder: Folder) -> Set<UUID> {
+    var ids: Set<UUID> = [folder.id]
+    for subfolder in folder.subfolders {
+      ids.formUnion(collectFolderIDs(in: subfolder))
+    }
+    return ids
+  }
+
+  private func collectFileIDs(in folder: Folder) -> Set<UUID> {
+    var ids = Set(folder.audioFiles.map(\.id))
+    for subfolder in folder.subfolders {
+      ids.formUnion(collectFileIDs(in: subfolder))
+    }
+    return ids
+  }
+
+  private func fetchAllAudioFileIDs() -> Set<UUID> {
+    let files = (try? modelContext.fetch(FetchDescriptor<ABFile>())) ?? []
+    return Set(files.map(\.id))
   }
 
   private func rootFolders() -> [Folder] {

@@ -155,6 +155,9 @@ final class ImportService {
           (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
         }
 
+        let expectedRootRelativePaths = Set(directories.map(\.lastPathComponent))
+        try self.pruneMissingRootFolders(expectedRelativePaths: expectedRootRelativePaths)
+
         for directoryURL in directories {
           _ = try await importer.syncFolder(
             at: directoryURL,
@@ -284,6 +287,61 @@ final class ImportService {
 
   private func updateSyncMessage(_ message: String) {
     onSyncStateChanged?(true, message)
+  }
+
+  private func pruneMissingRootFolders(expectedRelativePaths: Set<String>) throws {
+    let descriptor = FetchDescriptor<Folder>(
+      predicate: #Predicate<Folder> { $0.parent == nil }
+    )
+    let rootFolders = try modelContext.fetch(descriptor)
+
+    for rootFolder in rootFolders where !expectedRelativePaths.contains(rootFolder.relativePath) {
+      try deleteFolderRecordsRecursively(rootFolder)
+      modelContext.delete(rootFolder)
+    }
+  }
+
+  private func deleteFolderRecordsRecursively(_ folder: Folder) throws {
+    let folderID = folder.id
+
+    let fileDescriptor = FetchDescriptor<ABFile>(
+      predicate: #Predicate<ABFile> { candidate in
+        candidate.folder?.id == folderID
+      }
+    )
+    let files = try modelContext.fetch(fileDescriptor)
+    for file in files {
+      for segment in file.segments {
+        modelContext.delete(segment)
+      }
+
+      if let subtitleFile = file.subtitleFile {
+        modelContext.delete(subtitleFile)
+      }
+
+      let fileIdString = file.id.uuidString
+      let transcriptionDescriptor = FetchDescriptor<Transcription>(
+        predicate: #Predicate<Transcription> { $0.audioFileId == fileIdString }
+      )
+      if let transcriptions = try? modelContext.fetch(transcriptionDescriptor) {
+        for transcription in transcriptions {
+          modelContext.delete(transcription)
+        }
+      }
+
+      modelContext.delete(file)
+    }
+
+    let subfolderDescriptor = FetchDescriptor<Folder>(
+      predicate: #Predicate<Folder> { candidate in
+        candidate.parent?.id == folderID
+      }
+    )
+    let subfolders = try modelContext.fetch(subfolderDescriptor)
+    for subfolder in subfolders {
+      try deleteFolderRecordsRecursively(subfolder)
+      modelContext.delete(subfolder)
+    }
   }
 
 }

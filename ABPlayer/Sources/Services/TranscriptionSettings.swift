@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import SwiftUI
 
 /// User configurable transcription settings
@@ -47,7 +48,7 @@ final class TranscriptionSettings {
 
   /// Custom model download directory (empty = default location)
   @ObservationIgnored
-  @AppStorage("transcription_model_directory") private var _modelDirectory: String = ""
+  @AppStorage(UserDefaultsKey.transcriptionModelDirectory) private var _modelDirectory: String = ""
   var modelDirectory: String {
     get { access(keyPath: \.modelDirectory); return _modelDirectory }
     set { withMutation(keyPath: \.modelDirectory) { _modelDirectory = newValue } }
@@ -70,6 +71,16 @@ final class TranscriptionSettings {
     set { withMutation(keyPath: \.lastCustomDownloadEndpoint) { _lastCustomDownloadEndpoint = newValue } }
   }
 
+  @ObservationIgnored
+  @AppStorage(UserDefaultsKey.transcriptionLegacyDefaultModelDirectoryMigrated)
+  private var _didMigrateLegacyDefaultModelDirectory = false
+
+  init(performInitialMigration: Bool = true) {
+    if performInitialMigration {
+      migrateLegacyDefaultModelDirectoryIfNeeded()
+    }
+  }
+
   // MARK: - Computed Properties
 
   /// Effective HuggingFace endpoint passed to WhisperKit downloads
@@ -86,10 +97,21 @@ final class TranscriptionSettings {
     return URL(fileURLWithPath: modelDirectory)
   }
 
-  /// Default model directory in user home
+  /// Default model directory in Application Support
   static var defaultModelDirectory: URL {
-    let homeDir = FileManager.default.homeDirectoryForCurrentUser
-    return homeDir.appendingPathComponent(".abplayer", isDirectory: true)
+    let appSupportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+      .first
+      ?? FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library", isDirectory: true)
+        .appendingPathComponent("Application Support", isDirectory: true)
+    let folderName = Bundle.main.bundleIdentifier ?? "cc.ihugo.app.ABPlayer"
+    return appSupportDir
+      .appendingPathComponent(folderName, isDirectory: true)
+      .appendingPathComponent("WhisperKit", isDirectory: true)
+  }
+
+  static var legacyDefaultModelDirectory: URL {
+    FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".abplayer", isDirectory: true)
   }
 
   // MARK: - Available Options
@@ -222,12 +244,12 @@ final class TranscriptionSettings {
   func migrateModels(from oldDir: URL, to newDir: URL) throws {
     let fileManager = FileManager.default
 
+    guard fileManager.fileExists(atPath: oldDir.path) else { return }
+
     // Create new directory if needed
     if !fileManager.fileExists(atPath: newDir.path) {
       try fileManager.createDirectory(at: newDir, withIntermediateDirectories: true)
     }
-
-    guard fileManager.fileExists(atPath: oldDir.path) else { return }
 
     let contents = try fileManager.contentsOfDirectory(
       at: oldDir,
@@ -245,6 +267,34 @@ final class TranscriptionSettings {
       if !fileManager.fileExists(atPath: destURL.path) {
         try fileManager.moveItem(at: url, to: destURL)
       }
+    }
+  }
+
+  @discardableResult
+  func performLegacyDefaultModelDirectoryMigration(from legacyDirectory: URL, to newDirectory: URL) -> Bool {
+    guard modelDirectory.isEmpty else { return true }
+
+    guard legacyDirectory.standardizedFileURL.path != newDirectory.standardizedFileURL.path else {
+      return true
+    }
+
+    do {
+      try migrateModels(from: legacyDirectory, to: newDirectory)
+      return true
+    } catch {
+      Logger.data.error("[TranscriptionSettings] Failed to migrate legacy model directory: \(error.localizedDescription, privacy: .public)")
+      return false
+    }
+  }
+
+  func migrateLegacyDefaultModelDirectoryIfNeeded() {
+    guard !_didMigrateLegacyDefaultModelDirectory else { return }
+
+    if performLegacyDefaultModelDirectoryMigration(
+      from: Self.legacyDefaultModelDirectory,
+      to: Self.defaultModelDirectory
+    ) {
+      _didMigrateLegacyDefaultModelDirectory = true
     }
   }
 

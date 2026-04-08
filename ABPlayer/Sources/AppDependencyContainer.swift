@@ -20,7 +20,9 @@ final class AppDependencyContainer {
   let listeningStatsService: ListeningStatsService
   let subtitleLoader: SubtitleLoader
   let queueManager: TranscriptionQueueManager
-  let updater: SparkleUpdater
+  #if !APPSTORE
+    let updater: SparkleUpdater
+  #endif
 
   init(isUITesting: Bool) throws {
     let proxySettings = ProxySettings()
@@ -30,7 +32,9 @@ final class AppDependencyContainer {
     let playerSettings = PlayerSettings()
     let playerManager = PlayerManager(librarySettings: librarySettings)
     let subtitleLoader = SubtitleLoader(librarySettings: librarySettings)
-    let updater = SparkleUpdater()
+    #if !APPSTORE
+      let updater = SparkleUpdater()
+    #endif
 
     URLSessionProxyInjector.install(settings: proxySettings)
 
@@ -124,7 +128,9 @@ final class AppDependencyContainer {
     self.listeningStatsService = listeningStatsService
     self.subtitleLoader = subtitleLoader
     self.queueManager = queueManager
-    self.updater = updater
+    #if !APPSTORE
+      self.updater = updater
+    #endif
 
     Self.registerKeyboardShortcuts(playerManager: playerManager)
   }

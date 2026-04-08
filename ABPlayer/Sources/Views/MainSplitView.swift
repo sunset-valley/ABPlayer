@@ -67,6 +67,11 @@ public struct MainSplitView: View {
     .onChange(of: mainSplitViewModel.folderNavigationViewModel?.refreshToken) { _, _ in
       mainSplitViewModel.syncQueueIfCurrentListMatchesSource()
     }
+    .onChange(of: librarySettings.libraryPath) { _, _ in
+      Task { @MainActor in
+        await mainSplitViewModel.folderNavigationViewModel?.handleLibraryPathChanged()
+      }
+    }
     .onChange(of: mainSplitViewModel.folderNavigationViewModel?.selectedFile?.isVideo) { _, isVideo in
       guard let isVideo else { return }
       mainSplitViewModel.switchMediaType(to: isVideo ? .video : .audio)

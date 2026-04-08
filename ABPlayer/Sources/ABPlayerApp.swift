@@ -109,15 +109,17 @@ struct ABPlayerApp: App {
           ])
         }
 
-        Button("Check for Updates...") {
-          container.updater.checkForUpdates()
-        }
+        #if !APPSTORE
+          Button("Check for Updates...") {
+            container.updater.checkForUpdates()
+          }
+        #endif
       }
     }
   }
 
   private var settingsWindowScene: some Scene {
-    WindowGroup(id: "settings-window") {
+    Window("Settings", id: "settings-window") {
       SettingsView()
         .environment(container.transcriptionSettings)
         .environment(container.librarySettings)
@@ -125,14 +127,16 @@ struct ABPlayerApp: App {
         .environment(container.proxySettings)
         .environment(container.annotationStyleService)
         .environment(container.transcriptionManager)
-        .environment(container.updater)
+        #if !APPSTORE
+          .environment(container.updater)
+        #endif
     }
     .defaultPosition(.center)
     .commandsRemoved()
   }
 
   private var annotationStyleManagerWindowScene: some Scene {
-    WindowGroup(id: "annotation-style-manager") {
+    Window("Annotation Styles", id: "annotation-style-manager") {
       AnnotationStyleManagerView()
         .environment(container.annotationStyleService)
         .environment(container.annotationService)

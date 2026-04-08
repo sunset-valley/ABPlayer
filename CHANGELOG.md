@@ -1,3 +1,15 @@
+## [0.4.7.136] - 2026-04-08
+
+### Bug Fixes
+- make utility windows single-instance
+- prune stale library roots on refresh
+- clear stale playback state on delete and refresh
+
+### Chores
+- configure Mac App Store metadata
+- add MAS target and gate Sparkle
+
+
 ## [0.4.6.135] - 2026-04-07
 
 - No significant changes.
