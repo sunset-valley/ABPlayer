@@ -63,7 +63,10 @@ let project = Project(
       infoPlist: .extendingDefault(with: [
         "CFBundleVersion": .string(buildVersionString),
         "CFBundleShortVersionString": .string(shortVersionString),
+        "CFBundleDisplayName": "ABPlayer",
         "NSMainStoryboardFile": "",
+        "LSApplicationCategoryType": "public.app-category.education",
+        "ITSAppUsesNonExemptEncryption": false,
       ]),
       buildableFolders: [
         "ABPlayer/Sources",
@@ -79,6 +82,9 @@ let project = Project(
       settings: .settings(base: [
         "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "$(inherited) APPSTORE",
         "CODE_SIGN_ENTITLEMENTS": "ABPlayer/Resources/ABPlayer-MAS.entitlements",
+        "CODE_SIGN_STYLE": "Automatic",
+        "DEVELOPMENT_TEAM": "Z7SKC87T6Q",
+        "CODE_SIGN_IDENTITY": "Apple Development",
       ])
     ),
     .target(
