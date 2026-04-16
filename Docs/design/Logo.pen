@@ -32,7 +32,7 @@
       "id": "ze4zQ",
       "x": 1144,
       "y": 0,
-      "name": "TestFlight",
+      "name": "Dev",
       "clip": true,
       "width": 1024,
       "height": 1024,
@@ -55,13 +55,20 @@
           "type": "frame",
           "id": "oMEi2",
           "layoutPosition": "absolute",
-          "x": 56,
-          "y": 56,
+          "x": -254.83000000000004,
+          "y": 254.28688245431417,
           "name": "badge",
-          "width": 210,
-          "height": 112,
+          "rotation": 45,
+          "width": 720,
+          "height": 320,
           "fill": "#0A84FFFF",
           "cornerRadius": 56,
+          "padding": [
+            96,
+            0,
+            0,
+            0
+          ],
           "justifyContent": "center",
           "alignItems": "center",
           "children": [
@@ -70,9 +77,9 @@
               "id": "wqZKT",
               "name": "label",
               "fill": "#FFFFFFFF",
-              "content": "Beta",
+              "content": "Dev",
               "fontFamily": "Inter",
-              "fontSize": 54,
+              "fontSize": 72,
               "fontWeight": "700"
             }
           ]
@@ -84,7 +91,7 @@
       "id": "NhOoz",
       "x": 2305,
       "y": 0,
-      "name": "TestFlight",
+      "name": "Nightly",
       "clip": true,
       "width": 1024,
       "height": 1024,
@@ -107,13 +114,20 @@
           "type": "frame",
           "id": "iu9tF",
           "layoutPosition": "absolute",
-          "x": 56,
-          "y": 56,
+          "x": -254.82999999999993,
+          "y": 254.28688245431417,
           "name": "badge",
-          "width": 282,
-          "height": 112,
+          "rotation": 45,
+          "width": 720,
+          "height": 320,
           "fill": "#9036d4ff",
           "cornerRadius": 56,
+          "padding": [
+            96,
+            0,
+            0,
+            0
+          ],
           "justifyContent": "center",
           "alignItems": "center",
           "children": [
@@ -124,7 +138,7 @@
               "fill": "#FFFFFFFF",
               "content": "Nightly",
               "fontFamily": "Inter",
-              "fontSize": 54,
+              "fontSize": 72,
               "fontWeight": "700"
             }
           ]

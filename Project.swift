@@ -52,6 +52,7 @@ let project = Project(
       ],
       settings: .settings(base: [
         "CODE_SIGN_ENTITLEMENTS": "ABPlayer/Resources/ABPlayer.entitlements",
+        "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
       ])
     ),
     .target(
@@ -82,6 +83,7 @@ let project = Project(
       settings: .settings(base: [
         "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "$(inherited) APPSTORE",
         "CODE_SIGN_ENTITLEMENTS": "ABPlayer/Resources/ABPlayer-MAS.entitlements",
+        "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIconMAS",
         "CODE_SIGN_STYLE": "Automatic",
         "DEVELOPMENT_TEAM": "Z7SKC87T6Q",
         "CODE_SIGN_IDENTITY": "Apple Development",
@@ -124,6 +126,7 @@ let project = Project(
       ],
       settings: .settings(base: [
         "CODE_SIGN_ENTITLEMENTS": "ABPlayer/Resources/ABPlayer.entitlements",
+        "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIconDev",
       ])
     ),
     .target(
