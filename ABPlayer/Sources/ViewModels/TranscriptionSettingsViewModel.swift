@@ -189,11 +189,16 @@ final class TranscriptionSettingsViewModel {
     guard modelDownloadStatus != .downloaded else { return }
 
     do {
-      try await transcriptionManager.downloadModel(
-        modelName: settings.modelName,
-        downloadBase: settings.modelDirectoryURL,
-        endpoint: settings.effectiveDownloadEndpoint
-      )
+      let modelName = settings.modelName
+      let downloadBase = settings.modelDirectoryURL
+      let endpoint = settings.effectiveDownloadEndpoint
+      try await settings.withModelDirectoryAccess {
+        try await transcriptionManager.downloadModel(
+          modelName: modelName,
+          downloadBase: downloadBase,
+          endpoint: endpoint
+        )
+      }
       checkAndRefreshModels()
     } catch is CancellationError {
       checkAndRefreshModels()
@@ -226,22 +231,22 @@ final class TranscriptionSettingsViewModel {
 
   private func handleDirectorySelected(_ url: URL) {
     guard let settings else { return }
-    guard (try? url.bookmarkData(
-      options: [.withSecurityScope],
-      includingResourceValuesForKeys: nil,
-      relativeTo: nil
-    )) != nil else { return }
 
     let newPath = url.path
     let oldPath = settings.modelDirectory.isEmpty
       ? TranscriptionSettings.defaultModelDirectory.path
       : settings.modelDirectory
 
+    do {
+      try settings.setModelDirectory(url)
+    } catch {
+      migrationError = "Failed to access selected folder: \(error.localizedDescription)"
+      return
+    }
+
     if !downloadedModels.isEmpty, oldPath != newPath {
       migrateModels(from: oldPath, to: newPath)
     }
-
-    settings.modelDirectory = newPath
     transcriptionManager?.invalidateLoadedModel()
     checkAndRefreshModels()
   }

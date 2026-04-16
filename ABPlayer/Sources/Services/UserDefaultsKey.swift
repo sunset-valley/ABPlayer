@@ -10,6 +10,7 @@ enum UserDefaultsKey {
   static let proxyPort = "proxy_port"
   static let proxyType = "proxy_type"
   static let transcriptionModelDirectory = "transcription_model_directory"
+  static let transcriptionModelDirectoryBookmark = "transcription_model_directory_bookmark"
   static let updateFeedSource = "update_feed_source"
   static let sparkleFeedURL = "SUFeedURL"
   static let legacyPersistentStoreResetCompleted = "legacy_persistent_store_reset_completed"

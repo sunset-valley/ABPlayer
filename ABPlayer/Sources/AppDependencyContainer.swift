@@ -39,6 +39,7 @@ final class AppDependencyContainer {
     URLSessionProxyInjector.install(settings: proxySettings)
 
     librarySettings.beginLibraryAccessSession()
+    transcriptionSettings.beginModelDirectoryAccessSession()
 
     if !isUITesting {
       let config = TelemetryDeck.Config(appID: "A4A99FD4-3F84-49FA-AF97-0806D61D0539")

@@ -1,0 +1,149 @@
+{
+  "version": "2.10",
+  "children": [
+    {
+      "type": "frame",
+      "id": "bi8Au",
+      "x": 0,
+      "y": 0,
+      "name": "Original",
+      "clip": true,
+      "width": 1024,
+      "height": 1024,
+      "justifyContent": "center",
+      "alignItems": "center",
+      "children": [
+        {
+          "type": "rectangle",
+          "id": "dW6Lx",
+          "fill": {
+            "type": "image",
+            "enabled": true,
+            "url": "appstore.png",
+            "mode": "fill"
+          },
+          "width": 1024,
+          "height": 1024
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "ze4zQ",
+      "x": 1144,
+      "y": 0,
+      "name": "Dev",
+      "clip": true,
+      "width": 1024,
+      "height": 1024,
+      "justifyContent": "center",
+      "alignItems": "center",
+      "children": [
+        {
+          "type": "rectangle",
+          "id": "AhSRD",
+          "fill": {
+            "type": "image",
+            "enabled": true,
+            "url": "appstore.png",
+            "mode": "fill"
+          },
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "type": "frame",
+          "id": "oMEi2",
+          "layoutPosition": "absolute",
+          "x": -254.83000000000004,
+          "y": 254.28688245431417,
+          "name": "badge",
+          "rotation": 45,
+          "width": 720,
+          "height": 320,
+          "fill": "#0A84FFFF",
+          "cornerRadius": 56,
+          "padding": [
+            96,
+            0,
+            0,
+            0
+          ],
+          "justifyContent": "center",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "wqZKT",
+              "name": "label",
+              "fill": "#FFFFFFFF",
+              "content": "Dev",
+              "fontFamily": "Inter",
+              "fontSize": 72,
+              "fontWeight": "700"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "NhOoz",
+      "x": 2305,
+      "y": 0,
+      "name": "Nightly",
+      "clip": true,
+      "width": 1024,
+      "height": 1024,
+      "justifyContent": "center",
+      "alignItems": "center",
+      "children": [
+        {
+          "type": "rectangle",
+          "id": "47TkW",
+          "fill": {
+            "type": "image",
+            "enabled": true,
+            "url": "appstore.png",
+            "mode": "fill"
+          },
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "type": "frame",
+          "id": "iu9tF",
+          "layoutPosition": "absolute",
+          "x": -254.82999999999993,
+          "y": 254.28688245431417,
+          "name": "badge",
+          "rotation": 45,
+          "width": 720,
+          "height": 320,
+          "fill": "#9036d4ff",
+          "cornerRadius": 56,
+          "padding": [
+            96,
+            0,
+            0,
+            0
+          ],
+          "justifyContent": "center",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "wEJBI",
+              "name": "label",
+              "fill": "#FFFFFFFF",
+              "content": "Nightly",
+              "fontFamily": "Inter",
+              "fontSize": 72,
+              "fontWeight": "700"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

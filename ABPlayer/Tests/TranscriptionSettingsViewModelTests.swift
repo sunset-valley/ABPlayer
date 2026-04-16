@@ -31,10 +31,14 @@ struct TranscriptionSettingsViewModelTests {
 
   private let endpointKey = "transcription_download_endpoint"
   private let lastCustomEndpointKey = "transcription_last_custom_download_endpoint"
+  private let modelDirectoryKey = "transcription_model_directory"
+  private let modelDirectoryBookmarkKey = "transcription_model_directory_bookmark"
 
   private func resetMirrorDefaults() {
     UserDefaults.standard.removeObject(forKey: endpointKey)
     UserDefaults.standard.removeObject(forKey: lastCustomEndpointKey)
+    UserDefaults.standard.removeObject(forKey: modelDirectoryKey)
+    UserDefaults.standard.removeObject(forKey: modelDirectoryBookmarkKey)
   }
 
   private func waitForAsyncStateUpdate() async {
@@ -65,7 +69,7 @@ struct TranscriptionSettingsViewModelTests {
   ) -> (viewModel: TranscriptionSettingsViewModel, settings: TranscriptionSettings) {
     resetMirrorDefaults()
 
-    let settings = TranscriptionSettings()
+    let settings = TranscriptionSettings(performInitialMigration: false)
     settings.downloadEndpoint = endpoint
     settings.lastCustomDownloadEndpoint = lastCustom
 
@@ -84,7 +88,7 @@ struct TranscriptionSettingsViewModelTests {
   ) -> (viewModel: TranscriptionSettingsViewModel, settings: TranscriptionSettings, manager: TranscriptionManager) {
     resetMirrorDefaults()
 
-    let settings = TranscriptionSettings()
+    let settings = TranscriptionSettings(performInitialMigration: false)
     settings.downloadEndpoint = endpoint
     settings.lastCustomDownloadEndpoint = lastCustom
 
@@ -199,6 +203,23 @@ struct TranscriptionSettingsViewModelTests {
 
     #expect(settings.modelDirectory == directory.path)
     #expect(manager.invalidModelName == nil)
+  }
+
+  @Test("Directory selection failure surfaces error and keeps previous directory")
+  func directorySelectionFailureShowsErrorAndKeepsPath() {
+    let spy = EndpointTesterSpy()
+    let (viewModel, settings, manager) = makeSystemUnderTestWithManager(testerSpy: spy)
+
+    settings.modelDirectory = ""
+    manager.invalidModelName = "base"
+
+    let invalidDirectoryURL = URL(string: "https://example.com/models")!
+
+    _ = viewModel.transform(input: .init(event: .directorySelected(invalidDirectoryURL)))
+
+    #expect(settings.modelDirectory.isEmpty)
+    #expect(manager.invalidModelName == "base")
+    #expect(viewModel.output.migrationError?.contains("Failed to access selected folder") == true)
   }
 
   @Test("Mirror selection does not invalidate runtime cache")

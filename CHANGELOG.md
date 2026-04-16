@@ -1,3 +1,16 @@
+## [0.4.8.137] - 2026-04-16
+
+### Features
+- add appicons for all bundle IDs
+
+### Bug Fixes
+- persist MAS model directory bookmarks
+
+### Other
+- add logo design file
+- add app store preview
+
+
 ## [0.4.7.136] - 2026-04-08
 
 ### Bug Fixes

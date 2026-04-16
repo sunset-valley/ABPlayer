@@ -80,8 +80,10 @@ struct ABPlayerApp: App {
         .onChange(of: scenePhase) { _, newPhase in
           if newPhase == .background {
             container.librarySettings.endLibraryAccessSession()
+            container.transcriptionSettings.endModelDirectoryAccessSession()
           } else if newPhase == .active {
             container.librarySettings.beginLibraryAccessSession()
+            container.transcriptionSettings.beginModelDirectoryAccessSession()
           }
         }
     }
