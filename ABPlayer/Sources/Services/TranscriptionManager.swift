@@ -200,22 +200,10 @@ final class TranscriptionManager {
 
     try throwIfCancellationRequested()
 
-    if !(await runtime.hasLoadedModel(named: runtimeConfig.modelName, downloadBase: runtimeConfig.downloadBase)) {
-      do {
-        try await loadModel(
-          modelName: runtimeConfig.modelName,
-          downloadBase: runtimeConfig.downloadBase,
-          endpoint: runtimeConfig.endpoint
-        )
-      } catch is CancellationError {
-        state = .cancelled
-        throw CancellationError()
-      } catch {
-        if await settings.isModelDownloadedAsync(modelName: runtimeConfig.modelName) {
-          throw error
-        }
+    try await settings.withModelDirectoryAccess {
+      if !(await runtime.hasLoadedModel(named: runtimeConfig.modelName, downloadBase: runtimeConfig.downloadBase)) {
         do {
-          try await downloadModel(
+          try await loadModel(
             modelName: runtimeConfig.modelName,
             downloadBase: runtimeConfig.downloadBase,
             endpoint: runtimeConfig.endpoint
@@ -223,12 +211,26 @@ final class TranscriptionManager {
         } catch is CancellationError {
           state = .cancelled
           throw CancellationError()
+        } catch {
+          if await settings.isModelDownloadedAsync(modelName: runtimeConfig.modelName) {
+            throw error
+          }
+          do {
+            try await downloadModel(
+              modelName: runtimeConfig.modelName,
+              downloadBase: runtimeConfig.downloadBase,
+              endpoint: runtimeConfig.endpoint
+            )
+          } catch is CancellationError {
+            state = .cancelled
+            throw CancellationError()
+          }
+          try await loadModel(
+            modelName: runtimeConfig.modelName,
+            downloadBase: runtimeConfig.downloadBase,
+            endpoint: runtimeConfig.endpoint
+          )
         }
-        try await loadModel(
-          modelName: runtimeConfig.modelName,
-          downloadBase: runtimeConfig.downloadBase,
-          endpoint: runtimeConfig.endpoint
-        )
       }
     }
 

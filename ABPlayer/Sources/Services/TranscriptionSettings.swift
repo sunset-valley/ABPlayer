@@ -6,6 +6,14 @@ import SwiftUI
 @MainActor
 @Observable
 final class TranscriptionSettings {
+  typealias BookmarkDataProducer = (URL) throws -> Data
+
+  private var scopedModelDirectoryURL: URL?
+  private var isModelDirectoryAccessActive = false
+
+  @ObservationIgnored
+  private let bookmarkDataProducer: BookmarkDataProducer
+
   /// Whether transcription feature is enabled
   @ObservationIgnored
   @AppStorage("transcription_enabled") private var _isEnabled: Bool = true
@@ -54,6 +62,20 @@ final class TranscriptionSettings {
     set { withMutation(keyPath: \.modelDirectory) { _modelDirectory = newValue } }
   }
 
+  @ObservationIgnored
+  @AppStorage(UserDefaultsKey.transcriptionModelDirectoryBookmark)
+  private var _modelDirectoryBookmarkData: Data = Data()
+
+  var modelDirectoryBookmarkData: Data? {
+    get {
+      let data = _modelDirectoryBookmarkData
+      return data.isEmpty ? nil : data
+    }
+    set {
+      _modelDirectoryBookmarkData = newValue ?? Data()
+    }
+  }
+
   /// Custom HuggingFace endpoint or mirror (empty = official HuggingFace)
   @ObservationIgnored
   @AppStorage("transcription_download_endpoint") private var _downloadEndpoint: String = ""
@@ -76,9 +98,26 @@ final class TranscriptionSettings {
   private var _didMigrateLegacyDefaultModelDirectory = false
 
   init(performInitialMigration: Bool = true) {
+    self.bookmarkDataProducer = TranscriptionSettings.defaultBookmarkData
+
     if performInitialMigration {
       migrateLegacyDefaultModelDirectoryIfNeeded()
     }
+
+    beginModelDirectoryAccessSession()
+  }
+
+  init(
+    performInitialMigration: Bool,
+    bookmarkDataProducer: @escaping BookmarkDataProducer
+  ) {
+    self.bookmarkDataProducer = bookmarkDataProducer
+
+    if performInitialMigration {
+      migrateLegacyDefaultModelDirectoryIfNeeded()
+    }
+
+    beginModelDirectoryAccessSession()
   }
 
   // MARK: - Computed Properties
@@ -141,15 +180,28 @@ final class TranscriptionSettings {
 
   /// Check if a specific model is downloaded by verifying indicator files exist
   func isModelDownloaded(modelName: String) -> Bool {
-    Self.isModelDownloadedSync(modelName: modelName, baseDir: modelDirectoryURL)
+    let baseDir = modelDirectoryURL
+    do {
+      return try withModelDirectoryAccessSync {
+        Self.isModelDownloadedSync(modelName: modelName, baseDir: baseDir)
+      }
+    } catch {
+      return false
+    }
   }
 
   /// Check if model is downloaded without blocking the main actor
   func isModelDownloadedAsync(modelName: String) async -> Bool {
     let baseDir = modelDirectoryURL
-    return await Task.detached(priority: .utility) {
-      Self.isModelDownloadedSync(modelName: modelName, baseDir: baseDir)
-    }.value
+    do {
+      return try await withModelDirectoryAccess {
+        await Task.detached(priority: .utility) {
+          Self.isModelDownloadedSync(modelName: modelName, baseDir: baseDir)
+        }.value
+      }
+    } catch {
+      return false
+    }
   }
 
   nonisolated private static func isModelDownloadedSync(modelName: String, baseDir: URL) -> Bool {
@@ -186,9 +238,15 @@ final class TranscriptionSettings {
   /// Returns list of downloaded models asynchronously (non-blocking)
   func listDownloadedModelsAsync() async -> [(name: String, size: Int64)] {
     let url = modelDirectoryURL
-    return await Task.detached(priority: .utility) {
-      Self.listModelsSync(in: url)
-    }.value
+    do {
+      return try await withModelDirectoryAccess {
+        await Task.detached(priority: .utility) {
+          Self.listModelsSync(in: url)
+        }.value
+      }
+    } catch {
+      return []
+    }
   }
 
   /// Synchronous helper for listing models (can run on background thread)
@@ -231,41 +289,45 @@ final class TranscriptionSettings {
 
   /// Delete a specific model from disk
   func deleteModel(named name: String) throws {
-    let whisperKitDir =
-      modelDirectoryURL
-      .appendingPathComponent("models", isDirectory: true)
-      .appendingPathComponent("argmaxinc", isDirectory: true)
-      .appendingPathComponent("whisperkit-coreml", isDirectory: true)
-    let modelDir = whisperKitDir.appendingPathComponent(name)
-    try FileManager.default.removeItem(at: modelDir)
+    let baseDirectory = modelDirectoryURL
+    try withModelDirectoryAccessSync {
+      let whisperKitDir =
+        baseDirectory
+        .appendingPathComponent("models", isDirectory: true)
+        .appendingPathComponent("argmaxinc", isDirectory: true)
+        .appendingPathComponent("whisperkit-coreml", isDirectory: true)
+      let modelDir = whisperKitDir.appendingPathComponent(name)
+      try FileManager.default.removeItem(at: modelDir)
+    }
   }
 
   /// Move all models from old directory to new directory
   func migrateModels(from oldDir: URL, to newDir: URL) throws {
-    let fileManager = FileManager.default
+    try withModelDirectoryAccessSync {
+      let fileManager = FileManager.default
 
-    guard fileManager.fileExists(atPath: oldDir.path) else { return }
+      guard fileManager.fileExists(atPath: oldDir.path) else { return }
 
-    // Create new directory if needed
-    if !fileManager.fileExists(atPath: newDir.path) {
-      try fileManager.createDirectory(at: newDir, withIntermediateDirectories: true)
-    }
+      if !fileManager.fileExists(atPath: newDir.path) {
+        try fileManager.createDirectory(at: newDir, withIntermediateDirectories: true)
+      }
 
-    let contents = try fileManager.contentsOfDirectory(
-      at: oldDir,
-      includingPropertiesForKeys: [.isDirectoryKey],
-      options: [.skipsHiddenFiles]
-    )
+      let contents = try fileManager.contentsOfDirectory(
+        at: oldDir,
+        includingPropertiesForKeys: [.isDirectoryKey],
+        options: [.skipsHiddenFiles]
+      )
 
-    for url in contents {
-      var isDir: ObjCBool = false
-      guard fileManager.fileExists(atPath: url.path, isDirectory: &isDir),
-        isDir.boolValue
-      else { continue }
+      for url in contents {
+        var isDir: ObjCBool = false
+        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDir),
+          isDir.boolValue
+        else { continue }
 
-      let destURL = newDir.appendingPathComponent(url.lastPathComponent)
-      if !fileManager.fileExists(atPath: destURL.path) {
-        try fileManager.moveItem(at: url, to: destURL)
+        let destURL = newDir.appendingPathComponent(url.lastPathComponent)
+        if !fileManager.fileExists(atPath: destURL.path) {
+          try fileManager.moveItem(at: url, to: destURL)
+        }
       }
     }
   }
@@ -300,43 +362,144 @@ final class TranscriptionSettings {
 
   /// Delete download cache for a model
   func deleteDownloadCache(modelName: String) {
-    let fileManager = FileManager.default
-
-    // WhisperKit downloads to models/argmaxinc/whisperkit-coreml/<model-name>
-    // Model names are prefixed like "openai_whisper-tiny" or "distil-whisper_distil-large-v3"
-    let whisperKitDir =
-      modelDirectoryURL
-      .appendingPathComponent("models", isDirectory: true)
-      .appendingPathComponent("argmaxinc", isDirectory: true)
-      .appendingPathComponent("whisperkit-coreml", isDirectory: true)
-
-    guard fileManager.fileExists(atPath: whisperKitDir.path) else { return }
-
+    let baseDirectory = modelDirectoryURL
     do {
-      let contents = try fileManager.contentsOfDirectory(
-        at: whisperKitDir,
-        includingPropertiesForKeys: [.isDirectoryKey],
-        options: [.skipsHiddenFiles]
-      )
+      try withModelDirectoryAccessSync {
+        let fileManager = FileManager.default
 
-      // Find and delete any folder containing the model name
-      for url in contents {
-        if url.lastPathComponent.contains(modelName) {
+        let whisperKitDir =
+          baseDirectory
+          .appendingPathComponent("models", isDirectory: true)
+          .appendingPathComponent("argmaxinc", isDirectory: true)
+          .appendingPathComponent("whisperkit-coreml", isDirectory: true)
+
+        guard fileManager.fileExists(atPath: whisperKitDir.path) else { return }
+
+        let contents = try fileManager.contentsOfDirectory(
+          at: whisperKitDir,
+          includingPropertiesForKeys: [.isDirectoryKey],
+          options: [.skipsHiddenFiles]
+        )
+
+        for url in contents where url.lastPathComponent.contains(modelName) {
           try? fileManager.removeItem(at: url)
         }
-      }
 
-      // Also delete any temporary/incomplete download files
-      let tempPatterns = [".tmp", ".download", ".partial"]
-      for url in contents {
-        let name = url.lastPathComponent
-        if tempPatterns.contains(where: { name.contains($0) }) && name.contains(modelName) {
-          try? fileManager.removeItem(at: url)
+        let tempPatterns = [".tmp", ".download", ".partial"]
+        for url in contents {
+          let name = url.lastPathComponent
+          if tempPatterns.contains(where: { name.contains($0) }) && name.contains(modelName) {
+            try? fileManager.removeItem(at: url)
+          }
         }
       }
     } catch {
-      // Ignore errors during cleanup
+      // Ignore errors during cleanup.
     }
+  }
+
+  func setModelDirectory(_ url: URL) throws {
+    let didStartAccessing = url.startAccessingSecurityScopedResource()
+    defer {
+      if didStartAccessing {
+        url.stopAccessingSecurityScopedResource()
+      }
+    }
+
+    let bookmarkData = try bookmarkDataProducer(url)
+    modelDirectory = url.path
+    modelDirectoryBookmarkData = bookmarkData
+    beginModelDirectoryAccessSession()
+  }
+
+  func beginModelDirectoryAccessSession() {
+    guard !modelDirectory.isEmpty else {
+      endModelDirectoryAccessSession()
+      return
+    }
+
+    if isModelDirectoryAccessActive,
+      let scopedModelDirectoryURL,
+      scopedModelDirectoryURL.standardizedFileURL.path == modelDirectoryURL.standardizedFileURL.path
+    {
+      return
+    }
+
+    endModelDirectoryAccessSession()
+
+    do {
+      if let scopedURL = try resolveScopedModelDirectoryURL(),
+        scopedURL.startAccessingSecurityScopedResource()
+      {
+        scopedModelDirectoryURL = scopedURL
+        isModelDirectoryAccessActive = true
+      }
+    } catch {
+      scopedModelDirectoryURL = nil
+      isModelDirectoryAccessActive = false
+    }
+  }
+
+  func endModelDirectoryAccessSession() {
+    if let scopedModelDirectoryURL, isModelDirectoryAccessActive {
+      scopedModelDirectoryURL.stopAccessingSecurityScopedResource()
+    }
+    scopedModelDirectoryURL = nil
+    isModelDirectoryAccessActive = false
+  }
+
+  func withModelDirectoryAccess<T>(_ operation: () async throws -> T) async throws -> T {
+    alignModelDirectoryAccessSessionWithCurrentPath()
+
+    if isModelDirectoryAccessActive {
+      return try await operation()
+    }
+
+    guard !modelDirectory.isEmpty else {
+      return try await operation()
+    }
+
+    do {
+      if let scopedURL = try resolveScopedModelDirectoryURL(),
+        scopedURL.startAccessingSecurityScopedResource()
+      {
+        defer {
+          scopedURL.stopAccessingSecurityScopedResource()
+        }
+        return try await operation()
+      }
+    } catch {
+      return try await operation()
+    }
+
+    return try await operation()
+  }
+
+  func withModelDirectoryAccessSync<T>(_ operation: () throws -> T) throws -> T {
+    alignModelDirectoryAccessSessionWithCurrentPath()
+
+    if isModelDirectoryAccessActive {
+      return try operation()
+    }
+
+    guard !modelDirectory.isEmpty else {
+      return try operation()
+    }
+
+    do {
+      if let scopedURL = try resolveScopedModelDirectoryURL(),
+        scopedURL.startAccessingSecurityScopedResource()
+      {
+        defer {
+          scopedURL.stopAccessingSecurityScopedResource()
+        }
+        return try operation()
+      }
+    } catch {
+      return try operation()
+    }
+
+    return try operation()
   }
 
   /// Calculate total size of a directory
@@ -378,6 +541,59 @@ final class TranscriptionSettings {
     ["AudioEncoder.mlmodelc", "TextDecoder.mlmodelc", "config.json"].contains { indicator in
       fileManager.fileExists(atPath: url.appendingPathComponent(indicator).path)
     }
+  }
+
+  private func resolveScopedModelDirectoryURL() throws -> URL? {
+    if let bookmarkData = modelDirectoryBookmarkData {
+      var isStale = false
+      let scopedURL = try URL(
+        resolvingBookmarkData: bookmarkData,
+        options: [.withSecurityScope],
+        relativeTo: nil,
+        bookmarkDataIsStale: &isStale
+      )
+
+      if isStale {
+        modelDirectoryBookmarkData = try bookmarkDataProducer(scopedURL)
+      }
+
+      return scopedURL
+    }
+
+    let url = modelDirectoryURL
+    if let newBookmark = try? bookmarkDataProducer(url) {
+      modelDirectoryBookmarkData = newBookmark
+      var isStale = false
+      return try URL(
+        resolvingBookmarkData: newBookmark,
+        options: [.withSecurityScope],
+        relativeTo: nil,
+        bookmarkDataIsStale: &isStale
+      )
+    }
+
+    return nil
+  }
+
+  private func alignModelDirectoryAccessSessionWithCurrentPath() {
+    guard isModelDirectoryAccessActive, let scopedModelDirectoryURL else {
+      return
+    }
+
+    let activePath = scopedModelDirectoryURL.standardizedFileURL.path
+    let targetPath = modelDirectoryURL.standardizedFileURL.path
+    if activePath != targetPath {
+      endModelDirectoryAccessSession()
+      beginModelDirectoryAccessSession()
+    }
+  }
+
+  nonisolated private static func defaultBookmarkData(for url: URL) throws -> Data {
+    try url.bookmarkData(
+      options: [.withSecurityScope],
+      includingResourceValuesForKeys: nil,
+      relativeTo: nil
+    )
   }
 
   nonisolated private static func detectedModelID(from folderName: String) -> String? {

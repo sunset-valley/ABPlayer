@@ -214,6 +214,14 @@ private func waitUntil(
 @MainActor
 struct TranscriptionSettingsTests {
 
+  private let modelDirectoryKey = "transcription_model_directory"
+  private let modelDirectoryBookmarkKey = "transcription_model_directory_bookmark"
+
+  private func clearModelDirectoryDefaults() {
+    UserDefaults.standard.removeObject(forKey: modelDirectoryKey)
+    UserDefaults.standard.removeObject(forKey: modelDirectoryBookmarkKey)
+  }
+
   @Test
   func testAvailableModelsNotEmpty() {
     #expect(!TranscriptionSettings.availableModels.isEmpty)
@@ -457,6 +465,26 @@ struct TranscriptionSettingsTests {
     let gbSize: Int64 = 2 * 1024 * 1024 * 1024
     let gbFormatted = TranscriptionSettings.formatSize(gbSize)
     #expect(gbFormatted.contains("GB") || gbFormatted.contains("2"))
+  }
+
+  @Test
+  func testSetModelDirectoryPersistsBookmarkData() throws {
+    clearModelDirectoryDefaults()
+    defer { clearModelDirectoryDefaults() }
+
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let settings = TranscriptionSettings(performInitialMigration: false)
+
+    settings.modelDirectory = ""
+    settings.modelDirectoryBookmarkData = nil
+
+    try settings.setModelDirectory(directory)
+
+    #expect(settings.modelDirectory == directory.path)
+    #expect((settings.modelDirectoryBookmarkData?.isEmpty == false))
   }
 }
 
