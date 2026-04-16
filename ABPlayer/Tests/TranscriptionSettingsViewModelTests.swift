@@ -266,4 +266,41 @@ struct TranscriptionSettingsViewModelTests {
 
     #expect(viewModel.output.modelDownloadStatus == .downloaded)
   }
+
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["CI"] == nil))
+  func directorySelectionSkipsInaccessibleOldDirectoryMigrationWithoutShowingError() async throws {
+    let spy = EndpointTesterSpy()
+    let (viewModel, settings) = makeSystemUnderTest(testerSpy: spy)
+
+    let oldDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let newDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+
+    try FileManager.default.createDirectory(at: oldDirectory, withIntermediateDirectories: true)
+    try makeModelDirectory(baseDirectory: oldDirectory, modelName: "tiny")
+    try settings.setModelDirectory(oldDirectory)
+
+    defer {
+      try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: oldDirectory.path)
+      try? FileManager.default.removeItem(at: oldDirectory)
+      try? FileManager.default.removeItem(at: newDirectory)
+    }
+
+    _ = viewModel.transform(input: .init(event: .onAppear))
+    await waitForAsyncStateUpdate()
+    await waitForAsyncStateUpdate()
+
+    #expect(!viewModel.output.downloadedModels.isEmpty)
+
+    try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: oldDirectory.path)
+    try FileManager.default.createDirectory(at: newDirectory, withIntermediateDirectories: true)
+
+    _ = viewModel.transform(input: .init(event: .directorySelected(newDirectory)))
+    await waitForAsyncStateUpdate()
+    await waitForAsyncStateUpdate()
+
+    #expect(settings.modelDirectory == newDirectory.path)
+    #expect(viewModel.output.migrationError == nil)
+  }
 }

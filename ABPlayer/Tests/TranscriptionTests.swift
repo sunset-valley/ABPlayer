@@ -486,6 +486,119 @@ struct TranscriptionSettingsTests {
     #expect(settings.modelDirectory == directory.path)
     #expect((settings.modelDirectoryBookmarkData?.isEmpty == false))
   }
+
+  @Test
+  func testBestEffortMigrationSkipsMissingSourceDirectory() throws {
+    let settings = TranscriptionSettings(performInitialMigration: false)
+
+    let tempRoot = FileManager.default.temporaryDirectory
+      .appendingPathComponent("TranscriptionBestEffortMissing-\(UUID().uuidString)", isDirectory: true)
+    let missingDirectory = tempRoot.appendingPathComponent("missing", isDirectory: true)
+    let destinationDirectory = tempRoot.appendingPathComponent("destination", isDirectory: true)
+
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+
+    let result = settings.migrateModelsBestEffort(
+      from: missingDirectory,
+      oldDirectoryBookmarkData: nil,
+      to: destinationDirectory
+    )
+
+    if case .skippedSourceMissing = result {
+      #expect(true)
+    } else {
+      Issue.record("Expected skippedSourceMissing for missing source directory")
+    }
+  }
+
+  @Test
+  func testBestEffortMigrationMovesDirectoriesWhenSourceAccessible() throws {
+    let settings = TranscriptionSettings(performInitialMigration: false)
+
+    let tempRoot = FileManager.default.temporaryDirectory
+      .appendingPathComponent("TranscriptionBestEffortSuccess-\(UUID().uuidString)", isDirectory: true)
+    let sourceDirectory = tempRoot.appendingPathComponent("source", isDirectory: true)
+    let destinationDirectory = tempRoot.appendingPathComponent("destination", isDirectory: true)
+    let sourceModelDirectory = sourceDirectory.appendingPathComponent("openai_whisper-tiny", isDirectory: true)
+
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    try FileManager.default.createDirectory(at: sourceModelDirectory, withIntermediateDirectories: true)
+
+    let result = settings.migrateModelsBestEffort(
+      from: sourceDirectory,
+      oldDirectoryBookmarkData: nil,
+      to: destinationDirectory
+    )
+
+    if case .migrated = result {
+      #expect(FileManager.default.fileExists(atPath: destinationDirectory.appendingPathComponent("openai_whisper-tiny").path))
+      #expect(!FileManager.default.fileExists(atPath: sourceModelDirectory.path))
+    } else {
+      Issue.record("Expected migrated when source directory is accessible")
+    }
+  }
+
+  @Test
+  func testBestEffortMigrationReturnsFailureWhenDestinationIsBlocked() throws {
+    let settings = TranscriptionSettings(performInitialMigration: false)
+
+    let tempRoot = FileManager.default.temporaryDirectory
+      .appendingPathComponent("TranscriptionBestEffortFailure-\(UUID().uuidString)", isDirectory: true)
+    let sourceDirectory = tempRoot.appendingPathComponent("source", isDirectory: true)
+    let destinationPath = tempRoot.appendingPathComponent("destination", isDirectory: false)
+    let sourceModelDirectory = sourceDirectory.appendingPathComponent("openai_whisper-tiny", isDirectory: true)
+
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    try FileManager.default.createDirectory(at: sourceModelDirectory, withIntermediateDirectories: true)
+    try Data("blocking".utf8).write(to: destinationPath)
+
+    let result = settings.migrateModelsBestEffort(
+      from: sourceDirectory,
+      oldDirectoryBookmarkData: nil,
+      to: destinationPath
+    )
+
+    if case .failed = result {
+      #expect(true)
+    } else {
+      Issue.record("Expected failure when destination path blocks migration")
+    }
+  }
+
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["CI"] == nil))
+  func testBestEffortMigrationSkipsInaccessibleSourceDirectory() throws {
+    let settings = TranscriptionSettings(performInitialMigration: false)
+
+    let tempRoot = FileManager.default.temporaryDirectory
+      .appendingPathComponent("TranscriptionBestEffortNoPermission-\(UUID().uuidString)", isDirectory: true)
+    let sourceDirectory = tempRoot.appendingPathComponent("source", isDirectory: true)
+    let destinationDirectory = tempRoot.appendingPathComponent("destination", isDirectory: true)
+    let sourceModelDirectory = sourceDirectory.appendingPathComponent("openai_whisper-tiny", isDirectory: true)
+
+    try FileManager.default.createDirectory(at: sourceModelDirectory, withIntermediateDirectories: true)
+    try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: sourceDirectory.path)
+
+    defer {
+      try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: sourceDirectory.path)
+      try? FileManager.default.removeItem(at: tempRoot)
+    }
+
+    let result = settings.migrateModelsBestEffort(
+      from: sourceDirectory,
+      oldDirectoryBookmarkData: nil,
+      to: destinationDirectory
+    )
+
+    if case .skippedSourceInaccessible = result {
+      #expect(true)
+    } else {
+      Issue.record("Expected skippedSourceInaccessible when source directory permission is denied")
+    }
+  }
 }
 
 // MARK: - Transcription Manager Tests

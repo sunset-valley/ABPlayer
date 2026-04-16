@@ -8,6 +8,14 @@ import SwiftUI
 final class TranscriptionSettings {
   typealias BookmarkDataProducer = (URL) throws -> Data
 
+  enum ModelMigrationResult {
+    case migrated
+    case skippedSourceMissing
+    case skippedSourceInaccessible
+    case skippedNoContents
+    case failed(Error)
+  }
+
   private var scopedModelDirectoryURL: URL?
   private var isModelDirectoryAccessActive = false
 
@@ -308,27 +316,67 @@ final class TranscriptionSettings {
 
       guard fileManager.fileExists(atPath: oldDir.path) else { return }
 
-      if !fileManager.fileExists(atPath: newDir.path) {
-        try fileManager.createDirectory(at: newDir, withIntermediateDirectories: true)
-      }
+      let sourceDirectories = try Self.directChildDirectories(in: oldDir, fileManager: fileManager)
+      try Self.moveDirectories(sourceDirectories, to: newDir, fileManager: fileManager)
+    }
+  }
 
-      let contents = try fileManager.contentsOfDirectory(
-        at: oldDir,
-        includingPropertiesForKeys: [.isDirectoryKey],
-        options: [.skipsHiddenFiles]
-      )
+  func migrateModelsBestEffort(
+    from oldDir: URL,
+    oldDirectoryBookmarkData: Data?,
+    to newDir: URL
+  ) -> ModelMigrationResult {
+    guard oldDir.standardizedFileURL.path != newDir.standardizedFileURL.path else {
+      return .skippedNoContents
+    }
 
-      for url in contents {
-        var isDir: ObjCBool = false
-        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDir),
-          isDir.boolValue
-        else { continue }
+    do {
+      return try withPreviousModelDirectoryAccess(
+        oldDir: oldDir,
+        oldDirectoryBookmarkData: oldDirectoryBookmarkData
+      ) { sourceDirectory in
+        let fileManager = FileManager.default
+        let sourceDirectories: [URL]
 
-        let destURL = newDir.appendingPathComponent(url.lastPathComponent)
-        if !fileManager.fileExists(atPath: destURL.path) {
-          try fileManager.moveItem(at: url, to: destURL)
+        do {
+          sourceDirectories = try Self.directChildDirectories(in: sourceDirectory, fileManager: fileManager)
+        } catch {
+          if Self.isFileMissingError(error) {
+            Logger.data.info("[TranscriptionSettings] Skip model migration because source is missing: \(sourceDirectory.path, privacy: .public)")
+            return .skippedSourceMissing
+          }
+          if Self.isPermissionError(error) {
+            Logger.data.info("[TranscriptionSettings] Skip model migration because source is inaccessible: \(sourceDirectory.path, privacy: .public)")
+            return .skippedSourceInaccessible
+          }
+          return .failed(error)
+        }
+
+        guard !sourceDirectories.isEmpty else {
+          return .skippedNoContents
+        }
+
+        do {
+          try withModelDirectoryAccessSync {
+            try Self.moveDirectories(sourceDirectories, to: newDir, fileManager: fileManager)
+          }
+          return .migrated
+        } catch {
+          Logger.data.error("[TranscriptionSettings] Failed to migrate models to new directory: \(error.localizedDescription, privacy: .public)")
+          return .failed(error)
         }
       }
+    } catch {
+      if Self.isPermissionError(error) {
+        Logger.data.info("[TranscriptionSettings] Skip model migration because source is inaccessible: \(oldDir.path, privacy: .public)")
+        return .skippedSourceInaccessible
+      }
+      if Self.isFileMissingError(error) {
+        Logger.data.info("[TranscriptionSettings] Skip model migration because source is missing: \(oldDir.path, privacy: .public)")
+        return .skippedSourceMissing
+      }
+      Logger.data.error("[TranscriptionSettings] Failed during best-effort model migration: \(error.localizedDescription, privacy: .public)")
+      return .failed(error)
     }
   }
 
@@ -541,6 +589,113 @@ final class TranscriptionSettings {
     ["AudioEncoder.mlmodelc", "TextDecoder.mlmodelc", "config.json"].contains { indicator in
       fileManager.fileExists(atPath: url.appendingPathComponent(indicator).path)
     }
+  }
+
+  private func withPreviousModelDirectoryAccess<T>(
+    oldDir: URL,
+    oldDirectoryBookmarkData: Data?,
+    operation: (URL) throws -> T
+  ) throws -> T {
+    let sourceDirectory = oldDir.standardizedFileURL
+    let isDefaultDirectory =
+      sourceDirectory.path == Self.defaultModelDirectory.standardizedFileURL.path
+
+    if isDefaultDirectory {
+      return try operation(sourceDirectory)
+    }
+
+    if let oldDirectoryBookmarkData {
+      do {
+        var isStale = false
+        let scopedURL = try URL(
+          resolvingBookmarkData: oldDirectoryBookmarkData,
+          options: [.withSecurityScope],
+          relativeTo: nil,
+          bookmarkDataIsStale: &isStale
+        )
+        let didStartAccessing = scopedURL.startAccessingSecurityScopedResource()
+        defer {
+          if didStartAccessing {
+            scopedURL.stopAccessingSecurityScopedResource()
+          }
+        }
+        return try operation(scopedURL)
+      } catch {
+        Logger.data.info("[TranscriptionSettings] Failed to restore previous model directory bookmark: \(error.localizedDescription, privacy: .public)")
+        return try operation(sourceDirectory)
+      }
+    }
+
+    return try operation(sourceDirectory)
+  }
+
+  nonisolated private static func directChildDirectories(
+    in directory: URL,
+    fileManager: FileManager
+  ) throws -> [URL] {
+    let contents = try fileManager.contentsOfDirectory(
+      at: directory,
+      includingPropertiesForKeys: [.isDirectoryKey],
+      options: [.skipsHiddenFiles]
+    )
+
+    return contents.filter { url in
+      var isDir: ObjCBool = false
+      return fileManager.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
+    }
+  }
+
+  nonisolated private static func moveDirectories(
+    _ sourceDirectories: [URL],
+    to destinationRoot: URL,
+    fileManager: FileManager
+  ) throws {
+    if !fileManager.fileExists(atPath: destinationRoot.path) {
+      try fileManager.createDirectory(at: destinationRoot, withIntermediateDirectories: true)
+    }
+
+    for url in sourceDirectories {
+      let destination = destinationRoot.appendingPathComponent(url.lastPathComponent)
+      if !fileManager.fileExists(atPath: destination.path) {
+        try fileManager.moveItem(at: url, to: destination)
+      }
+    }
+  }
+
+  nonisolated private static func isPermissionError(_ error: Error) -> Bool {
+    let nsError = error as NSError
+    if nsError.domain == NSCocoaErrorDomain {
+      if nsError.code == NSFileReadNoPermissionError || nsError.code == NSFileWriteNoPermissionError {
+        return true
+      }
+    }
+    if nsError.domain == NSPOSIXErrorDomain {
+      if nsError.code == EACCES || nsError.code == EPERM {
+        return true
+      }
+    }
+    if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+      return isPermissionError(underlying)
+    }
+    return false
+  }
+
+  nonisolated private static func isFileMissingError(_ error: Error) -> Bool {
+    let nsError = error as NSError
+    if nsError.domain == NSCocoaErrorDomain {
+      if nsError.code == NSFileReadNoSuchFileError || nsError.code == NSFileNoSuchFileError {
+        return true
+      }
+    }
+    if nsError.domain == NSPOSIXErrorDomain {
+      if nsError.code == ENOENT {
+        return true
+      }
+    }
+    if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+      return isFileMissingError(underlying)
+    }
+    return false
   }
 
   private func resolveScopedModelDirectoryURL() throws -> URL? {

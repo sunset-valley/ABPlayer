@@ -236,6 +236,7 @@ final class TranscriptionSettingsViewModel {
     let oldPath = settings.modelDirectory.isEmpty
       ? TranscriptionSettings.defaultModelDirectory.path
       : settings.modelDirectory
+    let oldBookmarkData = settings.modelDirectoryBookmarkData
 
     do {
       try settings.setModelDirectory(url)
@@ -245,24 +246,25 @@ final class TranscriptionSettingsViewModel {
     }
 
     if !downloadedModels.isEmpty, oldPath != newPath {
-      migrateModels(from: oldPath, to: newPath)
+      migrateModels(from: oldPath, oldBookmarkData: oldBookmarkData, to: newPath)
     }
     transcriptionManager?.invalidateLoadedModel()
     checkAndRefreshModels()
   }
 
-  private func migrateModels(from oldPath: String, to newPath: String) {
+  private func migrateModels(from oldPath: String, oldBookmarkData: Data?, to newPath: String) {
     guard let settings else { return }
     isMigrating = true
     updateOutput()
 
     Task {
-      do {
-        try settings.migrateModels(
-          from: URL(fileURLWithPath: oldPath),
-          to: URL(fileURLWithPath: newPath)
-        )
-      } catch {
+      let result = settings.migrateModelsBestEffort(
+        from: URL(fileURLWithPath: oldPath),
+        oldDirectoryBookmarkData: oldBookmarkData,
+        to: URL(fileURLWithPath: newPath)
+      )
+
+      if case .failed(let error) = result {
         self.migrationError = "Failed to migrate models: \(error.localizedDescription)"
       }
       self.isMigrating = false
