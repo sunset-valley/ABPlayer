@@ -52,6 +52,8 @@ struct ABPlayerApp: App {
       NotesBrowserExportDemoView()
     } else if uiFlags.isListeningStats {
       ListeningStatsDemoView()
+    } else if uiFlags.isSubtitleSentenceNavigation {
+      SubtitleSentenceNavigationDemoView()
     } else {
       MainSplitView()
     }
@@ -96,6 +98,28 @@ struct ABPlayerApp: App {
         onRepairListeningSessions: {
           Task {
             await container.sessionTracker.repairOrphanSessionsNow()
+          }
+        }
+      )
+      SentenceNavigationCommands(
+        onSeekPreviousSentence: {
+          Task { @MainActor in
+            guard let currentFile = container.playerManager.currentFile else { return }
+            var cues = container.subtitleLoader.cachedSubtitles(for: currentFile.id)
+            if cues.isEmpty {
+              cues = await container.subtitleLoader.loadSubtitles(for: currentFile)
+            }
+            await container.playerManager.seekToPreviousSubtitleSentence(in: cues)
+          }
+        },
+        onSeekNextSentence: {
+          Task { @MainActor in
+            guard let currentFile = container.playerManager.currentFile else { return }
+            var cues = container.subtitleLoader.cachedSubtitles(for: currentFile.id)
+            if cues.isEmpty {
+              cues = await container.subtitleLoader.loadSubtitles(for: currentFile)
+            }
+            await container.playerManager.seekToNextSubtitleSentence(in: cues)
           }
         }
       )
@@ -184,6 +208,7 @@ private struct UITestingFlags {
   let isVideoSubtitleToggle: Bool
   let isNotesExport: Bool
   let isListeningStats: Bool
+  let isSubtitleSentenceNavigation: Bool
 
   init() {
     let args = ProcessInfo.processInfo.arguments
@@ -205,6 +230,12 @@ private struct UITestingFlags {
     isVideoSubtitleToggle = Self.check(args, env, "--ui-testing-video-subtitle-toggle", "ABP_UI_TESTING_VIDEO_SUBTITLE_TOGGLE")
     isNotesExport = Self.check(args, env, "--ui-testing-notes-export", "ABP_UI_TESTING_NOTES_EXPORT")
     isListeningStats = Self.check(args, env, "--ui-testing-listening-stats", "ABP_UI_TESTING_LISTENING_STATS")
+    isSubtitleSentenceNavigation = Self.check(
+      args,
+      env,
+      "--ui-testing-subtitle-sentence-navigation",
+      "ABP_UI_TESTING_SUBTITLE_SENTENCE_NAVIGATION"
+    )
   }
 
   private static func check(
@@ -257,6 +288,35 @@ struct SettingsCommands: Commands {
         openWindow(id: "settings-window")
       }
       .keyboardShortcut(",", modifiers: .command)
+    }
+  }
+}
+
+// MARK: - Sentence Navigation Commands
+
+struct SentenceNavigationCommands: Commands {
+  private let onSeekPreviousSentence: () -> Void
+  private let onSeekNextSentence: () -> Void
+
+  init(
+    onSeekPreviousSentence: @escaping () -> Void,
+    onSeekNextSentence: @escaping () -> Void
+  ) {
+    self.onSeekPreviousSentence = onSeekPreviousSentence
+    self.onSeekNextSentence = onSeekNextSentence
+  }
+
+  var body: some Commands {
+    CommandMenu("Playback") {
+      Button("Previous Sentence") {
+        onSeekPreviousSentence()
+      }
+      .keyboardShortcut("[", modifiers: [])
+
+      Button("Next Sentence") {
+        onSeekNextSentence()
+      }
+      .keyboardShortcut("]", modifiers: [])
     }
   }
 }

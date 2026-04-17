@@ -115,7 +115,7 @@ struct VideoControlsView: View {
       }
       .buttonStyle(.plain)
       .keyboardShortcut("g", modifiers: [])
-      
+
       Button {
         Task {
           await playerManager.playNext()

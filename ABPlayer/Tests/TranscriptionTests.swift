@@ -52,6 +52,67 @@ struct SubtitleCueEncodingTests {
   }
 }
 
+// MARK: - Subtitle Sentence Navigation Tests
+
+struct SubtitleCueSentenceNavigationTests {
+
+  @Test
+  func previousSentenceStartReturnsCurrentSentenceStartWhenTimeBetweenCues() {
+    let cues = [
+      SubtitleCue(startTime: 0.0, endTime: 1.0, text: "First"),
+      SubtitleCue(startTime: 2.0, endTime: 3.0, text: "Second"),
+      SubtitleCue(startTime: 4.0, endTime: 5.0, text: "Third"),
+    ]
+
+    let target = cues.previousSentenceStart(at: 1.5)
+    #expect(target == 0.0)
+  }
+
+  @Test
+  func previousSentenceStartReturnsPreviousSentenceWhenInsideSentence() {
+    let cues = [
+      SubtitleCue(startTime: 0.0, endTime: 1.0, text: "First"),
+      SubtitleCue(startTime: 2.0, endTime: 3.0, text: "Second"),
+      SubtitleCue(startTime: 4.0, endTime: 5.0, text: "Third"),
+    ]
+
+    let target = cues.previousSentenceStart(at: 2.5)
+    #expect(target == 0.0)
+  }
+
+  @Test
+  func nextSentenceStartReturnsNextSentenceWhenInsideSentence() {
+    let cues = [
+      SubtitleCue(startTime: 0.0, endTime: 1.0, text: "First"),
+      SubtitleCue(startTime: 2.0, endTime: 3.0, text: "Second"),
+      SubtitleCue(startTime: 4.0, endTime: 5.0, text: "Third"),
+    ]
+
+    let target = cues.nextSentenceStart(at: 2.5)
+    #expect(target == 4.0)
+  }
+
+  @Test
+  func nextSentenceStartReturnsCurrentSentenceWhenTimeBetweenCues() {
+    let cues = [
+      SubtitleCue(startTime: 0.0, endTime: 1.0, text: "First"),
+      SubtitleCue(startTime: 2.0, endTime: 3.0, text: "Second"),
+      SubtitleCue(startTime: 4.0, endTime: 5.0, text: "Third"),
+    ]
+
+    let target = cues.nextSentenceStart(at: 1.5)
+    #expect(target == 2.0)
+  }
+
+  @Test
+  func sentenceStartMethodsHandleEmptyCues() {
+    let cues: [SubtitleCue] = []
+
+    #expect(cues.previousSentenceStart(at: 1.0) == nil)
+    #expect(cues.nextSentenceStart(at: 1.0) == nil)
+  }
+}
+
 // MARK: - Transcription State Tests
 
 struct TranscriptionStateTests {

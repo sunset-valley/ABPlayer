@@ -61,6 +61,82 @@ extension [SubtitleCue] {
 
     return nil
   }
+
+  func activeCueIndex(at time: Double, epsilon: Double = 0.001) -> Int? {
+    guard time.isFinite, time >= 0, !isEmpty else { return nil }
+
+    var low = 0
+    var high = count - 1
+    var candidate: Int?
+
+    while low <= high {
+      let mid = (low + high) / 2
+      if self[mid].startTime <= time + epsilon {
+        candidate = mid
+        low = mid + 1
+      } else {
+        high = mid - 1
+      }
+    }
+
+    guard let candidate else { return nil }
+    let cue = self[candidate]
+    if time >= cue.startTime - epsilon, time < cue.endTime {
+      return candidate
+    }
+
+    return nil
+  }
+
+  func previousSentenceStart(at time: Double, epsilon: Double = 0.001) -> Double? {
+    guard !isEmpty else { return nil }
+    guard time.isFinite else { return first?.startTime }
+
+    if let activeIndex = activeCueIndex(at: Swift.max(time, 0), epsilon: epsilon) {
+      let previousIndex = Swift.max(activeIndex - 1, 0)
+      return self[previousIndex].startTime
+    }
+
+    let insertionIndex = firstIndex(after: Swift.max(time, 0), epsilon: epsilon)
+    if insertionIndex <= 0 {
+      return self[0].startTime
+    }
+
+    return self[insertionIndex - 1].startTime
+  }
+
+  func nextSentenceStart(at time: Double, epsilon: Double = 0.001) -> Double? {
+    guard !isEmpty else { return nil }
+    guard time.isFinite else { return first?.startTime }
+
+    if let activeIndex = activeCueIndex(at: Swift.max(time, 0), epsilon: epsilon) {
+      let nextIndex = Swift.min(activeIndex + 1, count - 1)
+      return self[nextIndex].startTime
+    }
+
+    let insertionIndex = firstIndex(after: Swift.max(time, 0), epsilon: epsilon)
+    if insertionIndex >= count {
+      return self[count - 1].startTime
+    }
+
+    return self[insertionIndex].startTime
+  }
+
+  private func firstIndex(after time: Double, epsilon: Double) -> Int {
+    var low = 0
+    var high = count
+
+    while low < high {
+      let mid = (low + high) / 2
+      if self[mid].startTime <= time + epsilon {
+        low = mid + 1
+      } else {
+        high = mid
+      }
+    }
+
+    return low
+  }
 }
 
 @Model

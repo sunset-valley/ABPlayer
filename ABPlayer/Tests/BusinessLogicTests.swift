@@ -909,6 +909,8 @@ actor MockAudioPlayerEngine: PlayerEngineProtocol {
   var lastLoadedFileURL: URL?
   var playCallCount = 0
   var pauseCallCount = 0
+  var seekCallCount = 0
+  var lastSeekTime: Double?
 
   // Simulation control
   var loadDelay: UInt64 = 0  // nanoseconds
@@ -948,7 +950,10 @@ actor MockAudioPlayerEngine: PlayerEngineProtocol {
 
   func syncPauseState() {}
   func syncPlayState() {}
-  func seek(to time: Double) {}
+  func seek(to time: Double) {
+    seekCallCount += 1
+    lastSeekTime = time
+  }
   func setVolume(_ volume: Float) async {}
   func teardown() {}
 }
@@ -1222,6 +1227,58 @@ struct PlayerManagerIntegrationTests {
 
     let loadedURL = await mockEngine.lastLoadedFileURL
     #expect(loadedURL?.lastPathComponent == "library-only.mp3")
+  }
+
+  @Test
+  func testSeekToPreviousSubtitleSentenceSeeksToPreviousCueStart() async {
+    let mockEngine = MockAudioPlayerEngine()
+    let manager = makePlayerManager(engine: mockEngine)
+    manager.currentTime = 2.3
+
+    let cues = [
+      SubtitleCue(startTime: 0.0, endTime: 1.0, text: "First"),
+      SubtitleCue(startTime: 2.0, endTime: 3.0, text: "Second"),
+      SubtitleCue(startTime: 4.0, endTime: 5.0, text: "Third"),
+    ]
+
+    await manager.seekToPreviousSubtitleSentence(in: cues)
+
+    let seekCallCount = await mockEngine.seekCallCount
+    let lastSeekTime = await mockEngine.lastSeekTime
+    #expect(seekCallCount == 1)
+    #expect(lastSeekTime == 0.001)
+  }
+
+  @Test
+  func testSeekToNextSubtitleSentenceSeeksToNextCueStart() async {
+    let mockEngine = MockAudioPlayerEngine()
+    let manager = makePlayerManager(engine: mockEngine)
+    manager.currentTime = 2.3
+
+    let cues = [
+      SubtitleCue(startTime: 0.0, endTime: 1.0, text: "First"),
+      SubtitleCue(startTime: 2.0, endTime: 3.0, text: "Second"),
+      SubtitleCue(startTime: 4.0, endTime: 5.0, text: "Third"),
+    ]
+
+    await manager.seekToNextSubtitleSentence(in: cues)
+
+    let seekCallCount = await mockEngine.seekCallCount
+    let lastSeekTime = await mockEngine.lastSeekTime
+    #expect(seekCallCount == 1)
+    #expect(lastSeekTime == 4.001)
+  }
+
+  @Test
+  func testSeekToNextSubtitleSentenceWithEmptyCuesDoesNothing() async {
+    let mockEngine = MockAudioPlayerEngine()
+    let manager = makePlayerManager(engine: mockEngine)
+    manager.currentTime = 2.3
+
+    await manager.seekToNextSubtitleSentence(in: [])
+
+    let seekCallCount = await mockEngine.seekCallCount
+    #expect(seekCallCount == 0)
   }
 }
 
