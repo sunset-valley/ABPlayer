@@ -54,7 +54,7 @@ struct FileRowView: View {
               Text("无法播放")
                 .foregroundStyle(.red)
             } else if let duration = file.cachedDuration, duration > 0 {
-              Text(timeString(from: duration))
+              Text(MediaTimeFormatting.clock(from: duration))
               if !hasPlayed {
                 Circle().frame(width: 6)
               }
@@ -77,21 +77,4 @@ struct FileRowView: View {
     }
   }
 
-  private func timeString(from value: Double) -> String {
-    guard value.isFinite, value >= 0 else {
-      return "0:00"
-    }
-
-    let totalSeconds = Int(value.rounded())
-    let minutes = totalSeconds / 60
-    let seconds = totalSeconds % 60
-
-    if minutes >= 60 {
-      let hours = minutes / 60
-      let remainingMinutes = minutes % 60
-      return String(format: "%d:%02d:%02d", hours, remainingMinutes, seconds)
-    }
-
-    return String(format: "%d:%02d", minutes, seconds)
-  }
 }

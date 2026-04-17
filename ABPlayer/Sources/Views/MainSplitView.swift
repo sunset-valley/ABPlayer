@@ -50,6 +50,20 @@ public struct MainSplitView: View {
       }
     }
     .frame(minWidth: 1000, minHeight: 600)
+    .toolbar {
+      if let folderNavigationViewModel = mainSplitViewModel.folderNavigationViewModel {
+        ToolbarItem(placement: .automatic) {
+          ContinueWatchingToolbarMenuView(
+            loadItems: {
+              folderNavigationViewModel.globalContinueWatchingItems()
+            },
+            onPlayItem: { file in
+              await folderNavigationViewModel.playContinueWatching(file)
+            }
+          )
+        }
+      }
+    }
     .onAppear {
       mainSplitViewModel.configureIfNeeded(
         modelContext: modelContext,
@@ -140,6 +154,9 @@ public struct MainSplitView: View {
           onRefresh: {
             await mainSplitViewModel.folderNavigationViewModel?.refreshCurrentFolder()
             mainSplitViewModel.syncQueueIfCurrentListMatchesSource()
+          },
+          onPlayContinueWatching: { file in
+            await mainSplitViewModel.folderNavigationViewModel?.playContinueWatching(file)
           },
           onClearAllData: {
             mainSplitViewModel.isClearingData = true

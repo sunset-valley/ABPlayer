@@ -10,13 +10,32 @@ final class FolderNavigationViewModel {
     var message: String?
   }
 
+  struct ContinueWatchingItem: Identifiable {
+    let file: ABFile
+    let folderPathSummary: String
+    let lastPlayedAt: Date
+    let position: Double
+    let duration: Double?
+    let isCurrentFile: Bool
+
+    var id: UUID { file.id }
+
+    var progress: Double? {
+      guard let duration, duration > 0 else { return nil }
+      return min(max(position / duration, 0), 1)
+    }
+  }
+
   private let modelContext: ModelContext
   private let playerManager: PlayerManager
+  private let librarySettings: LibrarySettings
   
   private let navigationService: NavigationService
   private let selectionService: SelectionStateService
   private let deletionService: DeletionService
   private let importService: ImportService
+
+  private let continueWatchingCompletionThreshold = 0.95
 
   var sortOrder: SortOrder = .nameAZ {
     didSet {
@@ -114,6 +133,7 @@ final class FolderNavigationViewModel {
   ) {
     self.modelContext = modelContext
     self.playerManager = playerManager
+    self.librarySettings = librarySettings
     
     self.navigationService = NavigationService()
     self.selectionService = SelectionStateService()
@@ -148,6 +168,22 @@ final class FolderNavigationViewModel {
     _ = refreshToken
     let files = currentFolder.map { audioFiles(in: $0) } ?? rootAudioFiles()
     return SortingUtility.sortAudioFiles(files, by: sortOrder)
+  }
+
+  var continueWatchingItemInCurrentFolder: ContinueWatchingItem? {
+    continueWatchingItems(from: currentAudioFiles(), limit: 1).first
+  }
+
+  func globalContinueWatchingItems(limit: Int = 8) -> [ContinueWatchingItem] {
+    continueWatchingItems(from: fetchAllAudioFiles(), limit: limit)
+  }
+
+  func playContinueWatching(_ file: ABFile) async {
+    guard let resolvedFile = fetchAudioFile(id: file.id) else { return }
+
+    navigateToFile(resolvedFile)
+    prepareQueue(for: resolvedFile)
+    await playerManager.playFile(resolvedFile, fromStart: false)
   }
 
   func setHovering(isHovering: Bool, file: ABFile) {
@@ -547,6 +583,10 @@ final class FolderNavigationViewModel {
     return (try? modelContext.fetch(descriptor)) ?? []
   }
 
+  private func fetchAllAudioFiles() -> [ABFile] {
+    (try? modelContext.fetch(FetchDescriptor<ABFile>())) ?? []
+  }
+
   private func rootAudioFiles() -> [ABFile] {
     let descriptor = FetchDescriptor<ABFile>(
       predicate: #Predicate<ABFile> { $0.folder == nil },
@@ -601,6 +641,128 @@ final class FolderNavigationViewModel {
       predicate: #Predicate<ABFile> { $0.id == id }
     )
     return try? modelContext.fetch(descriptor).first
+  }
+
+  private func continueWatchingItems(from files: [ABFile], limit: Int) -> [ContinueWatchingItem] {
+    let items = files
+      .compactMap(makeContinueWatchingItem)
+      .sorted { $0.lastPlayedAt > $1.lastPlayedAt }
+
+    if limit <= 0 {
+      return []
+    }
+
+    return Array(items.prefix(limit))
+  }
+
+  private func makeContinueWatchingItem(file: ABFile) -> ContinueWatchingItem? {
+    let position = max(file.currentPlaybackPosition, 0)
+    guard position > 0,
+      let lastPlayedAt = file.playbackRecord?.lastPlayedAt,
+      isFileAvailable(file),
+      !isCompleted(file: file, position: position)
+    else {
+      return nil
+    }
+
+    return ContinueWatchingItem(
+      file: file,
+      folderPathSummary: folderPathSummary(for: file.folder),
+      lastPlayedAt: lastPlayedAt,
+      position: position,
+      duration: file.cachedDuration,
+      isCurrentFile: playerManager.currentFile?.id == file.id
+    )
+  }
+
+  private func isCompleted(file: ABFile, position: Double) -> Bool {
+    guard let duration = file.cachedDuration, duration > 0 else {
+      return false
+    }
+
+    return (position / duration) >= continueWatchingCompletionThreshold
+  }
+
+  private func isFileAvailable(_ file: ABFile) -> Bool {
+    guard !file.relativePath.isEmpty else { return false }
+    let fileURL = librarySettings.mediaFileURL(for: file)
+    return FileManager.default.fileExists(atPath: fileURL.path)
+  }
+
+  private func folderPathSummary(for folder: Folder?) -> String {
+    guard let folder else { return "Library" }
+
+    var names: [String] = []
+    var current: Folder? = folder
+    while let value = current {
+      names.insert(value.name, at: 0)
+      current = value.parent
+    }
+
+    if names.count <= 2 {
+      return names.joined(separator: " / ")
+    }
+
+    let suffix = names.suffix(2).joined(separator: " / ")
+    return "... / \(suffix)"
+  }
+
+  private func navigateToFile(_ file: ABFile) {
+    if let folder = file.folder {
+      let path = folderPath(from: folder)
+      navigationPath = path
+      currentFolder = folder
+    } else {
+      navigationPath = []
+      currentFolder = nil
+    }
+
+    selection = .audioFile(file)
+    selectedFile = file
+  }
+
+  private func folderPath(from folder: Folder) -> [Folder] {
+    var path: [Folder] = []
+    var current: Folder? = folder
+
+    while let value = current {
+      path.insert(value, at: 0)
+      current = value.parent
+    }
+
+    return path
+  }
+
+  private func prepareQueue(for file: ABFile) {
+    let sourceFolderID = file.folder?.id
+    let files = sortedFilesForQueue(sourceFolder: file.folder)
+    let playbackQueue = playerManager.playbackQueue
+
+    if !playbackQueue.hasQueue {
+      playbackQueue.replaceQueue(
+        files: files,
+        currentFile: file,
+        sourceFolderID: sourceFolderID
+      )
+      return
+    }
+
+    if playbackQueue.sourceFolderID == sourceFolderID {
+      playbackQueue.syncQueue(files: files, sourceFolderID: sourceFolderID)
+      playbackQueue.setCurrentFile(file)
+      return
+    }
+
+    playbackQueue.replaceQueue(
+      files: files,
+      currentFile: file,
+      sourceFolderID: sourceFolderID
+    )
+  }
+
+  private func sortedFilesForQueue(sourceFolder: Folder?) -> [ABFile] {
+    let files = sourceFolder.map { audioFiles(in: $0) } ?? rootAudioFiles()
+    return SortingUtility.sortAudioFiles(files, by: sortOrder)
   }
 
   private func executeDelete(_ target: SelectionItem?, deleteFromDisk: Bool) {

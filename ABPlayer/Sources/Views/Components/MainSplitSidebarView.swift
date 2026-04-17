@@ -10,6 +10,7 @@ struct MainSplitSidebarView: View {
   let onImportFile: () -> Void
   let onImportFolder: () -> Void
   let onRefresh: () async -> Void
+  let onPlayContinueWatching: @MainActor (ABFile) async -> Void
   let onClearAllData: () async -> Void
 
   var body: some View {
@@ -21,7 +22,8 @@ struct MainSplitSidebarView: View {
         VStack(spacing: 0) {
           FolderNavigationView(
             viewModel: viewModel,
-            onSelectFile: onSelectFile
+            onSelectFile: onSelectFile,
+            onPlayContinueWatching: onPlayContinueWatching
           )
           Divider()
           versionFooter
