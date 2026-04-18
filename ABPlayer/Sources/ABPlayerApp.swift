@@ -11,7 +11,7 @@ struct ABPlayerApp: App {
     let uiFlags = UITestingFlags()
     self.uiFlags = uiFlags
 
-    if uiFlags.isSubtitleEdit {
+    if uiFlags.isSubtitleEdit || uiFlags.isSubtitleSentenceNavigation {
       _ = KeyboardInputSourceManager.selectEnglishInputSource()
     }
 
@@ -102,26 +102,8 @@ struct ABPlayerApp: App {
         }
       )
       SentenceNavigationCommands(
-        onSeekPreviousSentence: {
-          Task { @MainActor in
-            guard let currentFile = container.playerManager.currentFile else { return }
-            var cues = container.subtitleLoader.cachedSubtitles(for: currentFile.id)
-            if cues.isEmpty {
-              cues = await container.subtitleLoader.loadSubtitles(for: currentFile)
-            }
-            await container.playerManager.seekToPreviousSubtitleSentence(in: cues)
-          }
-        },
-        onSeekNextSentence: {
-          Task { @MainActor in
-            guard let currentFile = container.playerManager.currentFile else { return }
-            var cues = container.subtitleLoader.cachedSubtitles(for: currentFile.id)
-            if cues.isEmpty {
-              cues = await container.subtitleLoader.loadSubtitles(for: currentFile)
-            }
-            await container.playerManager.seekToNextSubtitleSentence(in: cues)
-          }
-        }
+        onSeekPreviousSentence: seekToPreviousSubtitleSentence,
+        onSeekNextSentence: seekToNextSubtitleSentence
       )
       CommandGroup(replacing: .appInfo) {
         Button("About ABPlayer") {
@@ -192,6 +174,28 @@ struct ABPlayerApp: App {
     .defaultSize(width: 980, height: 620)
     .defaultPosition(.center)
     .commandsRemoved()
+  }
+
+  private func seekToPreviousSubtitleSentence() {
+    Task { @MainActor in
+      guard let currentFile = container.playerManager.currentFile else { return }
+      var cues = container.subtitleLoader.cachedSubtitles(for: currentFile.id)
+      if cues.isEmpty {
+        cues = await container.subtitleLoader.loadSubtitles(for: currentFile)
+      }
+      await container.playerManager.seekToPreviousSubtitleSentence(in: cues)
+    }
+  }
+
+  private func seekToNextSubtitleSentence() {
+    Task { @MainActor in
+      guard let currentFile = container.playerManager.currentFile else { return }
+      var cues = container.subtitleLoader.cachedSubtitles(for: currentFile.id)
+      if cues.isEmpty {
+        cues = await container.subtitleLoader.loadSubtitles(for: currentFile)
+      }
+      await container.playerManager.seekToNextSubtitleSentence(in: cues)
+    }
   }
 }
 

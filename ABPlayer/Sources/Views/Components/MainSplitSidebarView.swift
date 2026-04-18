@@ -61,6 +61,8 @@ struct MainSplitSidebarView: View {
           } label: {
             Label("Add", systemImage: "plus")
           }
+          .focusable(false)
+          .focusEffectDisabled()
         }
       }
     }

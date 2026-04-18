@@ -59,6 +59,8 @@ struct DynamicPaneView<PaneBody: View>: View {
           .frame(width: 24, height: 24)
       }
       .menuStyle(.borderlessButton)
+      .focusable(false)
+      .focusEffectDisabled()
       .help("Add (move) a view into this pane")
     }
     .padding(.horizontal, 10)
