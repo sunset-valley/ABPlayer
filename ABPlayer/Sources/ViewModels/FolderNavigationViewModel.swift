@@ -2,6 +2,15 @@ import OSLog
 import SwiftData
 import SwiftUI
 
+private struct ContinueWatchingCandidate: Sendable {
+  let fileID: UUID
+  let relativePath: String
+  let folderPathSummary: String
+  let lastPlayedAt: Date
+  let position: Double
+  let duration: Double?
+}
+
 @MainActor
 @Observable
 final class FolderNavigationViewModel {
@@ -10,13 +19,32 @@ final class FolderNavigationViewModel {
     var message: String?
   }
 
+  struct ContinueWatchingItem: Identifiable {
+    let file: ABFile
+    let folderPathSummary: String
+    let lastPlayedAt: Date
+    let position: Double
+    let duration: Double?
+    let isCurrentFile: Bool
+
+    var id: UUID { file.id }
+
+    var progress: Double? {
+      guard let duration, duration > 0 else { return nil }
+      return min(max(position / duration, 0), 1)
+    }
+  }
+
   private let modelContext: ModelContext
   private let playerManager: PlayerManager
+  private let librarySettings: LibrarySettings
   
   private let navigationService: NavigationService
   private let selectionService: SelectionStateService
   private let deletionService: DeletionService
   private let importService: ImportService
+
+  private let continueWatchingCompletionThreshold = 0.95
 
   var sortOrder: SortOrder = .nameAZ {
     didSet {
@@ -86,6 +114,15 @@ final class FolderNavigationViewModel {
   }
 
   var syncStatus = SyncStatus()
+  var continueWatchingItemInCurrentFolder: ContinueWatchingItem?
+  var globalContinueWatchingItems: [ContinueWatchingItem] = []
+  var isLoadingGlobalContinueWatching = false
+
+  private var continueWatchingRevision = 0
+  private var loadedGlobalContinueWatchingRevision: Int?
+  private var loadedGlobalContinueWatchingLimit: Int?
+  private var currentFolderContinueWatchingRequestID: UUID?
+  private var globalContinueWatchingRequestID: UUID?
 
   var lastKnownSortOrder: SortOrder {
     guard
@@ -114,6 +151,7 @@ final class FolderNavigationViewModel {
   ) {
     self.modelContext = modelContext
     self.playerManager = playerManager
+    self.librarySettings = librarySettings
     
     self.navigationService = NavigationService()
     self.selectionService = SelectionStateService()
@@ -132,6 +170,7 @@ final class FolderNavigationViewModel {
     self.importService.onImportCompleted = { [weak self] in
       self?.rebindPersistentReferences()
       self?.refreshToken += 1
+      self?.invalidateContinueWatchingData(refreshCurrentFolder: true)
     }
     self.importService.onSyncStateChanged = { [weak self] isRunning, message in
       self?.syncStatus = SyncStatus(isRunning: isRunning, message: message)
@@ -148,6 +187,91 @@ final class FolderNavigationViewModel {
     _ = refreshToken
     let files = currentFolder.map { audioFiles(in: $0) } ?? rootAudioFiles()
     return SortingUtility.sortAudioFiles(files, by: sortOrder)
+  }
+
+  func refreshCurrentFolderContinueWatching() async {
+    let revision = continueWatchingRevision
+    let requestID = UUID()
+    currentFolderContinueWatchingRequestID = requestID
+    let libraryDirectoryPath = librarySettings.libraryDirectoryURL.path
+    let candidates = continueWatchingCandidates(from: currentAudioFiles())
+    let completionThreshold = continueWatchingCompletionThreshold
+
+    let resolved = await Task.detached(priority: .userInitiated) {
+      Self.filterContinueWatchingCandidates(
+        candidates,
+        libraryDirectoryPath: libraryDirectoryPath,
+        completionThreshold: completionThreshold,
+        limit: 1
+      )
+    }.value
+
+    guard currentFolderContinueWatchingRequestID == requestID else { return }
+    guard revision == continueWatchingRevision else { return }
+    continueWatchingItemInCurrentFolder = makeContinueWatchingItems(from: resolved).first
+  }
+
+  func refreshGlobalContinueWatchingIfNeeded(limit: Int = 8) async {
+    if loadedGlobalContinueWatchingRevision == continueWatchingRevision,
+      loadedGlobalContinueWatchingLimit == limit
+    {
+      return
+    }
+
+    await refreshGlobalContinueWatching(limit: limit)
+  }
+
+  func refreshGlobalContinueWatching(limit: Int = 8) async {
+    let revision = continueWatchingRevision
+
+    guard limit > 0 else {
+      globalContinueWatchingItems = []
+      loadedGlobalContinueWatchingRevision = revision
+      loadedGlobalContinueWatchingLimit = limit
+      isLoadingGlobalContinueWatching = false
+      return
+    }
+
+    let requestID = UUID()
+    globalContinueWatchingRequestID = requestID
+    isLoadingGlobalContinueWatching = true
+
+    let libraryDirectoryPath = librarySettings.libraryDirectoryURL.path
+    let candidates = continueWatchingCandidates(from: fetchAllAudioFiles())
+    let completionThreshold = continueWatchingCompletionThreshold
+    let resolved = await Task.detached(priority: .utility) {
+      Self.filterContinueWatchingCandidates(
+        candidates,
+        libraryDirectoryPath: libraryDirectoryPath,
+        completionThreshold: completionThreshold,
+        limit: limit
+      )
+    }.value
+
+    defer {
+      if globalContinueWatchingRequestID == requestID {
+        isLoadingGlobalContinueWatching = false
+        globalContinueWatchingRequestID = nil
+      }
+    }
+
+    guard globalContinueWatchingRequestID == requestID else { return }
+    guard revision == continueWatchingRevision else { return }
+
+    globalContinueWatchingItems = makeContinueWatchingItems(from: resolved)
+    loadedGlobalContinueWatchingRevision = revision
+    loadedGlobalContinueWatchingLimit = limit
+  }
+
+  func playContinueWatching(_ file: ABFile) async {
+    guard let resolvedFile = fetchAudioFile(id: file.id) else { return }
+
+    navigateToFile(resolvedFile)
+    prepareQueue(for: resolvedFile)
+    await playerManager.playFile(resolvedFile, fromStart: false)
+
+    invalidateContinueWatchingData(refreshCurrentFolder: false)
+    await refreshCurrentFolderContinueWatching()
   }
 
   func setHovering(isHovering: Bool, file: ABFile) {
@@ -287,6 +411,7 @@ final class FolderNavigationViewModel {
     }
 
     refreshToken += 1
+    invalidateContinueWatchingData(refreshCurrentFolder: true)
   }
   
   func deleteAudioFile(
@@ -314,6 +439,7 @@ final class FolderNavigationViewModel {
     }
 
     refreshToken += 1
+    invalidateContinueWatchingData(refreshCurrentFolder: true)
   }
   
   func handleImportResult(_ result: Result<[URL], Error>) {
@@ -330,11 +456,16 @@ final class FolderNavigationViewModel {
     guard let currentFolder else {
       await importService.refreshLibraryRoot()
       reconcileAfterModelMutation(preferredSelectedFileID: selectedFileIDBeforeRefresh)
+      invalidateContinueWatchingData(refreshCurrentFolder: false)
+      await refreshCurrentFolderContinueWatching()
       return
     }
 
     await importService.refreshFolder(currentFolder)
     reconcileAfterModelMutation(preferredSelectedFileID: selectedFileIDBeforeRefresh)
+
+    invalidateContinueWatchingData(refreshCurrentFolder: false)
+    await refreshCurrentFolderContinueWatching()
   }
 
   func handleLibraryPathChanged() async {
@@ -356,6 +487,9 @@ final class FolderNavigationViewModel {
 
     await importService.refreshLibraryRoot()
     reconcileAfterModelMutation(preferredSelectedFileID: nil)
+
+    invalidateContinueWatchingData(refreshCurrentFolder: false)
+    await refreshCurrentFolderContinueWatching()
   }
   
   func syncSelectedFileWithPlayer() {
@@ -376,6 +510,7 @@ final class FolderNavigationViewModel {
     }
 
     selectedFile = matchedFile
+    invalidateContinueWatchingData(refreshCurrentFolder: true)
   }
 
   private func restoreSelectedFileIfPossible(_ id: UUID?) {
@@ -547,6 +682,10 @@ final class FolderNavigationViewModel {
     return (try? modelContext.fetch(descriptor)) ?? []
   }
 
+  private func fetchAllAudioFiles() -> [ABFile] {
+    (try? modelContext.fetch(FetchDescriptor<ABFile>())) ?? []
+  }
+
   private func rootAudioFiles() -> [ABFile] {
     let descriptor = FetchDescriptor<ABFile>(
       predicate: #Predicate<ABFile> { $0.folder == nil },
@@ -601,6 +740,185 @@ final class FolderNavigationViewModel {
       predicate: #Predicate<ABFile> { $0.id == id }
     )
     return try? modelContext.fetch(descriptor).first
+  }
+
+  private func continueWatchingCandidates(from files: [ABFile]) -> [ContinueWatchingCandidate] {
+    files
+      .compactMap { file in
+        let position = max(file.currentPlaybackPosition, 0)
+        guard position > 0,
+          let lastPlayedAt = file.playbackRecord?.lastPlayedAt,
+          !Self.isCompleted(
+            position: position,
+            duration: file.cachedDuration,
+            completionThreshold: continueWatchingCompletionThreshold
+          )
+        else {
+          return nil
+        }
+
+        return ContinueWatchingCandidate(
+          fileID: file.id,
+          relativePath: file.relativePath,
+          folderPathSummary: folderPathSummary(for: file.folder),
+          lastPlayedAt: lastPlayedAt,
+          position: position,
+          duration: file.cachedDuration
+        )
+      }
+      .sorted { $0.lastPlayedAt > $1.lastPlayedAt }
+  }
+
+  private func makeContinueWatchingItems(from candidates: [ContinueWatchingCandidate]) -> [ContinueWatchingItem] {
+    candidates.compactMap { candidate in
+      guard let file = fetchAudioFile(id: candidate.fileID) else { return nil }
+
+      return ContinueWatchingItem(
+        file: file,
+        folderPathSummary: candidate.folderPathSummary,
+        lastPlayedAt: candidate.lastPlayedAt,
+        position: candidate.position,
+        duration: candidate.duration,
+        isCurrentFile: playerManager.currentFile?.id == file.id
+      )
+    }
+  }
+
+  private func invalidateContinueWatchingData(refreshCurrentFolder: Bool) {
+    continueWatchingRevision += 1
+    loadedGlobalContinueWatchingRevision = nil
+    loadedGlobalContinueWatchingLimit = nil
+    currentFolderContinueWatchingRequestID = nil
+    globalContinueWatchingItems = []
+
+    if refreshCurrentFolder {
+      Task { @MainActor [weak self] in
+        await self?.refreshCurrentFolderContinueWatching()
+      }
+    }
+  }
+
+  nonisolated private static func isCompleted(
+    position: Double,
+    duration: Double?,
+    completionThreshold: Double
+  ) -> Bool {
+    guard let duration, duration > 0 else {
+      return false
+    }
+
+    return (position / duration) >= completionThreshold
+  }
+
+  nonisolated private static func filterContinueWatchingCandidates(
+    _ candidates: [ContinueWatchingCandidate],
+    libraryDirectoryPath: String,
+    completionThreshold: Double,
+    limit: Int
+  ) -> [ContinueWatchingCandidate] {
+    guard limit > 0, !candidates.isEmpty else { return [] }
+
+    let fileManager = FileManager.default
+    let libraryDirectoryURL = URL(fileURLWithPath: libraryDirectoryPath)
+    var filtered: [ContinueWatchingCandidate] = []
+    filtered.reserveCapacity(min(limit, candidates.count))
+
+    for candidate in candidates {
+      guard !candidate.relativePath.isEmpty else { continue }
+      if Self.isCompleted(
+        position: candidate.position,
+        duration: candidate.duration,
+        completionThreshold: completionThreshold
+      ) {
+        continue
+      }
+
+      let fileURL = libraryDirectoryURL.appendingPathComponent(candidate.relativePath)
+      guard fileManager.fileExists(atPath: fileURL.path) else { continue }
+
+      filtered.append(candidate)
+      if filtered.count >= limit {
+        break
+      }
+    }
+
+    return filtered
+  }
+
+  private func folderPathSummary(for folder: Folder?) -> String {
+    guard let folder else { return "Library" }
+
+    var names: [String] = []
+    var current: Folder? = folder
+    while let value = current {
+      names.insert(value.name, at: 0)
+      current = value.parent
+    }
+
+    if names.count <= 2 {
+      return names.joined(separator: " / ")
+    }
+
+    let suffix = names.suffix(2).joined(separator: " / ")
+    return "... / \(suffix)"
+  }
+
+  private func navigateToFile(_ file: ABFile) {
+    if let folder = file.folder {
+      let path = folderPath(from: folder)
+      navigationPath = path
+      currentFolder = folder
+    } else {
+      navigationPath = []
+      currentFolder = nil
+    }
+
+    selection = .audioFile(file)
+    selectedFile = file
+  }
+
+  private func folderPath(from folder: Folder) -> [Folder] {
+    var path: [Folder] = []
+    var current: Folder? = folder
+
+    while let value = current {
+      path.insert(value, at: 0)
+      current = value.parent
+    }
+
+    return path
+  }
+
+  private func prepareQueue(for file: ABFile) {
+    let sourceFolderID = file.folder?.id
+    let files = sortedFilesForQueue(sourceFolder: file.folder)
+    let playbackQueue = playerManager.playbackQueue
+
+    if !playbackQueue.hasQueue {
+      playbackQueue.replaceQueue(
+        files: files,
+        currentFile: file,
+        sourceFolderID: sourceFolderID
+      )
+      return
+    }
+
+    if playbackQueue.sourceFolderID == sourceFolderID {
+      playbackQueue.syncQueue(files: files, sourceFolderID: sourceFolderID)
+      playbackQueue.setCurrentFile(file)
+      return
+    }
+
+    playbackQueue.replaceQueue(
+      files: files,
+      currentFile: file,
+      sourceFolderID: sourceFolderID
+    )
+  }
+
+  private func sortedFilesForQueue(sourceFolder: Folder?) -> [ABFile] {
+    let files = sourceFolder.map { audioFiles(in: $0) } ?? rootAudioFiles()
+    return SortingUtility.sortAudioFiles(files, by: sortOrder)
   }
 
   private func executeDelete(_ target: SelectionItem?, deleteFromDisk: Bool) {

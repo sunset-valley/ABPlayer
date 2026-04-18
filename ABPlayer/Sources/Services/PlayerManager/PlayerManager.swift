@@ -278,6 +278,16 @@ final class PlayerManager {
     await _engine.setVolume(volume)
   }
 
+  func seekToPreviousSubtitleSentence(in cues: [SubtitleCue]) async {
+    guard let targetTime = cues.previousSentenceStart(at: currentTime) else { return }
+    await seek(to: targetTime + 0.001)
+  }
+
+  func seekToNextSubtitleSentence(in cues: [SubtitleCue]) async {
+    guard let targetTime = cues.nextSentenceStart(at: currentTime) else { return }
+    await seek(to: targetTime + 0.001)
+  }
+
   @discardableResult
   func addPlaybackTimeObserver(_ observer: @escaping @MainActor (Double) -> Void) -> UUID {
     let id = UUID()

@@ -27,15 +27,26 @@ struct FolderNavigationView: View {
   @Bindable var viewModel: FolderNavigationViewModel
 
   let onSelectFile: @MainActor (ABFile) async -> Void
+  let onPlayContinueWatching: @MainActor (ABFile) async -> Void
 
   var body: some View {
     VStack(spacing: 0) {
       navigationHeader
+      continueWatchingSection
       fileList
     }
     .onAppear {
       viewModel.sortOrder = viewModel.lastKnownSortOrder
       viewModel.selection = viewModel.restoredSelection
+
+      Task { @MainActor in
+        await viewModel.refreshCurrentFolderContinueWatching()
+      }
+    }
+    .onChange(of: viewModel.currentFolder?.id) { _, _ in
+      Task { @MainActor in
+        await viewModel.refreshCurrentFolderContinueWatching()
+      }
     }
     .confirmationDialog(
       viewModel.deleteConfirmationTitle,
@@ -74,6 +85,17 @@ struct FolderNavigationView: View {
   }
 
   // MARK: - File List
+
+  @ViewBuilder
+  private var continueWatchingSection: some View {
+    if let item = viewModel.continueWatchingItemInCurrentFolder {
+      ContinueWatchingCardView(item: item) {
+        Task { @MainActor in
+          await onPlayContinueWatching(item.file)
+        }
+      }
+    }
+  }
 
   private var fileList: some View {
     let currentFolders = viewModel.currentFolders()

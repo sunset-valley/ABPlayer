@@ -10,6 +10,8 @@ struct ShortcutsSettingsView: View {
         shortcutRow(title: "Play/Pause:", name: .playPause)
         shortcutRow(title: "Rewind 5s:", name: .rewind5s)
         shortcutRow(title: "Forward 10s:", name: .forward10s)
+        shortcutRow(title: "Previous Sentence:", name: .previousSubtitleSentence)
+        shortcutRow(title: "Next Sentence:", name: .nextSubtitleSentence)
       }
 
       Section("Loop Controls") {
@@ -62,6 +64,8 @@ struct ShortcutsSettingsView: View {
     KeyboardShortcuts.reset(.playPause)
     KeyboardShortcuts.reset(.rewind5s)
     KeyboardShortcuts.reset(.forward10s)
+    KeyboardShortcuts.reset(.previousSubtitleSentence)
+    KeyboardShortcuts.reset(.nextSubtitleSentence)
     KeyboardShortcuts.reset(.setPointA)
     KeyboardShortcuts.reset(.setPointB)
     KeyboardShortcuts.reset(.clearLoop)

@@ -81,10 +81,10 @@ struct AnnotationMenuView: View {
         }
         .accessibilityIdentifier("menu-copy")
 
-        actionPill("Look Up", systemImage: "book") {
-          onLookup()
-        }
-        .accessibilityIdentifier("menu-lookup")
+//        actionPill("Look Up", systemImage: "book") {
+//          onLookup()
+//        }
+//        .accessibilityIdentifier("menu-lookup")
 
         if includeExistingActions, let annotation {
           actionPill(

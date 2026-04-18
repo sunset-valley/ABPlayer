@@ -133,12 +133,12 @@ final class AppDependencyContainer {
       self.updater = updater
     #endif
 
-    Self.registerKeyboardShortcuts(playerManager: playerManager)
+    Self.registerKeyboardShortcuts(playerManager: playerManager, subtitleLoader: subtitleLoader)
   }
 
   // MARK: - Keyboard Shortcuts
 
-  private static func registerKeyboardShortcuts(playerManager: PlayerManager) {
+  private static func registerKeyboardShortcuts(playerManager: PlayerManager, subtitleLoader: SubtitleLoader) {
     KeyboardShortcuts.onKeyUp(for: .playPause) { [playerManager] in
       Task { @MainActor in
         await playerManager.togglePlayPause()
@@ -152,6 +152,26 @@ final class AppDependencyContainer {
     KeyboardShortcuts.onKeyUp(for: .forward10s) { [playerManager] in
       Task { @MainActor in
         await playerManager.seek(to: 10)
+      }
+    }
+    KeyboardShortcuts.onKeyUp(for: .previousSubtitleSentence) { [playerManager, subtitleLoader] in
+      Task { @MainActor in
+        guard let currentFile = playerManager.currentFile else { return }
+        var cues = subtitleLoader.cachedSubtitles(for: currentFile.id)
+        if cues.isEmpty {
+          cues = await subtitleLoader.loadSubtitles(for: currentFile)
+        }
+        await playerManager.seekToPreviousSubtitleSentence(in: cues)
+      }
+    }
+    KeyboardShortcuts.onKeyUp(for: .nextSubtitleSentence) { [playerManager, subtitleLoader] in
+      Task { @MainActor in
+        guard let currentFile = playerManager.currentFile else { return }
+        var cues = subtitleLoader.cachedSubtitles(for: currentFile.id)
+        if cues.isEmpty {
+          cues = await subtitleLoader.loadSubtitles(for: currentFile)
+        }
+        await playerManager.seekToNextSubtitleSentence(in: cues)
       }
     }
     KeyboardShortcuts.onKeyUp(for: .setPointA) { [playerManager] in
