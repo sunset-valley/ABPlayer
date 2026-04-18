@@ -38,6 +38,15 @@ struct FolderNavigationView: View {
     .onAppear {
       viewModel.sortOrder = viewModel.lastKnownSortOrder
       viewModel.selection = viewModel.restoredSelection
+
+      Task { @MainActor in
+        await viewModel.refreshCurrentFolderContinueWatching()
+      }
+    }
+    .onChange(of: viewModel.currentFolder?.id) { _, _ in
+      Task { @MainActor in
+        await viewModel.refreshCurrentFolderContinueWatching()
+      }
     }
     .confirmationDialog(
       viewModel.deleteConfirmationTitle,

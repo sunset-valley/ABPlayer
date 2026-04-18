@@ -54,11 +54,12 @@ struct ContinueWatchingCardView: View {
 }
 
 struct ContinueWatchingToolbarMenuView: View {
-  let loadItems: @MainActor () -> [FolderNavigationViewModel.ContinueWatchingItem]
+  let items: [FolderNavigationViewModel.ContinueWatchingItem]
+  let isLoading: Bool
+  let onLoadItems: @MainActor () async -> Void
   let onPlayItem: @MainActor (ABFile) async -> Void
 
   @State private var isPopoverPresented = false
-  @State private var items: [FolderNavigationViewModel.ContinueWatchingItem] = []
 
   var body: some View {
     Button {
@@ -69,10 +70,12 @@ struct ContinueWatchingToolbarMenuView: View {
     .help("Continue Watching")
     .onChange(of: isPopoverPresented) { _, isPresented in
       guard isPresented else { return }
-      items = loadItems()
+      Task { @MainActor in
+        await onLoadItems()
+      }
     }
     .popover(isPresented: $isPopoverPresented, arrowEdge: .top) {
-      ContinueWatchingPopoverView(items: items) { file in
+      ContinueWatchingPopoverView(items: items, isLoading: isLoading) { file in
         Task { @MainActor in
           await onPlayItem(file)
           isPopoverPresented = false
@@ -85,11 +88,20 @@ struct ContinueWatchingToolbarMenuView: View {
 
 private struct ContinueWatchingPopoverView: View {
   let items: [FolderNavigationViewModel.ContinueWatchingItem]
+  let isLoading: Bool
   let onPlayItem: (ABFile) -> Void
 
   var body: some View {
     Group {
-      if items.isEmpty {
+      if items.isEmpty, isLoading {
+        VStack(spacing: 12) {
+          ProgressView()
+          Text("Loading Continue Watching")
+            .captionStyle()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+      } else if items.isEmpty {
         ContentUnavailableView(
           "No Continue Watching",
           systemImage: "clock.arrow.circlepath",

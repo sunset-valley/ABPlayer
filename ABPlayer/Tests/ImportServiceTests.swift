@@ -856,7 +856,7 @@ struct ImportServiceManagedLibraryTests {
 @MainActor
 struct ContinueWatchingTests {
   @Test("current folder continue watching skips completed files")
-  func currentFolderContinueWatchingSkipsCompletedFiles() throws {
+  func currentFolderContinueWatchingSkipsCompletedFiles() async throws {
     let (_, ctx, settings, _, viewModel, libraryDir) = try makeFolderNavigationViewModelTestContext()
     defer { try? FileManager.default.removeItem(at: libraryDir) }
 
@@ -907,6 +907,7 @@ struct ContinueWatchingTests {
     try Data("3".utf8).write(to: settings.mediaFileURL(for: latest))
 
     viewModel.currentFolder = folder
+    await viewModel.refreshCurrentFolderContinueWatching()
 
     let item = viewModel.continueWatchingItemInCurrentFolder
     #expect(item != nil)
@@ -915,7 +916,7 @@ struct ContinueWatchingTests {
   }
 
   @Test("current folder continue watching excludes exact 95 percent progress")
-  func currentFolderContinueWatchingExcludesExact95PercentProgress() throws {
+  func currentFolderContinueWatchingExcludesExact95PercentProgress() async throws {
     let (_, ctx, settings, _, viewModel, libraryDir) = try makeFolderNavigationViewModelTestContext()
     defer { try? FileManager.default.removeItem(at: libraryDir) }
 
@@ -939,12 +940,13 @@ struct ContinueWatchingTests {
     try Data("4".utf8).write(to: settings.mediaFileURL(for: boundary))
 
     viewModel.currentFolder = folder
+    await viewModel.refreshCurrentFolderContinueWatching()
 
     #expect(viewModel.continueWatchingItemInCurrentFolder == nil)
   }
 
   @Test("global continue watching sorts by recency and filters invalid entries")
-  func globalContinueWatchingSortsAndFiltersEntries() throws {
+  func globalContinueWatchingSortsAndFiltersEntries() async throws {
     let (_, ctx, settings, _, viewModel, libraryDir) = try makeFolderNavigationViewModelTestContext()
     defer { try? FileManager.default.removeItem(at: libraryDir) }
 
@@ -1006,9 +1008,55 @@ struct ContinueWatchingTests {
     try Data("completed".utf8).write(to: settings.mediaFileURL(for: completed))
     try Data("no-progress".utf8).write(to: settings.mediaFileURL(for: noProgress))
 
-    let items = viewModel.globalContinueWatchingItems(limit: 2)
+    await viewModel.refreshGlobalContinueWatching(limit: 2)
+    let items = viewModel.globalContinueWatchingItems
     #expect(items.count == 2)
     #expect(items.map(\.file.id) == [recent.id, older.id])
+  }
+
+  @Test("latest global continue watching refresh wins")
+  func latestGlobalContinueWatchingRefreshWins() async throws {
+    let (_, ctx, settings, _, viewModel, libraryDir) = try makeFolderNavigationViewModelTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+
+    let now = Date()
+
+    let existing = ABFile(
+      displayName: "existing.mp4",
+      bookmarkData: Data(),
+      relativePath: "existing.mp4"
+    )
+    existing.cachedDuration = 100
+    existing.currentPlaybackPosition = 30
+    existing.playbackRecord?.lastPlayedAt = now
+    ctx.insert(existing)
+    try Data("existing".utf8).write(to: settings.mediaFileURL(for: existing))
+
+    for index in 0..<1500 {
+      let missing = ABFile(
+        displayName: "missing-\(index).mp4",
+        bookmarkData: Data(),
+        relativePath: "missing-\(index).mp4"
+      )
+      missing.cachedDuration = 100
+      missing.currentPlaybackPosition = 20
+      missing.playbackRecord?.lastPlayedAt = now.addingTimeInterval(-Double(index + 1))
+      ctx.insert(missing)
+    }
+
+    await withTaskGroup(of: Void.self) { group in
+      group.addTask {
+        await viewModel.refreshGlobalContinueWatching(limit: 2000)
+      }
+      group.addTask {
+        try? await Task.sleep(nanoseconds: 5_000_000)
+        await viewModel.refreshGlobalContinueWatching(limit: 1)
+      }
+      await group.waitForAll()
+    }
+
+    #expect(viewModel.globalContinueWatchingItems.count == 1)
+    #expect(viewModel.globalContinueWatchingItems.first?.file.id == existing.id)
   }
 
   @Test("play continue watching restores navigation and auto-plays")

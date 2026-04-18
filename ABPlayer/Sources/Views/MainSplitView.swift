@@ -54,8 +54,10 @@ public struct MainSplitView: View {
       if let folderNavigationViewModel = mainSplitViewModel.folderNavigationViewModel {
         ToolbarItem(placement: .automatic) {
           ContinueWatchingToolbarMenuView(
-            loadItems: {
-              folderNavigationViewModel.globalContinueWatchingItems()
+            items: folderNavigationViewModel.globalContinueWatchingItems,
+            isLoading: folderNavigationViewModel.isLoadingGlobalContinueWatching,
+            onLoadItems: {
+              await folderNavigationViewModel.refreshGlobalContinueWatchingIfNeeded()
             },
             onPlayItem: { file in
               await folderNavigationViewModel.playContinueWatching(file)
