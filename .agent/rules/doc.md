@@ -6,9 +6,12 @@ description: Documentation routing and naming rules for Docs/
 # Documentation Rules
 
 - Write documentation in English.
-- Place documents only under `Docs/knowledge-graph`, `Docs/knowledge-mem-exchange`, `Docs/mem-backbone`, or `Docs/postmortem`.
-- Use this filename format for all new docs: `NNNN_short-topic.md`.
+- Place documents only under `Docs/specs`, `Docs/knowledge-graph`, `Docs/knowledge-mem-exchange`, `Docs/mem-backbone`, or `Docs/postmortem`.
+- Use this filename format for all new non-spec docs: `NNNN_short-topic.md`.
+- Use this directory format for all task specs: `Docs/specs/NNNN_short-topic/`.
 - `NNNN` must be a 4-digit zero-padded number (for example: `0001`, `0042`, `0120`).
+- Every task spec directory must contain `spec.md` and `plan.md`.
+- Exception: `Docs/specs/TEMPLATE/` is the reusable task spec template directory and does not consume a numeric ID.
 
 ## File ID Management via `.config`
 
@@ -21,11 +24,12 @@ nextId=5
 **Workflow for creating a new doc:**
 
 1. Read `Docs/<target-dir>/.config` to get `nextId`.
-2. Use that value (zero-padded to 4 digits) as the filename prefix.
-3. Write the new doc file.
-4. Increment `nextId` by 1 and write the updated value back to `.config`.
+2. Use that value (zero-padded to 4 digits) as the filename or task spec directory prefix.
+3. For non-spec docs, write the new `NNNN_short-topic.md` file.
+4. For task specs, create `Docs/specs/NNNN_short-topic/spec.md` and `Docs/specs/NNNN_short-topic/plan.md` from `Docs/specs/TEMPLATE/`.
+5. Increment `nextId` by 1 and write the updated value back to `.config`.
 
-**Collision handling:** If a file with that prefix already exists (e.g., concurrent sessions), increment `nextId` and retry until the prefix is unique, then save the final incremented value to `.config`.
+**Collision handling:** If a file or task spec directory with that prefix already exists (e.g., concurrent sessions), increment `nextId` and retry until the prefix is unique, then save the final incremented value to `.config`.
 
 # Directory Decision Guide
 
@@ -33,9 +37,11 @@ nextId=5
 - `Docs/knowledge-mem-exchange`: Session-to-session handoff notes (current context, pending decisions, short-term continuity).
 - `Docs/mem-backbone`: Reusable operating memory (repeatable workflows, stable conventions, command playbooks, checklists). Playbook-style docs should use numbered steps with prerequisites and expected output.
 - `Docs/postmortem`: Failure analysis (incident timeline, root cause, impact, mitigation, prevention actions).
+- `Docs/specs`: Per-task directories that separate product goals (`spec.md`) from implementation planning (`plan.md`) before implementation starts.
 
 # When To Create Or Update Docs
 
+- Create or update a `specs` task directory before starting any development task that changes Swift source, tests, build configuration, app behavior, or user-visible behavior.
 - Create or update `knowledge-graph` docs when introducing or changing architecture, module boundaries, or core domain behavior.
 - Create or update `knowledge-mem-exchange` docs at task handoff, context switching, or when unresolved decisions must be carried forward.
 - Create or update `mem-backbone` docs when a pattern is repeated and should become a standard operating rule.
@@ -50,6 +56,29 @@ Every doc should include at minimum:
 - **Summary**: One-paragraph overview of the topic.
 - **Details**: Main content with clear headings.
 - **Related Docs**: Relative markdown links to related docs (e.g., `[see also](../postmortem/0003_foo.md)`).
+
+# Task Spec Directory Template
+
+Use `Docs/specs/TEMPLATE/` when creating a new task spec directory.
+
+`spec.md` should include:
+
+- **Summary**: User-visible outcome and why it matters.
+- **Scope**: What is included in this task.
+- **Non-Goals**: What is explicitly excluded.
+- **Requirements**: Observable behavior, assumptions, and constraints.
+- **Constraints**: Product, platform, compatibility, accessibility, performance, or data constraints.
+- **Acceptance Criteria**: Concrete conditions for completion.
+- **Related Docs**: Links to relevant specs, knowledge docs, postmortems, or playbooks.
+
+Task specs should constrain goals, outcomes, boundaries, and verification. Do not prescribe implementation details, internal structure, file changes, class names, algorithms, or UI layout details unless the user explicitly requires them or they are fixed project constraints.
+
+`plan.md` should include:
+
+- **Implementation Plan**: Ordered development steps.
+- **Verification Plan**: Focused tests, manual checks, and any intentionally skipped coverage.
+- **Risks / Open Questions**: Issues that may change execution.
+- **Progress Log**: Short updates as implementation proceeds.
 
 # Content Quality Rules
 

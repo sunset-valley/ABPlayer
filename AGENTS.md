@@ -19,16 +19,18 @@ Platform:       macOS 15.7+ | Swift 6.2 | SwiftUI
 
 1. Check `.agent/skills/` and trigger any repository-local skill that matches the task.
 2. Read [`.agent/rules/workspace.md`](.agent/rules/workspace.md) to confirm paths and `Project.swift` source-of-truth.
-3. If editing Swift code, read [`.agent/rules/swift-style.md`](.agent/rules/swift-style.md).
-4. If touching ViewModel/View/Model boundaries, read [`.agent/rules/mvvm.md`](.agent/rules/mvvm.md).
-5. Build and test with the commands in [`.agent/rules/build.md`](.agent/rules/build.md) and [`.agent/rules/test.md`](.agent/rules/test.md).
-6. For commit/collaboration behavior, follow [`.agent/rules/workflow.md`](.agent/rules/workflow.md).
+3. Before implementation work, create or update a task directory under `Docs/specs` using [`.agent/rules/workflow.md`](.agent/rules/workflow.md) and [`Docs/specs/TEMPLATE/`](Docs/specs/TEMPLATE/).
+4. If editing Swift code, read [`.agent/rules/swift-style.md`](.agent/rules/swift-style.md).
+5. If touching ViewModel/View/Model boundaries, read [`.agent/rules/mvvm.md`](.agent/rules/mvvm.md).
+6. Build and test with the commands in [`.agent/rules/build.md`](.agent/rules/build.md) and [`.agent/rules/test.md`](.agent/rules/test.md).
+7. For commit/collaboration behavior, follow [`.agent/rules/workflow.md`](.agent/rules/workflow.md).
 
 ## Decision Map
 
 | Task                            | Read First       | Why                                             |
 | ------------------------------- | ---------------- | ----------------------------------------------- |
 | Resolve path / locate file      | `workspace.md`   | Avoid wrong paths and align with project layout |
+| Start development task          | `workflow.md` + `doc.md` | Create/update `spec.md` and `plan.md` before implementation |
 | Add or refactor Swift code      | `swift-style.md` | Match code conventions and Swift 6.2 patterns   |
 | Change MVVM responsibilities    | `mvvm.md`        | Keep layer boundaries and testability           |
 | Build after changes             | `build.md`       | Use project-standard build command              |
@@ -46,8 +48,8 @@ Platform:       macOS 15.7+ | Swift 6.2 | SwiftUI
     |-- mvvm.md          # MVVM contract and boundaries
     |-- build.md         # Build command
     |-- test.md          # Test command
-|   |-- workflow.md      # Collaboration + quick-commit convention
-|   `-- doc.md           # Documentation routing, naming, and quality
+|   |-- workflow.md      # Spec gate, collaboration, quick-commit convention
+|   `-- doc.md           # Documentation routing, specs, naming, and quality
 `-- skills/              # Repository-local skill definitions (trigger when relevant)
 ```
 
@@ -61,9 +63,9 @@ Platform:       macOS 15.7+ | Swift 6.2 | SwiftUI
 | File             | Trigger          | Core Topics                                           |
 | ---------------- | ---------------- | ----------------------------------------------------- |
 | `workspace.md`   | `model_decision` | Root/source/test paths, path resolution, Tuist        |
+| `doc.md`         | `model_decision` | Documentation routing, specs, naming, structure      |
 | `swift-style.md` | `model_decision` | `@Observable`, `async/await`, typed errors, DI        |
 | `mvvm.md`        | `mvvm_decision`  | Input/Output, `transform(input:)`, testing boundaries |
 | `build.md`       | `model_decision` | Build command                                         |
 | `test.md`        | `model_decision` | Test command                                          |
 | `workflow.md`    | `model_decision` | Ambiguity handling, quick-commit format               |
-| `doc.md`         | `model_decision` | Doc routing, naming, structure, archival              |
