@@ -29,20 +29,30 @@ final class VideoFullscreenPresenter {
 
   func toggle(
     playerManager: PlayerManager,
+    tapPlaybackCoordinator: VideoTapPlaybackCoordinator,
     subtitleText: @escaping @MainActor () -> String?,
-    onSingleTap: @escaping () -> Void
+    onSingleTap: @escaping () -> Void,
+    onSingleTapImmediateFeedback: @escaping @MainActor () -> Void
   ) {
     if isPresented {
       dismiss()
     } else {
-      present(playerManager: playerManager, subtitleText: subtitleText, onSingleTap: onSingleTap)
+      present(
+        playerManager: playerManager,
+        tapPlaybackCoordinator: tapPlaybackCoordinator,
+        subtitleText: subtitleText,
+        onSingleTap: onSingleTap,
+        onSingleTapImmediateFeedback: onSingleTapImmediateFeedback
+      )
     }
   }
 
   private func present(
     playerManager: PlayerManager,
+    tapPlaybackCoordinator: VideoTapPlaybackCoordinator,
     subtitleText: @escaping @MainActor () -> String?,
-    onSingleTap: @escaping () -> Void
+    onSingleTap: @escaping () -> Void,
+    onSingleTapImmediateFeedback: @escaping @MainActor () -> Void
   ) {
     guard let screen = NSScreen.main else { return }
 
@@ -59,8 +69,10 @@ final class VideoFullscreenPresenter {
 
     let content = FullscreenVideoContent(
       playerManager: playerManager,
+      tapPlaybackCoordinator: tapPlaybackCoordinator,
       subtitleText: subtitleText,
       onSingleTap: onSingleTap,
+      onSingleTapImmediateFeedback: onSingleTapImmediateFeedback,
       onDismiss: { [weak self] in self?.dismiss() }
     )
     w.contentView = NSHostingView(rootView: content)
@@ -82,11 +94,12 @@ final class VideoFullscreenPresenter {
 
 private struct FullscreenVideoContent: View {
   let playerManager: PlayerManager
+  let tapPlaybackCoordinator: VideoTapPlaybackCoordinator
   let subtitleText: @MainActor () -> String?
   let onSingleTap: () -> Void
+  let onSingleTapImmediateFeedback: @MainActor () -> Void
   let onDismiss: () -> Void
 
-  @State private var pendingSingleTap: Task<Void, Never>?
   @State private var hudSymbol: String?
   @State private var isHudVisible: Bool = false
   @State private var hudTask: Task<Void, Never>?
@@ -111,18 +124,25 @@ private struct FullscreenVideoContent: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .contentShape(Rectangle())
+    .accessibilityIdentifier("video-fullscreen-surface")
     .onTapGesture(count: 2) {
-      pendingSingleTap?.cancel()
+      let hadPendingSingleTap = tapPlaybackCoordinator.cancelPendingAction()
+      if !hadPendingSingleTap {
+        showHUD(playerManager.isPlaying ? "pause.fill" : "play.fill")
+        onSingleTapImmediateFeedback()
+      }
       onDismiss()
     }
     .onTapGesture(count: 1) {
-      pendingSingleTap?.cancel()
-      pendingSingleTap = Task { @MainActor in
-        try? await Task.sleep(for: .milliseconds(300))
-        guard !Task.isCancelled else { return }
+      tapPlaybackCoordinator.handleSingleTap {
         showHUD(playerManager.isPlaying ? "pause.fill" : "play.fill")
+        onSingleTapImmediateFeedback()
+      } delayedAction: {
         onSingleTap()
       }
+    }
+    .onDisappear {
+      tapPlaybackCoordinator.invalidate()
     }
   }
 
@@ -138,6 +158,7 @@ private struct FullscreenVideoContent: View {
         .id(symbol)
         .opacity(isHudVisible ? 1 : 0)
         .scaleEffect(isHudVisible ? 1 : 0.6)
+        .accessibilityIdentifier("video-fullscreen-hud-symbol")
     }
   }
 

@@ -14,9 +14,11 @@ struct VideoPlayerView: View {
 
   @Bindable var audioFile: ABFile
 
+  var interactionMonitor: VideoTapInteractionMonitor? = nil
+
   @State private var viewModel = VideoPlayerViewModel()
   @State private var fullscreenPresenter = VideoFullscreenPresenter()
-  @State private var pendingSingleTap: Task<Void, Never>?
+  @State private var tapPlaybackCoordinator = VideoTapPlaybackCoordinator()
 
   var body: some View {
     videoPlayerSection
@@ -44,8 +46,13 @@ struct VideoPlayerView: View {
       .onChange(of: subtitleLoader.revisionMap[audioFile.id]) { _, _ in
         viewModel.refreshSubtitles(for: audioFile.id, using: subtitleLoader)
       }
+      .onChange(of: fullscreenPresenter.isPresented) { _, isPresented in
+        interactionMonitor?.setFullscreenPresented(isPresented)
+      }
       .onDisappear {
         viewModel.stopSubtitleTracking()
+        tapPlaybackCoordinator.invalidate()
+        interactionMonitor?.setFullscreenPresented(false)
       }
   }
 
@@ -81,6 +88,7 @@ struct VideoPlayerView: View {
             .id(message)
             .opacity(viewModel.isHudVisible ? 1 : 0)
             .scaleEffect(viewModel.isHudVisible ? 1 : 0.5)
+            .accessibilityIdentifier("video-player-hud-message")
         }
 
         if viewModel.isSubtitleEnabled, let subtitleText = viewModel.currentSubtitleText {
@@ -93,16 +101,20 @@ struct VideoPlayerView: View {
         }
       }
       .contentShape(Rectangle())
+      .accessibilityIdentifier("video-player-surface")
       .onTapGesture(count: 2) {
-        pendingSingleTap?.cancel()
+        let hadPendingSingleTap = tapPlaybackCoordinator.cancelPendingAction()
+        if !hadPendingSingleTap {
+          viewModel.showPlayPauseHUD()
+          interactionMonitor?.recordImmediateFeedback()
+        }
         toggleFullscreen()
       }
       .onTapGesture(count: 1) {
-        pendingSingleTap?.cancel()
-        pendingSingleTap = Task { @MainActor in
-          try? await Task.sleep(for: .milliseconds(300))
-          guard !Task.isCancelled else { return }
+        tapPlaybackCoordinator.handleSingleTap {
           viewModel.showPlayPauseHUD()
+          interactionMonitor?.recordImmediateFeedback()
+        } delayedAction: {
           viewModel.togglePlayPause()
         }
       }
@@ -135,10 +147,14 @@ struct VideoPlayerView: View {
   private func toggleFullscreen() {
     fullscreenPresenter.toggle(
       playerManager: playerManager,
+      tapPlaybackCoordinator: tapPlaybackCoordinator,
       subtitleText: { [viewModel] in
         viewModel.isSubtitleEnabled ? viewModel.currentSubtitleText : nil
       },
-      onSingleTap: viewModel.togglePlayPause
+      onSingleTap: viewModel.togglePlayPause,
+      onSingleTapImmediateFeedback: {
+        interactionMonitor?.recordImmediateFeedback()
+      }
     )
   }
 }
