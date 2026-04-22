@@ -6,7 +6,7 @@ description: Documentation routing and naming rules for Docs/
 # Documentation Rules
 
 - Write documentation in English.
-- Place documents only under `Docs/specs`, `Docs/knowledge-graph`, `Docs/knowledge-mem-exchange`, `Docs/mem-backbone`, or `Docs/postmortem`.
+- Place documents only under `Docs/specs`, `Docs/specs_finished`, `Docs/knowledge-graph`, `Docs/knowledge-mem-exchange`, `Docs/mem-backbone`, or `Docs/postmortem`.
 - Use this filename format for all new non-spec docs: `NNNN_short-topic.md`.
 - Use this directory format for all task specs: `Docs/specs/NNNN_short-topic/`.
 - `NNNN` must be a 4-digit zero-padded number (for example: `0001`, `0042`, `0120`).
@@ -38,10 +38,14 @@ nextId=5
 - `Docs/mem-backbone`: Reusable operating memory (repeatable workflows, stable conventions, command playbooks, checklists). Playbook-style docs should use numbered steps with prerequisites and expected output.
 - `Docs/postmortem`: Failure analysis (incident timeline, root cause, impact, mitigation, prevention actions).
 - `Docs/specs`: Per-task directories that separate product goals (`spec.md`) from implementation planning (`plan.md`) before implementation starts.
+- `Docs/specs_finished`: Completed task spec directories moved from `Docs/specs` after manual finish/archive action.
 
 # When To Create Or Update Docs
 
 - Create or update a `specs` task directory before starting any development task that changes Swift source, tests, build configuration, app behavior, or user-visible behavior.
+- Keep active/in-progress task specs in `Docs/specs`.
+- When a task spec is completed, move the entire `Docs/specs/NNNN_short-topic/` directory to `Docs/specs_finished/NNNN_short-topic/` and keep the directory name unchanged.
+- `Docs/specs_finished` is archive-only for completed task specs and does not use a `.config` counter for new ID allocation.
 - Create or update `knowledge-graph` docs when introducing or changing architecture, module boundaries, or core domain behavior.
 - Create or update `knowledge-mem-exchange` docs at task handoff, context switching, or when unresolved decisions must be carried forward.
 - Create or update `mem-backbone` docs when a pattern is repeated and should become a standard operating rule.

@@ -50,7 +50,8 @@ Platform:       macOS 15.7+ | Swift 6.2 | SwiftUI
     |-- test.md          # Test command
 |   |-- workflow.md      # Spec gate, collaboration, quick-commit convention
 |   `-- doc.md           # Documentation routing, specs, naming, and quality
-`-- skills/              # Repository-local skill definitions (trigger when relevant)
+|-- skills/              # Repository-local skill definitions (trigger when relevant)
+`-- commands/            # Repository-local reusable command definitions
 ```
 
 ## Command Quick Reference
