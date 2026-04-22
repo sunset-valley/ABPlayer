@@ -42,6 +42,8 @@ struct ABPlayerApp: App {
       TranscriptionSettingsStatusDemoView()
     } else if uiFlags.isVideoSubtitleToggle {
       VideoSubtitleToggleDemoView()
+    } else if uiFlags.isVideoTapPlayback {
+      VideoTapPlaybackDemoView()
     } else if uiFlags.isSubtitleEdit {
       SubtitleEditDemoView()
     } else if uiFlags.isSubtitlePlaybackAnnotation {
@@ -210,6 +212,7 @@ private struct UITestingFlags {
   let isTranscription: Bool
   let isTranscriptionSettingsStatus: Bool
   let isVideoSubtitleToggle: Bool
+  let isVideoTapPlayback: Bool
   let isNotesExport: Bool
   let isListeningStats: Bool
   let isSubtitleSentenceNavigation: Bool
@@ -232,6 +235,7 @@ private struct UITestingFlags {
       "ABP_UI_TESTING_TRANSCRIPTION_SETTINGS_STATUS"
     )
     isVideoSubtitleToggle = Self.check(args, env, "--ui-testing-video-subtitle-toggle", "ABP_UI_TESTING_VIDEO_SUBTITLE_TOGGLE")
+    isVideoTapPlayback = Self.check(args, env, "--ui-testing-video-tap-playback", "ABP_UI_TESTING_VIDEO_TAP_PLAYBACK")
     isNotesExport = Self.check(args, env, "--ui-testing-notes-export", "ABP_UI_TESTING_NOTES_EXPORT")
     isListeningStats = Self.check(args, env, "--ui-testing-listening-stats", "ABP_UI_TESTING_LISTENING_STATS")
     isSubtitleSentenceNavigation = Self.check(

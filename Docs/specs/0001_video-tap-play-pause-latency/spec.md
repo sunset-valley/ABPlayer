@@ -10,6 +10,8 @@ Video-area single clicks should feel responsive without losing double-click full
 - Immediate Play/Pause HUD feedback on the first click.
 - Delayed playback state change for single clicks.
 - Cancellation of the pending single-click action when the user double-clicks.
+- Focused unit coverage for the delayed single-click coordination logic.
+- Focused UI coverage for the video-area click behavior using a stable UI-testing demo surface.
 
 ## Non-Goals
 
@@ -25,6 +27,8 @@ Video-area single clicks should feel responsive without losing double-click full
 - A double-click in the video area cancels the pending play/pause action and toggles fullscreen.
 - The first click of a double-click sequence still produces immediate HUD feedback.
 - If 180 ms proves unreliable during verification, the delay may be retuned to 200-220 ms.
+- Add deterministic unit tests for the shared delayed single-click coordination logic, including cancellation.
+- Add focused macOS UI tests that verify single-click feedback, eventual playback toggle, and double-click fullscreen behavior without an unwanted playback toggle.
 
 ## Constraints
 
@@ -32,6 +36,7 @@ Video-area single clicks should feel responsive without losing double-click full
 - The behavior should avoid accidental playback toggles during normal double-click use.
 - The solution should preserve existing playback state semantics outside the video-area click path.
 - Do not prescribe internal gesture structure in this spec; implementation details belong in `plan.md`.
+- UI tests should use stable, test-specific identifiers and deterministic demo state rather than depending on production media or fragile timing assumptions.
 
 ## Acceptance Criteria
 
@@ -39,7 +44,8 @@ Video-area single clicks should feel responsive without losing double-click full
 - Single-clicking toggles play/pause only after the configured short delay.
 - Double-clicking toggles fullscreen and does not also toggle playback.
 - The behavior feels responsive in manual testing.
-- Relevant focused coverage is added if feasible.
+- Focused unit tests cover delayed execution, cancellation, and replacement of pending single-click work.
+- Focused UI tests cover the video-area single-click and double-click flows on a deterministic demo surface.
 
 ## Related Docs
 
