@@ -53,14 +53,14 @@ public struct MainSplitView: View {
     .toolbar {
       if let folderNavigationViewModel = mainSplitViewModel.folderNavigationViewModel {
         ToolbarItem(placement: .automatic) {
-          ContinueWatchingToolbarMenuView(
-            items: folderNavigationViewModel.globalContinueWatchingItems,
-            isLoading: folderNavigationViewModel.isLoadingGlobalContinueWatching,
+          RecentlyPlayedToolbarMenuView(
+            items: folderNavigationViewModel.globalRecentlyPlayedItems,
+            isLoading: folderNavigationViewModel.isLoadingGlobalRecentlyPlayed,
             onLoadItems: {
-              await folderNavigationViewModel.refreshGlobalContinueWatchingIfNeeded()
+              await folderNavigationViewModel.refreshGlobalRecentlyPlayedIfNeeded()
             },
             onPlayItem: { file in
-              await folderNavigationViewModel.playContinueWatching(file)
+              await folderNavigationViewModel.playRecentlyPlayed(file)
             }
           )
         }
@@ -157,8 +157,8 @@ public struct MainSplitView: View {
             await mainSplitViewModel.folderNavigationViewModel?.refreshCurrentFolder()
             mainSplitViewModel.syncQueueIfCurrentListMatchesSource()
           },
-          onPlayContinueWatching: { file in
-            await mainSplitViewModel.folderNavigationViewModel?.playContinueWatching(file)
+          onPlayRecentlyPlayed: { file in
+            await mainSplitViewModel.folderNavigationViewModel?.playRecentlyPlayed(file)
           },
           onClearAllData: {
             mainSplitViewModel.isClearingData = true

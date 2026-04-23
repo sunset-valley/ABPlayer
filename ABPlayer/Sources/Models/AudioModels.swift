@@ -189,4 +189,12 @@ extension ABFile {
   var isVideo: Bool {
     fileType == .video
   }
+
+  var playbackProgress: Double? {
+    guard currentPlaybackPosition > 0, let cachedDuration, cachedDuration > 0 else {
+      return nil
+    }
+
+    return min(max(currentPlaybackPosition / cachedDuration, 0), 1)
+  }
 }

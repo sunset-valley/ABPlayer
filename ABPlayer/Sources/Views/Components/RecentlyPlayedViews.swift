@@ -1,14 +1,14 @@
 import SwiftUI
 
-struct ContinueWatchingCardView: View {
-  let item: FolderNavigationViewModel.ContinueWatchingItem
+struct RecentlyPlayedCardView: View {
+  let item: FolderNavigationViewModel.RecentlyPlayedItem
   let onPlay: () -> Void
 
   var body: some View {
     Button(action: onPlay) {
       VStack(alignment: .leading, spacing: 8) {
         HStack(spacing: 8) {
-          Label("Continue Watching", systemImage: "clock.arrow.circlepath")
+          Label("Recently Played", systemImage: "clock.arrow.circlepath")
             .font(.caption)
             .foregroundStyle(.secondary)
 
@@ -48,13 +48,13 @@ struct ContinueWatchingCardView: View {
       .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
     .buttonStyle(.plain)
-    .help("Play from last watched position")
+    .help("Play from saved position")
   }
 
 }
 
-struct ContinueWatchingToolbarMenuView: View {
-  let items: [FolderNavigationViewModel.ContinueWatchingItem]
+struct RecentlyPlayedToolbarMenuView: View {
+  let items: [FolderNavigationViewModel.RecentlyPlayedItem]
   let isLoading: Bool
   let onLoadItems: @MainActor () async -> Void
   let onPlayItem: @MainActor (ABFile) async -> Void
@@ -65,9 +65,9 @@ struct ContinueWatchingToolbarMenuView: View {
     Button {
       isPopoverPresented.toggle()
     } label: {
-      Label("Continue Watching", systemImage: "clock.arrow.circlepath")
+      Label("Recently Played", systemImage: "clock.arrow.circlepath")
     }
-    .help("Continue Watching")
+    .help("Recently Played")
     .onChange(of: isPopoverPresented) { _, isPresented in
       guard isPresented else { return }
       Task { @MainActor in
@@ -75,7 +75,7 @@ struct ContinueWatchingToolbarMenuView: View {
       }
     }
     .popover(isPresented: $isPopoverPresented, arrowEdge: .top) {
-      ContinueWatchingPopoverView(items: items, isLoading: isLoading) { file in
+      RecentlyPlayedPopoverView(items: items, isLoading: isLoading) { file in
         Task { @MainActor in
           await onPlayItem(file)
           isPopoverPresented = false
@@ -86,8 +86,8 @@ struct ContinueWatchingToolbarMenuView: View {
   }
 }
 
-private struct ContinueWatchingPopoverView: View {
-  let items: [FolderNavigationViewModel.ContinueWatchingItem]
+private struct RecentlyPlayedPopoverView: View {
+  let items: [FolderNavigationViewModel.RecentlyPlayedItem]
   let isLoading: Bool
   let onPlayItem: (ABFile) -> Void
 
@@ -96,21 +96,21 @@ private struct ContinueWatchingPopoverView: View {
       if items.isEmpty, isLoading {
         VStack(spacing: 12) {
           ProgressView()
-          Text("Loading Continue Watching")
+          Text("Loading Recently Played")
             .captionStyle()
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
       } else if items.isEmpty {
         ContentUnavailableView(
-          "No Continue Watching",
+          "No Recently Played",
           systemImage: "clock.arrow.circlepath",
-          description: Text("Start watching a file to see it here")
+          description: Text("Play a file to see it here")
         )
         .padding(.vertical, 24)
       } else {
         VStack(alignment: .leading, spacing: 8) {
-          Text("Continue Watching")
+          Text("Recently Played")
             .font(.headline)
             .padding(.horizontal, 12)
             .padding(.top, 12)
@@ -118,7 +118,7 @@ private struct ContinueWatchingPopoverView: View {
           ScrollView {
             LazyVStack(spacing: 6) {
               ForEach(items) { item in
-                ContinueWatchingRowView(item: item) {
+                RecentlyPlayedRowView(item: item) {
                   onPlayItem(item.file)
                 }
               }
@@ -132,8 +132,8 @@ private struct ContinueWatchingPopoverView: View {
   }
 }
 
-private struct ContinueWatchingRowView: View {
-  let item: FolderNavigationViewModel.ContinueWatchingItem
+private struct RecentlyPlayedRowView: View {
+  let item: FolderNavigationViewModel.RecentlyPlayedItem
   let onPlay: () -> Void
 
   var body: some View {
@@ -179,12 +179,12 @@ private struct ContinueWatchingRowView: View {
       .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
     .buttonStyle(.plain)
-    .help("Play from last watched position")
+    .help("Play from saved position")
   }
 
 }
 
-private extension FolderNavigationViewModel.ContinueWatchingItem {
+private extension FolderNavigationViewModel.RecentlyPlayedItem {
   var playbackPositionText: String {
     if let duration, duration > 0 {
       return "\(MediaTimeFormatting.clock(from: position)) / \(MediaTimeFormatting.clock(from: duration))"

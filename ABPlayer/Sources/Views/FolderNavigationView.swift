@@ -27,12 +27,12 @@ struct FolderNavigationView: View {
   @Bindable var viewModel: FolderNavigationViewModel
 
   let onSelectFile: @MainActor (ABFile) async -> Void
-  let onPlayContinueWatching: @MainActor (ABFile) async -> Void
+  let onPlayRecentlyPlayed: @MainActor (ABFile) async -> Void
 
   var body: some View {
     VStack(spacing: 0) {
       navigationHeader
-      continueWatchingSection
+      recentlyPlayedSection
       fileList
     }
     .onAppear {
@@ -40,12 +40,12 @@ struct FolderNavigationView: View {
       viewModel.selection = viewModel.restoredSelection
 
       Task { @MainActor in
-        await viewModel.refreshCurrentFolderContinueWatching()
+        await viewModel.refreshCurrentFolderRecentlyPlayed()
       }
     }
     .onChange(of: viewModel.currentFolder?.id) { _, _ in
       Task { @MainActor in
-        await viewModel.refreshCurrentFolderContinueWatching()
+        await viewModel.refreshCurrentFolderRecentlyPlayed()
       }
     }
     .confirmationDialog(
@@ -87,11 +87,11 @@ struct FolderNavigationView: View {
   // MARK: - File List
 
   @ViewBuilder
-  private var continueWatchingSection: some View {
-    if let item = viewModel.continueWatchingItemInCurrentFolder {
-      ContinueWatchingCardView(item: item) {
+  private var recentlyPlayedSection: some View {
+    if let item = viewModel.recentlyPlayedItemInCurrentFolder {
+      RecentlyPlayedCardView(item: item) {
         Task { @MainActor in
-          await onPlayContinueWatching(item.file)
+          await onPlayRecentlyPlayed(item.file)
         }
       }
     }
@@ -141,7 +141,7 @@ struct FolderNavigationView: View {
                   )
                 )
             }
-            .frame(height: 60)
+            .frame(height: 68)
             .listRowSeparator(.hidden)
             .listRowInsets(.init())
             .onHover {

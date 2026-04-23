@@ -1,31 +1,32 @@
-# Task Plan: Continue Watching, History, And Sidebar Progress
+# Task Plan: Recently Played And Sidebar Progress
 
 ## Implementation Plan
 
-1. Locate the current playback history source, folder browsing flow, sidebar file-row rendering, and global Continue Watching menu behavior.
-2. Define the current-folder latest unfinished item using existing playback history semantics.
-3. Add progress visibility for file rows with valid position and duration.
-4. Add current-folder Continue Watching display above the file list.
-5. Adjust folder file ordering so recently played files appear first while preserving existing ordering for unplayed files.
-6. Update global Continue Watching grouping so each directory contributes only its latest played unfinished item.
-7. Preserve completed-file filtering behavior and add focused tests for the changed sorting, grouping, and progress rules.
+1. Rename the existing `Continue Watching` feature surface to `Recently Played`, including user-visible copy, view-model state, helper types, and focused test names.
+2. Refactor `FolderNavigationViewModel` so current-folder and global recent-item selection share one directory-based selection rule.
+3. Keep `Recently Played` eligibility based on playback history presence, valid relative path, and file existence on disk; do not exclude completed files from the card or global menu.
+4. Group global `Recently Played` results to at most one file per directory, using the most recently played file for that directory and applying the display limit after grouping.
+5. Keep current-folder `Recently Played` resolution limited to the files in the open folder and return that folder's most recently played file.
+6. Add sidebar file-row progress rendering that appears only when playback position is positive and cached duration is valid and positive, without changing file ordering.
+7. Preserve existing click behavior for recent items: navigate to the file, rebuild or sync the queue, and autoplay from the saved position.
+8. Update focused tests to cover current-folder card visibility, inclusion of completed recent items, per-directory grouping, invalid-entry filtering, sidebar progress visibility, and unchanged file ordering.
 
 ## Verification Plan
 
-- Test sidebar progress visibility for valid progress, missing progress, zero duration, and invalid duration.
-- Test current-folder Continue Watching selection uses the latest unfinished file.
-- Test recently played files appear before unplayed files.
-- Test unplayed files preserve the existing sort order.
-- Test global Continue Watching groups to one latest-played item per directory.
-- Test completed-file filtering remains unchanged.
-- Manually verify the sidebar and current-folder card with a small folder containing mixed played, unplayed, and completed files.
+- Run focused tests covering `FolderNavigationViewModel` recent-item selection and refresh behavior.
+- Run focused tests covering row-progress visibility and playback/navigation behavior for recent items.
+- Manually verify a folder with mixed unplayed, in-progress, and completed files:
+  - the current-folder `Recently Played` card appears only when playback history exists
+  - the card and global menu point to the same latest file for that directory
+  - sidebar progress bars appear only when both position and duration are valid
+  - file-list ordering stays unchanged
 
 ## Risks / Open Questions
 
-- Existing history records may not have cached duration for every media file.
-- Sorting rules may need stable tie-breaking when several files have similar playback timestamps.
-- Completed-file filtering behavior must be identified before changing the global Continue Watching query.
+- Existing records may have `lastPlayedAt` without a valid cached duration; card/menu should still work while row progress remains hidden.
+- Directory grouping must handle root-level library files consistently so they collapse into a single library bucket.
+- The current playback action resumes from saved position even for completed items; this is intentional for this task and should not be “fixed” opportunistically.
 
 ## Progress Log
 
-- 2026-04-22: Created plan from playback study roadmap P1.
+- 2026-04-23: Replaced the outdated Continue Watching plan with a Recently Played plan aligned to the updated spec.

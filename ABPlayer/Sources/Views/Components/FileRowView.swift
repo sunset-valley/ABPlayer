@@ -24,6 +24,10 @@ struct FileRowView: View {
     file.currentPlaybackPosition > 0
   }
 
+  private var playbackProgress: Double? {
+    file.playbackProgress
+  }
+
   var body: some View {
     ZStack(alignment: .leading) {
       Color.asset.appAccent
@@ -40,7 +44,7 @@ struct FileRowView: View {
             .foregroundStyle(fileExistsOnDisk ? .red : .orange)
         }
 
-        VStack(alignment: .leading) {
+        VStack(alignment: .leading, spacing: 6) {
           Text(file.displayName)
             .lineLimit(1)
             .strikethrough(!isAvailable, color: .secondary)
@@ -61,6 +65,12 @@ struct FileRowView: View {
             }
           }
           .captionStyle()
+
+          if let playbackProgress {
+            ProgressView(value: playbackProgress)
+              .progressViewStyle(.linear)
+              .controlSize(.small)
+          }
         }
       }
       .padding(.horizontal, 16)
