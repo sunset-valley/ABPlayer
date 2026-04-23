@@ -102,6 +102,7 @@ final class MainSplitViewModel {
       )
     }
 
+    setupPlaybackRecordTouchHandler()
     setupPlaybackEndedHandler()
   }
 
@@ -252,6 +253,19 @@ final class MainSplitViewModel {
 
       Task { @MainActor in
         await playerManager.playFile(nextFile, fromStart: true)
+      }
+    }
+  }
+
+  private func setupPlaybackRecordTouchHandler() {
+    guard let playerManager else { return }
+
+    playerManager.onPlaybackRecordTouched = { [weak self] file in
+      guard let self else { return }
+
+      Task { @MainActor [weak self] in
+        guard let self else { return }
+        await self.folderNavigationViewModel?.handlePlaybackRecordTouched(file)
       }
     }
   }

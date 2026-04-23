@@ -27,6 +27,7 @@ final class FolderNavigationViewModel {
     let position: Double
     let duration: Double?
     let isCurrentFile: Bool
+    let isNowPlaying: Bool
 
     var id: UUID { file.id }
 
@@ -508,6 +509,21 @@ final class FolderNavigationViewModel {
     invalidateRecentlyPlayedData(refreshCurrentFolder: true)
   }
 
+  func handlePlaybackRecordTouched(_ file: ABFile) async {
+    invalidateGlobalRecentlyPlayedCache()
+
+    guard file.folder?.id == currentFolder?.id else { return }
+
+    if let item = recentlyPlayedItemInCurrentFolder,
+      item.file.id == file.id,
+      item.isNowPlaying
+    {
+      return
+    }
+
+    await refreshCurrentFolderRecentlyPlayed()
+  }
+
   private func restoreSelectedFileIfPossible(_ id: UUID?) {
     guard let id, let file = fetchAudioFile(id: id) else { return }
     selectedFile = file
@@ -770,7 +786,8 @@ final class FolderNavigationViewModel {
         lastPlayedAt: candidate.lastPlayedAt,
         position: candidate.position,
         duration: candidate.duration,
-        isCurrentFile: playerManager.currentFile?.id == file.id
+        isCurrentFile: playerManager.currentFile?.id == file.id,
+        isNowPlaying: playerManager.currentFile?.id == file.id && playerManager.isPlaying
       )
     }
   }
@@ -789,6 +806,11 @@ final class FolderNavigationViewModel {
         await self?.refreshCurrentFolderRecentlyPlayed()
       }
     }
+  }
+
+  private func invalidateGlobalRecentlyPlayedCache() {
+    loadedGlobalRecentlyPlayedRevision = nil
+    loadedGlobalRecentlyPlayedLimit = nil
   }
 
   nonisolated private static func resolveRecentlyPlayedCandidates(

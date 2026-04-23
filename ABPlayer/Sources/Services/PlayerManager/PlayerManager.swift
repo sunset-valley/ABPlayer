@@ -45,6 +45,7 @@ final class PlayerManager {
   var onSegmentSaved: ((LoopSegment) -> Void)?
 
   var onPlaybackEnded: ((ABFile?) -> Void)?
+  var onPlaybackRecordTouched: ((ABFile) -> Void)?
 
   var playerSettings: PlayerSettings?
 
@@ -312,6 +313,7 @@ final class PlayerManager {
       file.playbackRecord = PlaybackRecord(audioFile: file)
     }
     file.playbackRecord?.lastPlayedAt = Date()
+    onPlaybackRecordTouched?(file)
   }
 
   // MARK: - Internal Handlers

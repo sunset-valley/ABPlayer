@@ -56,6 +56,8 @@ struct ABPlayerApp: App {
       ListeningStatsDemoView()
     } else if uiFlags.isSubtitleSentenceNavigation {
       SubtitleSentenceNavigationDemoView()
+    } else if uiFlags.isRecentlyPlayed {
+      RecentlyPlayedUITestDemoView()
     } else {
       MainSplitView()
     }
@@ -216,6 +218,7 @@ private struct UITestingFlags {
   let isNotesExport: Bool
   let isListeningStats: Bool
   let isSubtitleSentenceNavigation: Bool
+  let isRecentlyPlayed: Bool
 
   init() {
     let args = ProcessInfo.processInfo.arguments
@@ -243,6 +246,12 @@ private struct UITestingFlags {
       env,
       "--ui-testing-subtitle-sentence-navigation",
       "ABP_UI_TESTING_SUBTITLE_SENTENCE_NAVIGATION"
+    )
+    isRecentlyPlayed = Self.check(
+      args,
+      env,
+      "--ui-testing-recently-played",
+      "ABP_UI_TESTING_RECENTLY_PLAYED"
     )
   }
 

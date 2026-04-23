@@ -14,7 +14,7 @@ struct RecentlyPlayedCardView: View {
 
           Spacer()
 
-          if item.isCurrentFile {
+          if item.isNowPlaying {
             Text("Now Playing")
               .font(.caption2)
               .padding(.horizontal, 6)
@@ -26,18 +26,28 @@ struct RecentlyPlayedCardView: View {
         Text(item.file.displayName)
           .lineLimit(1)
           .bodyStyle()
+          .accessibilityIdentifier("recently-played-card-file-name")
 
-        HStack(spacing: 6) {
-          Text(item.playbackPositionText)
-          Text("•")
-          Text(item.relativeTimeText)
-        }
-        .lineLimit(1)
-        .captionStyle()
+        if item.isNowPlaying {
+          Text("Now Playing")
+            .lineLimit(1)
+            .captionStyle()
+            .accessibilityIdentifier("recently-played-card-bottom-now-playing")
+        } else {
+          HStack(spacing: 6) {
+            Text(item.playbackPositionText)
+            Text("•")
+            Text(item.relativeTimeText)
+          }
+          .lineLimit(1)
+          .captionStyle()
+          .accessibilityIdentifier("recently-played-card-bottom-history")
 
-        if let progress = item.progress {
-          ProgressView(value: progress)
-            .controlSize(.small)
+          if let progress = item.progress {
+            ProgressView(value: progress)
+              .controlSize(.small)
+              .accessibilityIdentifier("recently-played-card-progress")
+          }
         }
       }
       .padding(12)
@@ -67,6 +77,7 @@ struct RecentlyPlayedToolbarMenuView: View {
     } label: {
       Label("Recently Played", systemImage: "clock.arrow.circlepath")
     }
+    .accessibilityIdentifier("recently-played-menu-button")
     .help("Recently Played")
     .onChange(of: isPopoverPresented) { _, isPresented in
       guard isPresented else { return }
@@ -136,6 +147,10 @@ private struct RecentlyPlayedRowView: View {
   let item: FolderNavigationViewModel.RecentlyPlayedItem
   let onPlay: () -> Void
 
+  private var fileIdentifierSuffix: String {
+    item.file.displayName.replacingOccurrences(of: " ", with: "_")
+  }
+
   var body: some View {
     Button(action: onPlay) {
       VStack(alignment: .leading, spacing: 6) {
@@ -143,10 +158,11 @@ private struct RecentlyPlayedRowView: View {
           Text(item.file.displayName)
             .lineLimit(1)
             .bodyStyle()
+            .accessibilityIdentifier("recently-played-row-file-\(fileIdentifierSuffix)")
 
           Spacer(minLength: 0)
 
-          if item.isCurrentFile {
+          if item.isNowPlaying {
             Text("Now Playing")
               .font(.caption2)
               .foregroundStyle(.secondary)
@@ -157,17 +173,26 @@ private struct RecentlyPlayedRowView: View {
           .lineLimit(1)
           .captionStyle()
 
-        HStack(spacing: 6) {
-          Text(item.playbackPositionText)
-          Text("•")
-          Text(item.relativeTimeText)
-        }
-        .lineLimit(1)
-        .captionStyle()
+        if item.isNowPlaying {
+          Text("Now Playing")
+            .lineLimit(1)
+            .captionStyle()
+            .accessibilityIdentifier("recently-played-row-bottom-\(fileIdentifierSuffix)")
+        } else {
+          HStack(spacing: 6) {
+            Text(item.playbackPositionText)
+            Text("•")
+            Text(item.relativeTimeText)
+          }
+          .lineLimit(1)
+          .captionStyle()
+          .accessibilityIdentifier("recently-played-row-bottom-history-\(fileIdentifierSuffix)")
 
-        if let progress = item.progress {
-          ProgressView(value: progress)
-            .controlSize(.small)
+          if let progress = item.progress {
+            ProgressView(value: progress)
+              .controlSize(.small)
+              .accessibilityIdentifier("recently-played-row-progress-\(fileIdentifierSuffix)")
+          }
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
