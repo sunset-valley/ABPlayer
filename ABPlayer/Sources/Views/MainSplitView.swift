@@ -31,6 +31,7 @@ public struct MainSplitView: View {
   @Environment(\.modelContext) private var modelContext
 
   @State private var mainSplitViewModel = MainSplitViewModel()
+  @State private var showRecentlyPlayed = false
 
   public init() {}
 
@@ -53,16 +54,29 @@ public struct MainSplitView: View {
     .toolbar {
       if let folderNavigationViewModel = mainSplitViewModel.folderNavigationViewModel {
         ToolbarItem(placement: .automatic) {
-          RecentlyPlayedToolbarMenuView(
-            items: folderNavigationViewModel.globalRecentlyPlayedItems,
-            isLoading: folderNavigationViewModel.isLoadingGlobalRecentlyPlayed,
-            onLoadItems: {
+          Button {
+            showRecentlyPlayed = true
+          } label: {
+            Label("Recently Played", systemImage: "clock.arrow.circlepath")
+          }
+          .accessibilityIdentifier("recently-played-menu-button")
+          .help("Recently Played")
+          .popover(isPresented: $showRecentlyPlayed, arrowEdge: .top) {
+            RecentlyPlayedToolbarMenuView(
+              items: folderNavigationViewModel.globalRecentlyPlayedItems,
+              isLoading: folderNavigationViewModel.isLoadingGlobalRecentlyPlayed,
+              onPlayItem: { file in
+                await folderNavigationViewModel.playRecentlyPlayed(file)
+                showRecentlyPlayed = false
+              }
+            )
+          }
+          .onChange(of: showRecentlyPlayed) { _, isPresented in
+            guard isPresented else { return }
+            Task { @MainActor in
               await folderNavigationViewModel.refreshGlobalRecentlyPlayedIfNeeded()
-            },
-            onPlayItem: { file in
-              await folderNavigationViewModel.playRecentlyPlayed(file)
             }
-          )
+          }
         }
       }
     }

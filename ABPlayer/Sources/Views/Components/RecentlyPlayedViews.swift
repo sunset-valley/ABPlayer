@@ -66,34 +66,15 @@ struct RecentlyPlayedCardView: View {
 struct RecentlyPlayedToolbarMenuView: View {
   let items: [FolderNavigationViewModel.RecentlyPlayedItem]
   let isLoading: Bool
-  let onLoadItems: @MainActor () async -> Void
   let onPlayItem: @MainActor (ABFile) async -> Void
 
-  @State private var isPopoverPresented = false
-
   var body: some View {
-    Button {
-      isPopoverPresented.toggle()
-    } label: {
-      Label("Recently Played", systemImage: "clock.arrow.circlepath")
-    }
-    .accessibilityIdentifier("recently-played-menu-button")
-    .help("Recently Played")
-    .onChange(of: isPopoverPresented) { _, isPresented in
-      guard isPresented else { return }
+    RecentlyPlayedPopoverView(items: items, isLoading: isLoading) { file in
       Task { @MainActor in
-        await onLoadItems()
+        await onPlayItem(file)
       }
     }
-    .popover(isPresented: $isPopoverPresented, arrowEdge: .top) {
-      RecentlyPlayedPopoverView(items: items, isLoading: isLoading) { file in
-        Task { @MainActor in
-          await onPlayItem(file)
-          isPopoverPresented = false
-        }
-      }
-      .frame(width: 340)
-    }
+    .frame(width: 340)
   }
 }
 
@@ -123,6 +104,7 @@ private struct RecentlyPlayedPopoverView: View {
         VStack(alignment: .leading, spacing: 8) {
           Text("Recently Played")
             .font(.headline)
+            .accessibilityIdentifier("recently-played-popover-title")
             .padding(.horizontal, 12)
             .padding(.top, 12)
 

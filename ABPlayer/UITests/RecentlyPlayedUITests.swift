@@ -10,6 +10,11 @@ final class RecentlyPlayedUITests: XCTestCase {
     let app = launchApp()
 
     XCTAssertTrue(
+      waitForMetricValue(in: app, id: "recently-played-metric-setup-state", expected: "done", timeout: 10),
+      "Recently played demo setup did not complete in time. UI tree:\n\(app.debugDescription)"
+    )
+
+    XCTAssertTrue(
       waitForMetricValue(in: app, id: "recently-played-metric-card-file", expected: "83_9", timeout: 8),
       "Initial card file metric did not reach 83_9. UI tree:\n\(app.debugDescription)"
     )
@@ -37,6 +42,11 @@ final class RecentlyPlayedUITests: XCTestCase {
   func testGlobalRecentRowShowsNowPlayingWithoutProgress() {
     let app = launchApp()
 
+    XCTAssertTrue(
+      waitForMetricValue(in: app, id: "recently-played-metric-setup-state", expected: "done", timeout: 10),
+      "Recently played demo setup did not complete in time. UI tree:\n\(app.debugDescription)"
+    )
+
     let playButton = app.buttons["recently-played-demo-play-84_10"]
     XCTAssertTrue(playButton.waitForExistence(timeout: 4), "Play 84_10 button not found. UI tree:\n\(app.debugDescription)")
     playButton.click()
@@ -49,6 +59,18 @@ final class RecentlyPlayedUITests: XCTestCase {
     let menuButton = app.buttons["recently-played-menu-button"]
     XCTAssertTrue(menuButton.waitForExistence(timeout: 4), "Recently played menu button not found. UI tree:\n\(app.debugDescription)")
     menuButton.click()
+
+    XCTAssertTrue(
+      waitForMetricValue(in: app, id: "recently-played-metric-popover-presented", expected: "true", timeout: 4),
+      "Popover presentation state did not become true after first click. UI tree:\n\(app.debugDescription)"
+    )
+
+    RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+    XCTAssertEqual(
+      metricText(in: app, id: "recently-played-metric-popover-presented"),
+      "true",
+      "Recently played popover state did not remain true after first click. UI tree:\n\(app.debugDescription)"
+    )
 
     XCTAssertTrue(
       waitForMetricValue(in: app, id: "recently-played-metric-global-84-now-playing", expected: "true", timeout: 8),

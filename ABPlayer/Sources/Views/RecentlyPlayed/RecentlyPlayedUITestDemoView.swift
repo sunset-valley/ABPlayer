@@ -3,13 +3,16 @@ import SwiftUI
 
 @MainActor
 struct RecentlyPlayedUITestDemoView: View {
-  private let demoRootURL: URL
-  private let modelContext: ModelContext
+  @State private var demoRootURL: URL
+  @State private var modelContext: ModelContext
 
   @State private var librarySettings = LibrarySettings()
   @State private var playerManager: PlayerManager
   @State private var folderNavigationViewModel: FolderNavigationViewModel
+  @State private var showRecentlyPlayed = false
+  @State private var isSettingUp = false
   @State private var didSetup = false
+  @State private var setupTask: Task<Void, Never>?
 
   private static let folderRelativePath = "ui-testing/recently-played"
 
@@ -28,8 +31,8 @@ struct RecentlyPlayedUITestDemoView: View {
       librarySettings: librarySettings
     )
 
-    self.demoRootURL = demoRootURL
-    self.modelContext = modelContext
+    _demoRootURL = State(initialValue: demoRootURL)
+    _modelContext = State(initialValue: modelContext)
     _librarySettings = State(initialValue: librarySettings)
     _playerManager = State(initialValue: playerManager)
     _folderNavigationViewModel = State(initialValue: viewModel)
@@ -62,27 +65,41 @@ struct RecentlyPlayedUITestDemoView: View {
           }
         }
         .accessibilityIdentifier("recently-played-demo-play-84_10")
-
-        RecentlyPlayedToolbarMenuView(
-          items: folderNavigationViewModel.globalRecentlyPlayedItems,
-          isLoading: folderNavigationViewModel.isLoadingGlobalRecentlyPlayed,
-          onLoadItems: {
-            await folderNavigationViewModel.refreshGlobalRecentlyPlayedIfNeeded()
-          },
-          onPlayItem: { file in
-            await folderNavigationViewModel.playRecentlyPlayed(file)
-          }
-        )
       }
 
       Spacer()
     }
     .padding(16)
     .frame(minWidth: 900, minHeight: 620)
-    .task {
-      guard !didSetup else { return }
-      didSetup = true
-      await setupDemoData()
+    .onAppear {
+      startSetupIfNeeded()
+    }
+    .toolbar {
+      ToolbarItem(placement: .automatic) {
+        Button {
+          showRecentlyPlayed = true
+        } label: {
+          Label("Recently Played", systemImage: "clock.arrow.circlepath")
+        }
+        .accessibilityIdentifier("recently-played-menu-button")
+        .help("Recently Played")
+        .popover(isPresented: $showRecentlyPlayed, arrowEdge: .top) {
+          RecentlyPlayedToolbarMenuView(
+            items: folderNavigationViewModel.globalRecentlyPlayedItems,
+            isLoading: folderNavigationViewModel.isLoadingGlobalRecentlyPlayed,
+            onPlayItem: { file in
+              await folderNavigationViewModel.playRecentlyPlayed(file)
+              showRecentlyPlayed = false
+            }
+          )
+        }
+      }
+    }
+    .onChange(of: showRecentlyPlayed) { _, isPresented in
+      guard isPresented else { return }
+      Task { @MainActor in
+        await folderNavigationViewModel.refreshGlobalRecentlyPlayedIfNeeded()
+      }
     }
   }
 
@@ -107,6 +124,29 @@ struct RecentlyPlayedUITestDemoView: View {
       Text("global-84-progress-visible: \(global84ProgressVisibleText)")
         .font(.caption.monospaced())
         .accessibilityIdentifier("recently-played-metric-global-84-progress-visible")
+
+      Text("setup-state: \(setupStateText)")
+        .font(.caption.monospaced())
+        .accessibilityIdentifier("recently-played-metric-setup-state")
+
+      Text("popover-presented: \(popoverPresentedText)")
+        .font(.caption.monospaced())
+        .accessibilityIdentifier("recently-played-metric-popover-presented")
+    }
+  }
+
+  private func startSetupIfNeeded() {
+    guard !didSetup, !isSettingUp, setupTask == nil else { return }
+    isSettingUp = true
+
+    setupTask = Task { @MainActor in
+      defer {
+        isSettingUp = false
+        setupTask = nil
+      }
+
+      await setupDemoData()
+      didSetup = true
     }
   }
 
@@ -132,6 +172,22 @@ struct RecentlyPlayedUITestDemoView: View {
   private var global84ProgressVisibleText: String {
     guard let item = global84Item else { return "false" }
     return (!item.isNowPlaying && item.progress != nil) ? "true" : "false"
+  }
+
+  private var setupStateText: String {
+    if didSetup {
+      return "done"
+    }
+
+    if isSettingUp {
+      return "running"
+    }
+
+    return "idle"
+  }
+
+  private var popoverPresentedText: String {
+    showRecentlyPlayed ? "true" : "false"
   }
 
   private func setupDemoData() async {
