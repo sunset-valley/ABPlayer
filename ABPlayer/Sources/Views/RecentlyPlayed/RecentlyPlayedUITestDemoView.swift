@@ -3,6 +3,8 @@ import SwiftUI
 
 @MainActor
 struct RecentlyPlayedUITestDemoView: View {
+  private let isLoadingTestMode: Bool
+
   @State private var demoRootURL: URL
   @State private var modelContext: ModelContext
 
@@ -10,13 +12,23 @@ struct RecentlyPlayedUITestDemoView: View {
   @State private var playerManager: PlayerManager
   @State private var folderNavigationViewModel: FolderNavigationViewModel
   @State private var showRecentlyPlayed = false
+  @State private var forceGlobalLoadingState = false
+  @State private var didObservePopoverLoading = false
   @State private var isSettingUp = false
   @State private var didSetup = false
   @State private var setupTask: Task<Void, Never>?
+  @State private var globalLoadTask: Task<Void, Never>?
 
   private static let folderRelativePath = "ui-testing/recently-played"
 
   init() {
+    let processInfo = ProcessInfo.processInfo
+    let args = processInfo.arguments
+    let env = processInfo.environment
+
+    isLoadingTestMode = args.contains("--ui-testing-recently-played-loading")
+      || env["ABP_UI_TESTING_RECENTLY_PLAYED_LOADING"] == "1"
+
     let container = Self.makeInMemoryModelContainer()
     let modelContext = ModelContext(container)
     let librarySettings = LibrarySettings()
@@ -83,22 +95,44 @@ struct RecentlyPlayedUITestDemoView: View {
         }
         .accessibilityIdentifier("recently-played-menu-button")
         .help("Recently Played")
-        .popover(isPresented: $showRecentlyPlayed, arrowEdge: .top) {
+        .popover(
+          isPresented: $showRecentlyPlayed,
+          attachmentAnchor: .rect(.bounds),
+          arrowEdge: .bottom
+        ) {
           RecentlyPlayedToolbarMenuView(
             items: folderNavigationViewModel.globalRecentlyPlayedItems,
-            isLoading: folderNavigationViewModel.isLoadingGlobalRecentlyPlayed,
+            isLoading: forceGlobalLoadingState || folderNavigationViewModel.isLoadingGlobalRecentlyPlayed,
             onPlayItem: { file in
               await folderNavigationViewModel.playRecentlyPlayed(file)
               showRecentlyPlayed = false
             }
           )
+          .fixedSize(horizontal: false, vertical: true)
         }
       }
     }
     .onChange(of: showRecentlyPlayed) { _, isPresented in
-      guard isPresented else { return }
-      Task { @MainActor in
+      guard isPresented else {
+        globalLoadTask?.cancel()
+        globalLoadTask = nil
+        forceGlobalLoadingState = false
+        didObservePopoverLoading = false
+        return
+      }
+
+      globalLoadTask?.cancel()
+      globalLoadTask = Task { @MainActor in
+        if isLoadingTestMode {
+          didObservePopoverLoading = false
+          forceGlobalLoadingState = true
+          didObservePopoverLoading = true
+          try? await Task.sleep(for: .milliseconds(900))
+          guard !Task.isCancelled else { return }
+        }
+
         await folderNavigationViewModel.refreshGlobalRecentlyPlayedIfNeeded()
+        forceGlobalLoadingState = false
       }
     }
   }
@@ -125,6 +159,10 @@ struct RecentlyPlayedUITestDemoView: View {
         .font(.caption.monospaced())
         .accessibilityIdentifier("recently-played-metric-global-84-progress-visible")
 
+      Text("global-item-count: \(folderNavigationViewModel.globalRecentlyPlayedItems.count)")
+        .font(.caption.monospaced())
+        .accessibilityIdentifier("recently-played-metric-global-item-count")
+
       Text("setup-state: \(setupStateText)")
         .font(.caption.monospaced())
         .accessibilityIdentifier("recently-played-metric-setup-state")
@@ -132,6 +170,14 @@ struct RecentlyPlayedUITestDemoView: View {
       Text("popover-presented: \(popoverPresentedText)")
         .font(.caption.monospaced())
         .accessibilityIdentifier("recently-played-metric-popover-presented")
+
+      Text("popover-loading: \(popoverLoadingText)")
+        .font(.caption.monospaced())
+        .accessibilityIdentifier("recently-played-metric-popover-loading")
+
+      Text("popover-loading-seen: \(popoverLoadingSeenText)")
+        .font(.caption.monospaced())
+        .accessibilityIdentifier("recently-played-metric-popover-loading-seen")
     }
   }
 
@@ -190,6 +236,17 @@ struct RecentlyPlayedUITestDemoView: View {
     showRecentlyPlayed ? "true" : "false"
   }
 
+  private var popoverLoadingText: String {
+    let isPopoverLoading = (forceGlobalLoadingState || folderNavigationViewModel.isLoadingGlobalRecentlyPlayed)
+      && folderNavigationViewModel.globalRecentlyPlayedItems.isEmpty
+      && showRecentlyPlayed
+    return isPopoverLoading ? "true" : "false"
+  }
+
+  private var popoverLoadingSeenText: String {
+    didObservePopoverLoading ? "true" : "false"
+  }
+
   private func setupDemoData() async {
     try? FileManager.default.createDirectory(at: demoRootURL, withIntermediateDirectories: true)
 
@@ -229,7 +286,9 @@ struct RecentlyPlayedUITestDemoView: View {
     playerManager.currentFile = file83
     playerManager.isPlaying = false
     await folderNavigationViewModel.refreshCurrentFolderRecentlyPlayed()
-    await folderNavigationViewModel.refreshGlobalRecentlyPlayed(limit: 8)
+    if !isLoadingTestMode {
+      await folderNavigationViewModel.refreshGlobalRecentlyPlayed(limit: 8)
+    }
   }
 
   private func play84_10() async {

@@ -61,7 +61,11 @@ public struct MainSplitView: View {
           }
           .accessibilityIdentifier("recently-played-menu-button")
           .help("Recently Played")
-          .popover(isPresented: $showRecentlyPlayed, arrowEdge: .top) {
+          .popover(
+            isPresented: $showRecentlyPlayed,
+            attachmentAnchor: .rect(.bounds),
+            arrowEdge: .bottom
+          ) {
             RecentlyPlayedToolbarMenuView(
               items: folderNavigationViewModel.globalRecentlyPlayedItems,
               isLoading: folderNavigationViewModel.isLoadingGlobalRecentlyPlayed,
@@ -70,6 +74,7 @@ public struct MainSplitView: View {
                 showRecentlyPlayed = false
               }
             )
+            .fixedSize(horizontal: false, vertical: true)
           }
           .onChange(of: showRecentlyPlayed) { _, isPresented in
             guard isPresented else { return }

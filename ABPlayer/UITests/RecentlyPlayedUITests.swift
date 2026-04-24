@@ -83,12 +83,54 @@ final class RecentlyPlayedUITests: XCTestCase {
   }
 
   @MainActor
-  private func launchApp() -> XCUIApplication {
+  func testGlobalRecentPopoverShowsFiveSkeletonRowsWhileLoading() {
+    let app = launchApp(extraLaunchArguments: ["--ui-testing-recently-played-loading"]) 
+
+    XCTAssertTrue(
+      waitForMetricValue(in: app, id: "recently-played-metric-setup-state", expected: "done", timeout: 10),
+      "Recently played demo setup did not complete in time. UI tree:\n\(app.debugDescription)"
+    )
+
+    let menuButton = app.buttons["recently-played-menu-button"]
+    XCTAssertTrue(menuButton.waitForExistence(timeout: 4), "Recently played menu button not found. UI tree:\n\(app.debugDescription)")
+    menuButton.click()
+
+    XCTAssertTrue(
+      waitForMetricValue(in: app, id: "recently-played-metric-popover-presented", expected: "true", timeout: 4),
+      "Popover presentation state did not become true after first click. UI tree:\n\(app.debugDescription)"
+    )
+
+    XCTAssertTrue(
+      waitForMetricValue(in: app, id: "recently-played-metric-popover-loading-seen", expected: "true", timeout: 4),
+      "Popover loading phase was not observed on first open. UI tree:\n\(app.debugDescription)"
+    )
+
+    XCTAssertEqual(
+      metricText(in: app, id: "recently-played-metric-popover-loading-seen"),
+      "true",
+      "Popover loading observed flag did not remain true during first open. UI tree:\n\(app.debugDescription)"
+    )
+
+    XCTAssertTrue(
+      waitForMetricValue(in: app, id: "recently-played-metric-popover-loading", expected: "false", timeout: 8),
+      "Popover loading state did not clear after skeleton phase. UI tree:\n\(app.debugDescription)"
+    )
+
+    XCTAssertEqual(
+      metricText(in: app, id: "recently-played-metric-popover-presented"),
+      "true",
+      "Popover should remain presented after loading completes. UI tree:\n\(app.debugDescription)"
+    )
+  }
+
+  @MainActor
+  private func launchApp(extraLaunchArguments: [String] = []) -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments += [
       "-ApplePersistenceIgnoreState", "YES",
       "--ui-testing", "--ui-testing-recently-played",
     ]
+    app.launchArguments += extraLaunchArguments
     app.launchEnvironment["ABP_UI_TESTING"] = "1"
     app.launchEnvironment["ABP_UI_TESTING_RECENTLY_PLAYED"] = "1"
 
