@@ -54,7 +54,38 @@ done
 shopt -u nullglob
 
 if [ "${#MATCHED_DIRS[@]}" -eq 0 ]; then
-  echo "Error: no spec starting with '$SPEC_ID' found under Docs/specs."
+  FINISHED_MATCHED_DIRS=()
+  shopt -s nullglob
+  for candidate in "$FINISHED_ROOT"/[0-9]*_*; do
+    [ -d "$candidate" ] || continue
+    candidate_name="$(basename "$candidate")"
+    candidate_prefix="${candidate_name%%_*}"
+    candidate_normalized="${candidate_prefix#${candidate_prefix%%[!0]*}}"
+    if [ -z "$candidate_normalized" ]; then
+      candidate_normalized="0"
+    fi
+
+    if [[ "$candidate_prefix" == "$SPEC_ID"* ]] || [[ "$candidate_normalized" == "$SPEC_ID_NORMALIZED"* ]]; then
+      FINISHED_MATCHED_DIRS+=("$candidate")
+    fi
+  done
+  shopt -u nullglob
+
+  if [ "${#FINISHED_MATCHED_DIRS[@]}" -eq 1 ]; then
+    echo "Spec is already archived."
+    echo "Location: ${FINISHED_MATCHED_DIRS[0]}"
+    exit 0
+  fi
+
+  if [ "${#FINISHED_MATCHED_DIRS[@]}" -gt 1 ]; then
+    echo "Error: spec prefix '$SPEC_ID' matched multiple directories under Docs/specs_finished:"
+    for match in "${FINISHED_MATCHED_DIRS[@]}"; do
+      echo "- $(basename "$match")"
+    done
+    exit 1
+  fi
+
+  echo "Error: no spec starting with '$SPEC_ID' found under Docs/specs or Docs/specs_finished."
   exit 1
 fi
 
