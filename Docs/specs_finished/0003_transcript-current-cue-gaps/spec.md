@@ -22,13 +22,13 @@ The transcript reading area should keep the previous sentence selected during ga
 
 - When playback is between two cues, the transcript keeps the latest cue that has already started as the current cue.
 - When playback reaches the next cue start time, the transcript switches to that next cue.
-- At playback end, current-cue advancement stops or clears according to existing transcript state handling.
+- At playback end, the transcript current cue stays on the last cue that has already started.
 - The video subtitle overlay behavior is unchanged.
 
 ## Constraints
 
 - This behavior applies only to the transcription/transcript reading area.
-- Existing transcript state handling at playback end should be preserved unless it conflicts with stable current-cue behavior.
+- Playback end should preserve the last started cue as the transcript current cue for consistent gap handling.
 - The solution should handle cue gaps without introducing incorrect cue selection before the first cue.
 - Do not prescribe current-cue algorithm or ViewModel structure in this spec; implementation details belong in `plan.md`.
 
@@ -37,7 +37,7 @@ The transcript reading area should keep the previous sentence selected during ga
 - During a gap after cue A and before cue B, the transcript current cue remains cue A.
 - At cue B's start time, the transcript current cue changes to cue B.
 - Before the first cue, the transcript does not incorrectly select a future cue.
-- Playback end does not continue advancing the current cue.
+- Playback end leaves the transcript current cue on the last cue that has already started.
 - Video subtitle overlay behavior is unchanged.
 - Focused coverage verifies cue gaps, next-cue transitions, and playback-end handling.
 

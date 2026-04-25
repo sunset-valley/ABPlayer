@@ -41,7 +41,7 @@ final class NotesBrowserExportUITests: XCTestCase {
       "Export button did not become enabled after selecting audio item"
     )
 
-    exportButton.click()
+    clickButtonWhenReady(exportButton, in: app, timeout: 4)
 
     XCTAssertTrue(
       waitForCondition(timeout: 4) { FileManager.default.fileExists(atPath: exportURL.path) },
@@ -90,7 +90,7 @@ final class NotesBrowserExportUITests: XCTestCase {
       "Export button did not become enabled after selecting style filter"
     )
 
-    exportButton.click()
+    clickButtonWhenReady(exportButton, in: app, timeout: 4)
 
     XCTAssertTrue(
       waitForCondition(timeout: 4) { FileManager.default.fileExists(atPath: exportURL.path) },
@@ -115,10 +115,45 @@ final class NotesBrowserExportUITests: XCTestCase {
     }
 
     app.launch()
+    ensureWindowIsOpen(in: app)
+    app.activate()
 
     let loaded = app.staticTexts["notes-browser-export-demo-title"].waitForExistence(timeout: 20)
     XCTAssertTrue(loaded, "Notes export demo did not load. UI tree:\n\(app.debugDescription)")
     return app
+  }
+
+  @MainActor
+  private func ensureWindowIsOpen(in app: XCUIApplication) {
+    if app.windows.firstMatch.waitForExistence(timeout: 2) {
+      return
+    }
+
+    app.menuBars.menuBarItems["File"].click()
+    let newWindow = app.menuItems["New Window"]
+    if newWindow.waitForExistence(timeout: 2) {
+      newWindow.click()
+    }
+
+    _ = app.windows.firstMatch.waitForExistence(timeout: 5)
+  }
+
+  @MainActor
+  private func clickButtonWhenReady(_ button: XCUIElement, in app: XCUIApplication, timeout: TimeInterval) {
+    XCTAssertTrue(
+      waitForCondition(timeout: timeout) { button.exists && button.isEnabled },
+      "Button did not become enabled in time. UI tree:\n\(app.debugDescription)"
+    )
+
+    app.activate()
+
+    if button.isHittable {
+      button.click()
+      return
+    }
+
+    let center = button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+    center.click()
   }
 
   @MainActor

@@ -219,7 +219,7 @@ struct SubtitleViewModelTests {
 
   @Test
   @MainActor
-  func testFindActiveCueWithBinarySearch() {
+  func testUpdateCurrentCueUsesLatestStartedCueWithBinarySearch() {
     let viewModel = SubtitleViewModel()
 
     let cues = [
@@ -238,19 +238,81 @@ struct SubtitleViewModelTests {
 
   @Test
   @MainActor
+  func testUpdateCurrentCueKeepsPreviousCueDuringGap() {
+    let viewModel = SubtitleViewModel()
+
+    let cues = [
+      SubtitleCue(startTime: 0.0, endTime: 1.0, text: "First"),
+      SubtitleCue(startTime: 2.0, endTime: 3.0, text: "Second"),
+    ]
+
+    viewModel.updateCurrentCue(time: 0.5, cues: cues)
+    #expect(viewModel.currentCueID == cues[0].id)
+
+    viewModel.updateCurrentCue(time: 1.5, cues: cues)
+    #expect(viewModel.currentCueID == cues[0].id)
+  }
+
+  @Test
+  @MainActor
+  func testUpdateCurrentCueChangesAtNextCueStart() {
+    let viewModel = SubtitleViewModel()
+
+    let cues = [
+      SubtitleCue(startTime: 0.0, endTime: 1.0, text: "First"),
+      SubtitleCue(startTime: 2.0, endTime: 3.0, text: "Second"),
+    ]
+
+    viewModel.updateCurrentCue(time: 1.5, cues: cues)
+    #expect(viewModel.currentCueID == cues[0].id)
+
+    viewModel.updateCurrentCue(time: 2.0, cues: cues)
+    #expect(viewModel.currentCueID == cues[1].id)
+  }
+
+  @Test
+  @MainActor
+  func testUpdateCurrentCueDoesNotSelectFutureCueBeforeFirstCue() {
+    let viewModel = SubtitleViewModel()
+
+    let cues = [
+      SubtitleCue(startTime: 1.0, endTime: 2.0, text: "First"),
+      SubtitleCue(startTime: 3.0, endTime: 4.0, text: "Second"),
+    ]
+
+    viewModel.updateCurrentCue(time: 0.5, cues: cues)
+    #expect(viewModel.currentCueID == nil)
+  }
+
+  @Test
+  @MainActor
+  func testUpdateCurrentCueKeepsLastCueAfterLastCueEnds() {
+    let viewModel = SubtitleViewModel()
+
+    let cues = [
+      SubtitleCue(startTime: 0.0, endTime: 1.0, text: "First"),
+      SubtitleCue(startTime: 2.0, endTime: 3.0, text: "Second"),
+    ]
+
+    viewModel.updateCurrentCue(time: 5.0, cues: cues)
+    #expect(viewModel.currentCueID == cues[1].id)
+  }
+
+  @Test
+  @MainActor
   func testUpdateCurrentCueDoesNotUpdateDuringUserScroll() {
     let viewModel = SubtitleViewModel()
 
     let cues = [
       SubtitleCue(startTime: 0.0, endTime: 2.0, text: "First"),
-      SubtitleCue(startTime: 2.0, endTime: 4.0, text: "Second"),
+      SubtitleCue(startTime: 4.0, endTime: 6.0, text: "Second"),
     ]
 
     viewModel.updateCurrentCue(time: 1.0, cues: cues)
     let firstCueID = viewModel.currentCueID
 
     viewModel.handleUserScroll()
-    viewModel.updateCurrentCue(time: 3.0, cues: cues)
+    viewModel.updateCurrentCue(time: 5.0, cues: cues)
 
     #expect(viewModel.currentCueID == firstCueID)
   }

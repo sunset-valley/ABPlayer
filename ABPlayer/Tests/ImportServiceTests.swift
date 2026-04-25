@@ -852,19 +852,20 @@ struct ImportServiceManagedLibraryTests {
   }
 }
 
-@Suite("Continue Watching")
+@Suite("Recently Played")
 @MainActor
-struct ContinueWatchingTests {
-  @Test("current folder continue watching skips completed files")
-  func currentFolderContinueWatchingSkipsCompletedFiles() async throws {
+struct RecentlyPlayedTests {
+  @Test("current folder recently played includes the most recent completed file")
+  func currentFolderRecentlyPlayedIncludesMostRecentCompletedFile() async throws {
     let (_, ctx, settings, _, viewModel, libraryDir) = try makeFolderNavigationViewModelTestContext()
     defer { try? FileManager.default.removeItem(at: libraryDir) }
 
     let folder = Folder(name: "Season 1", relativePath: "series/season1")
     ctx.insert(folder)
-
-    let folderDir = libraryDir.appendingPathComponent("series/season1")
-    try FileManager.default.createDirectory(at: folderDir, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: libraryDir.appendingPathComponent("series/season1"),
+      withIntermediateDirectories: true
+    )
 
     let now = Date()
 
@@ -907,46 +908,131 @@ struct ContinueWatchingTests {
     try Data("3".utf8).write(to: settings.mediaFileURL(for: latest))
 
     viewModel.currentFolder = folder
-    await viewModel.refreshCurrentFolderContinueWatching()
+    await viewModel.refreshCurrentFolderRecentlyPlayed()
 
-    let item = viewModel.continueWatchingItemInCurrentFolder
+    let item = viewModel.recentlyPlayedItemInCurrentFolder
     #expect(item != nil)
-    #expect(item?.file.id == latest.id)
-    #expect(item?.file.id != completed.id)
+    #expect(item?.file.id == completed.id)
   }
 
-  @Test("current folder continue watching excludes exact 95 percent progress")
-  func currentFolderContinueWatchingExcludesExact95PercentProgress() async throws {
+  @Test("current folder recently played is empty without playback history")
+  func currentFolderRecentlyPlayedIsEmptyWithoutPlaybackHistory() async throws {
     let (_, ctx, settings, _, viewModel, libraryDir) = try makeFolderNavigationViewModelTestContext()
     defer { try? FileManager.default.removeItem(at: libraryDir) }
 
     let folder = Folder(name: "Season 2", relativePath: "series/season2")
     ctx.insert(folder)
+    try FileManager.default.createDirectory(
+      at: libraryDir.appendingPathComponent("series/season2"),
+      withIntermediateDirectories: true
+    )
 
-    let folderDir = libraryDir.appendingPathComponent("series/season2")
-    try FileManager.default.createDirectory(at: folderDir, withIntermediateDirectories: true)
-
-    let boundary = ABFile(
+    let file = ABFile(
       displayName: "ep04.mp4",
       bookmarkData: Data(),
       folder: folder,
       relativePath: "series/season2/ep04.mp4"
     )
-    boundary.cachedDuration = 200
-    boundary.currentPlaybackPosition = 190
-    boundary.playbackRecord?.lastPlayedAt = Date()
-    ctx.insert(boundary)
+    file.cachedDuration = 200
+    file.currentPlaybackPosition = 190
+    ctx.insert(file)
 
-    try Data("4".utf8).write(to: settings.mediaFileURL(for: boundary))
+    try Data("4".utf8).write(to: settings.mediaFileURL(for: file))
 
     viewModel.currentFolder = folder
-    await viewModel.refreshCurrentFolderContinueWatching()
+    await viewModel.refreshCurrentFolderRecentlyPlayed()
 
-    #expect(viewModel.continueWatchingItemInCurrentFolder == nil)
+    #expect(viewModel.recentlyPlayedItemInCurrentFolder == nil)
   }
 
-  @Test("global continue watching sorts by recency and filters invalid entries")
-  func globalContinueWatchingSortsAndFiltersEntries() async throws {
+  @Test("global recently played groups by directory and filters invalid entries")
+  func globalRecentlyPlayedGroupsByDirectoryAndFiltersInvalidEntries() async throws {
+    let (_, ctx, settings, _, viewModel, libraryDir) = try makeFolderNavigationViewModelTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+
+    let now = Date()
+    let season1 = Folder(name: "Season 1", relativePath: "series/season1")
+    let season2 = Folder(name: "Season 2", relativePath: "series/season2")
+    ctx.insert(season1)
+    ctx.insert(season2)
+    try FileManager.default.createDirectory(
+      at: libraryDir.appendingPathComponent("series/season1"),
+      withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+      at: libraryDir.appendingPathComponent("series/season2"),
+      withIntermediateDirectories: true
+    )
+
+    let season1Older = ABFile(
+      displayName: "older.mp4",
+      bookmarkData: Data(),
+      folder: season1,
+      relativePath: "series/season1/older.mp4"
+    )
+    season1Older.cachedDuration = 100
+    season1Older.currentPlaybackPosition = 30
+    season1Older.playbackRecord?.lastPlayedAt = now.addingTimeInterval(-1200)
+
+    let season1Recent = ABFile(
+      displayName: "recent.mp4",
+      bookmarkData: Data(),
+      folder: season1,
+      relativePath: "series/season1/recent.mp4"
+    )
+    season1Recent.cachedDuration = 100
+    season1Recent.currentPlaybackPosition = 20
+    season1Recent.playbackRecord?.lastPlayedAt = now.addingTimeInterval(-300)
+
+    let season2Completed = ABFile(
+      displayName: "completed.mp4",
+      bookmarkData: Data(),
+      folder: season2,
+      relativePath: "series/season2/completed.mp4"
+    )
+    season2Completed.cachedDuration = 100
+    season2Completed.currentPlaybackPosition = 99
+    season2Completed.playbackRecord?.lastPlayedAt = now
+
+    let rootNoProgress = ABFile(
+      displayName: "no-progress.mp4",
+      bookmarkData: Data(),
+      relativePath: "no-progress.mp4"
+    )
+    rootNoProgress.cachedDuration = 100
+    rootNoProgress.currentPlaybackPosition = 0
+    rootNoProgress.playbackRecord?.lastPlayedAt = now.addingTimeInterval(-100)
+
+    let missing = ABFile(
+      displayName: "missing.mp4",
+      bookmarkData: Data(),
+      relativePath: "missing.mp4"
+    )
+    missing.cachedDuration = 100
+    missing.currentPlaybackPosition = 10
+    missing.playbackRecord?.lastPlayedAt = now.addingTimeInterval(-50)
+
+    ctx.insert(season1Older)
+    ctx.insert(season1Recent)
+    ctx.insert(season2Completed)
+    ctx.insert(rootNoProgress)
+    ctx.insert(missing)
+
+    try Data("older".utf8).write(to: settings.mediaFileURL(for: season1Older))
+    try Data("recent".utf8).write(to: settings.mediaFileURL(for: season1Recent))
+    try Data("completed".utf8).write(to: settings.mediaFileURL(for: season2Completed))
+    try Data("no-progress".utf8).write(to: settings.mediaFileURL(for: rootNoProgress))
+
+    await viewModel.refreshGlobalRecentlyPlayed(limit: 3)
+    let items = viewModel.globalRecentlyPlayedItems
+
+    #expect(items.count == 3)
+    #expect(items.map(\.file.id) == [season2Completed.id, rootNoProgress.id, season1Recent.id])
+    #expect(items.contains(where: { $0.file.id == season1Older.id }) == false)
+  }
+
+  @Test("global recently played groups root-level files into one library bucket")
+  func globalRecentlyPlayedGroupsRootLevelFilesIntoOneLibraryBucket() async throws {
     let (_, ctx, settings, _, viewModel, libraryDir) = try makeFolderNavigationViewModelTestContext()
     defer { try? FileManager.default.removeItem(at: libraryDir) }
 
@@ -958,64 +1044,33 @@ struct ContinueWatchingTests {
       relativePath: "older.mp4"
     )
     older.cachedDuration = 100
-    older.currentPlaybackPosition = 30
-    older.playbackRecord?.lastPlayedAt = now.addingTimeInterval(-1200)
+    older.currentPlaybackPosition = 25
+    older.playbackRecord?.lastPlayedAt = now.addingTimeInterval(-600)
 
-    let recent = ABFile(
-      displayName: "recent.mp4",
+    let newer = ABFile(
+      displayName: "newer.mp4",
       bookmarkData: Data(),
-      relativePath: "recent.mp4"
+      relativePath: "newer.mp4"
     )
-    recent.cachedDuration = 100
-    recent.currentPlaybackPosition = 20
-    recent.playbackRecord?.lastPlayedAt = now.addingTimeInterval(-300)
-
-    let completed = ABFile(
-      displayName: "completed.mp4",
-      bookmarkData: Data(),
-      relativePath: "completed.mp4"
-    )
-    completed.cachedDuration = 100
-    completed.currentPlaybackPosition = 99
-    completed.playbackRecord?.lastPlayedAt = now
-
-    let noProgress = ABFile(
-      displayName: "no-progress.mp4",
-      bookmarkData: Data(),
-      relativePath: "no-progress.mp4"
-    )
-    noProgress.cachedDuration = 100
-    noProgress.currentPlaybackPosition = 0
-    noProgress.playbackRecord?.lastPlayedAt = now.addingTimeInterval(-100)
-
-    let missing = ABFile(
-      displayName: "missing.mp4",
-      bookmarkData: Data(),
-      relativePath: "missing.mp4"
-    )
-    missing.cachedDuration = 100
-    missing.currentPlaybackPosition = 10
-    missing.playbackRecord?.lastPlayedAt = now.addingTimeInterval(-50)
+    newer.cachedDuration = 100
+    newer.currentPlaybackPosition = 0
+    newer.playbackRecord?.lastPlayedAt = now
 
     ctx.insert(older)
-    ctx.insert(recent)
-    ctx.insert(completed)
-    ctx.insert(noProgress)
-    ctx.insert(missing)
+    ctx.insert(newer)
 
     try Data("older".utf8).write(to: settings.mediaFileURL(for: older))
-    try Data("recent".utf8).write(to: settings.mediaFileURL(for: recent))
-    try Data("completed".utf8).write(to: settings.mediaFileURL(for: completed))
-    try Data("no-progress".utf8).write(to: settings.mediaFileURL(for: noProgress))
+    try Data("newer".utf8).write(to: settings.mediaFileURL(for: newer))
 
-    await viewModel.refreshGlobalContinueWatching(limit: 2)
-    let items = viewModel.globalContinueWatchingItems
-    #expect(items.count == 2)
-    #expect(items.map(\.file.id) == [recent.id, older.id])
+    await viewModel.refreshGlobalRecentlyPlayed(limit: 8)
+
+    #expect(viewModel.globalRecentlyPlayedItems.count == 1)
+    #expect(viewModel.globalRecentlyPlayedItems.first?.file.id == newer.id)
+    #expect(viewModel.globalRecentlyPlayedItems.first?.folderPathSummary == "Library")
   }
 
-  @Test("latest global continue watching refresh wins")
-  func latestGlobalContinueWatchingRefreshWins() async throws {
+  @Test("latest global recently played refresh wins")
+  func latestGlobalRecentlyPlayedRefreshWins() async throws {
     let (_, ctx, settings, _, viewModel, libraryDir) = try makeFolderNavigationViewModelTestContext()
     defer { try? FileManager.default.removeItem(at: libraryDir) }
 
@@ -1046,21 +1101,84 @@ struct ContinueWatchingTests {
 
     await withTaskGroup(of: Void.self) { group in
       group.addTask {
-        await viewModel.refreshGlobalContinueWatching(limit: 2000)
+        await viewModel.refreshGlobalRecentlyPlayed(limit: 2000)
       }
       group.addTask {
         try? await Task.sleep(nanoseconds: 5_000_000)
-        await viewModel.refreshGlobalContinueWatching(limit: 1)
+        await viewModel.refreshGlobalRecentlyPlayed(limit: 1)
       }
       await group.waitForAll()
     }
 
-    #expect(viewModel.globalContinueWatchingItems.count == 1)
-    #expect(viewModel.globalContinueWatchingItems.first?.file.id == existing.id)
+    #expect(viewModel.globalRecentlyPlayedItems.count == 1)
+    #expect(viewModel.globalRecentlyPlayedItems.first?.file.id == existing.id)
   }
 
-  @Test("play continue watching restores navigation and auto-plays")
-  func playContinueWatchingRestoresNavigationAndAutoPlays() async throws {
+  @Test("file ordering is unchanged when playback history exists")
+  func fileOrderingIsUnchangedWhenPlaybackHistoryExists() throws {
+    let (_, ctx, settings, _, viewModel, libraryDir) = try makeFolderNavigationViewModelTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+
+    let folder = Folder(name: "Season 3", relativePath: "series/season3")
+    ctx.insert(folder)
+    try FileManager.default.createDirectory(
+      at: libraryDir.appendingPathComponent("series/season3"),
+      withIntermediateDirectories: true
+    )
+
+    let zed = ABFile(
+      displayName: "Zed.mp4",
+      bookmarkData: Data(),
+      folder: folder,
+      relativePath: "series/season3/Zed.mp4"
+    )
+    zed.cachedDuration = 100
+    zed.currentPlaybackPosition = 90
+    zed.playbackRecord?.lastPlayedAt = Date()
+
+    let alpha = ABFile(
+      displayName: "Alpha.mp4",
+      bookmarkData: Data(),
+      folder: folder,
+      relativePath: "series/season3/Alpha.mp4"
+    )
+    alpha.cachedDuration = 100
+    alpha.currentPlaybackPosition = 5
+    alpha.playbackRecord?.lastPlayedAt = Date().addingTimeInterval(-300)
+
+    ctx.insert(zed)
+    ctx.insert(alpha)
+    try Data("zed".utf8).write(to: settings.mediaFileURL(for: zed))
+    try Data("alpha".utf8).write(to: settings.mediaFileURL(for: alpha))
+
+    viewModel.currentFolder = folder
+    viewModel.sortOrder = .nameAZ
+
+    #expect(viewModel.currentAudioFiles().map(\.displayName) == ["Alpha", "Zed"])
+  }
+
+  @Test("playback progress requires positive position and valid duration")
+  func playbackProgressRequiresPositivePositionAndValidDuration() {
+    let file = ABFile(
+      displayName: "episode.mp4",
+      bookmarkData: Data(),
+      relativePath: "episode.mp4"
+    )
+
+    #expect(file.playbackProgress == nil)
+
+    file.currentPlaybackPosition = 15
+    #expect(file.playbackProgress == nil)
+
+    file.cachedDuration = 0
+    #expect(file.playbackProgress == nil)
+
+    file.cachedDuration = 60
+    #expect(file.playbackProgress == 0.25)
+  }
+
+  @Test("play recently played restores navigation and auto-plays")
+  func playRecentlyPlayedRestoresNavigationAndAutoPlays() async throws {
     let (_, ctx, settings, libraryDir) = try makeImportTestContext()
     defer { try? FileManager.default.removeItem(at: libraryDir) }
 
@@ -1104,7 +1222,7 @@ struct ContinueWatchingTests {
     try Data("a".utf8).write(to: settings.mediaFileURL(for: fileA))
     try Data("b".utf8).write(to: settings.mediaFileURL(for: fileB))
 
-    await viewModel.playContinueWatching(fileB)
+    await viewModel.playRecentlyPlayed(fileB)
 
     #expect(viewModel.currentFolder?.id == seasonFolder.id)
     #expect(viewModel.navigationPath.map(\.id) == [parentFolder.id, seasonFolder.id])
@@ -1115,5 +1233,97 @@ struct ContinueWatchingTests {
     #expect(playerManager.playbackQueue.sourceFolderID == seasonFolder.id)
     #expect(playerManager.playbackQueue.queuedFiles.map(\.id) == [fileA.id, fileB.id])
     #expect(playerManager.playbackQueue.currentFile?.id == fileB.id)
+  }
+
+  @Test("playback record touch refreshes current folder recent card and invalidates global cache")
+  func playbackRecordTouchRefreshesCurrentFolderRecentCardAndInvalidatesGlobalCache() async throws {
+    let (_, ctx, settings, playerManager, viewModel, libraryDir) = try makeFolderNavigationViewModelTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+
+    let folder = Folder(name: "Season 4", relativePath: "series/season4")
+    ctx.insert(folder)
+    try FileManager.default.createDirectory(
+      at: libraryDir.appendingPathComponent("series/season4"),
+      withIntermediateDirectories: true
+    )
+
+    let older = ABFile(
+      displayName: "older.mp4",
+      bookmarkData: Data(),
+      folder: folder,
+      relativePath: "series/season4/older.mp4"
+    )
+    older.cachedDuration = 100
+    older.currentPlaybackPosition = 50
+    older.playbackRecord?.lastPlayedAt = Date().addingTimeInterval(-300)
+
+    let newer = ABFile(
+      displayName: "newer.mp4",
+      bookmarkData: Data(),
+      folder: folder,
+      relativePath: "series/season4/newer.mp4"
+    )
+    newer.cachedDuration = 100
+    newer.currentPlaybackPosition = 10
+    newer.playbackRecord?.lastPlayedAt = Date().addingTimeInterval(-1200)
+
+    ctx.insert(older)
+    ctx.insert(newer)
+
+    try Data("older".utf8).write(to: settings.mediaFileURL(for: older))
+    try Data("newer".utf8).write(to: settings.mediaFileURL(for: newer))
+
+    viewModel.currentFolder = folder
+    await viewModel.refreshCurrentFolderRecentlyPlayed()
+    await viewModel.refreshGlobalRecentlyPlayed(limit: 8)
+
+    #expect(viewModel.recentlyPlayedItemInCurrentFolder?.file.id == older.id)
+
+    newer.playbackRecord?.lastPlayedAt = Date()
+    await viewModel.handlePlaybackRecordTouched(newer)
+
+    #expect(viewModel.recentlyPlayedItemInCurrentFolder?.file.id == newer.id)
+
+    await viewModel.refreshGlobalRecentlyPlayedIfNeeded(limit: 8)
+    #expect(viewModel.globalRecentlyPlayedItems.first?.file.id == newer.id)
+    #expect(playerManager.currentFile == nil)
+  }
+
+  @Test("current recent item reflects now playing state")
+  func currentRecentItemReflectsNowPlayingState() async throws {
+    let (_, ctx, settings, playerManager, viewModel, libraryDir) = try makeFolderNavigationViewModelTestContext()
+    defer { try? FileManager.default.removeItem(at: libraryDir) }
+
+    let folder = Folder(name: "Season 5", relativePath: "series/season5")
+    ctx.insert(folder)
+    try FileManager.default.createDirectory(
+      at: libraryDir.appendingPathComponent("series/season5"),
+      withIntermediateDirectories: true
+    )
+
+    let file = ABFile(
+      displayName: "episode.mp4",
+      bookmarkData: Data(),
+      folder: folder,
+      relativePath: "series/season5/episode.mp4"
+    )
+    file.cachedDuration = 120
+    file.currentPlaybackPosition = 30
+    file.playbackRecord?.lastPlayedAt = Date()
+    ctx.insert(file)
+
+    try Data("episode".utf8).write(to: settings.mediaFileURL(for: file))
+
+    viewModel.currentFolder = folder
+
+    playerManager.currentFile = file
+    playerManager.isPlaying = false
+    await viewModel.refreshCurrentFolderRecentlyPlayed()
+    #expect(viewModel.recentlyPlayedItemInCurrentFolder?.isCurrentFile == true)
+    #expect(viewModel.recentlyPlayedItemInCurrentFolder?.isNowPlaying == false)
+
+    playerManager.isPlaying = true
+    await viewModel.refreshCurrentFolderRecentlyPlayed()
+    #expect(viewModel.recentlyPlayedItemInCurrentFolder?.isNowPlaying == true)
   }
 }

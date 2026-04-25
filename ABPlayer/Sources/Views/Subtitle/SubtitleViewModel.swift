@@ -126,7 +126,7 @@ final class SubtitleViewModel {
     assert(time.isFinite, "Time must be finite")
 
     guard !scrollState.isUserScrolling else { return }
-    currentCueID = cues.findActiveCue(at: time)?.id
+    currentCueID = cues.latestStartedCue(at: time)?.id
   }
 
   @MainActor
@@ -203,11 +203,11 @@ final class SubtitleViewModel {
   private func trackCurrentCue(at currentTime: Double, in cues: [SubtitleCue], epsilon: Double) {
     guard !scrollState.isUserScrolling else { return }
 
-    let activeCue = cues.findActiveCue(at: currentTime, epsilon: epsilon)
-    if activeCue?.id != currentCueID {
-      currentCueID = activeCue?.id
-      if let cue = activeCue {
-        Self.logger.debug("Active cue changed: \(cue.text.prefix(30))...")
+    let latestStartedCue = cues.latestStartedCue(at: currentTime, epsilon: epsilon)
+    if latestStartedCue?.id != currentCueID {
+      currentCueID = latestStartedCue?.id
+      if let cue = latestStartedCue {
+        Self.logger.debug("Latest started cue changed: \(cue.text.prefix(30))...")
       }
     }
   }

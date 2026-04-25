@@ -62,6 +62,29 @@ extension [SubtitleCue] {
     return nil
   }
 
+  /// Binary search for the latest cue that has started at or before `time`.
+  /// Assumes the array is sorted by `startTime`.
+  func latestStartedCue(at time: Double, epsilon: Double = 0.001) -> SubtitleCue? {
+    guard time.isFinite, time >= 0, !isEmpty else { return nil }
+
+    var low = 0
+    var high = count - 1
+    var candidate: Int?
+
+    while low <= high {
+      let mid = (low + high) / 2
+      if self[mid].startTime <= time + epsilon {
+        candidate = mid
+        low = mid + 1
+      } else {
+        high = mid - 1
+      }
+    }
+
+    guard let candidate else { return nil }
+    return self[candidate]
+  }
+
   func activeCueIndex(at time: Double, epsilon: Double = 0.001) -> Int? {
     guard time.isFinite, time >= 0, !isEmpty else { return nil }
 

@@ -31,6 +31,7 @@ public struct MainSplitView: View {
   @Environment(\.modelContext) private var modelContext
 
   @State private var mainSplitViewModel = MainSplitViewModel()
+  @State private var showRecentlyPlayed = false
 
   public init() {}
 
@@ -53,16 +54,34 @@ public struct MainSplitView: View {
     .toolbar {
       if let folderNavigationViewModel = mainSplitViewModel.folderNavigationViewModel {
         ToolbarItem(placement: .automatic) {
-          ContinueWatchingToolbarMenuView(
-            items: folderNavigationViewModel.globalContinueWatchingItems,
-            isLoading: folderNavigationViewModel.isLoadingGlobalContinueWatching,
-            onLoadItems: {
-              await folderNavigationViewModel.refreshGlobalContinueWatchingIfNeeded()
-            },
-            onPlayItem: { file in
-              await folderNavigationViewModel.playContinueWatching(file)
+          Button {
+            showRecentlyPlayed = true
+          } label: {
+            Label("Recently Played", systemImage: "clock.arrow.circlepath")
+          }
+          .accessibilityIdentifier("recently-played-menu-button")
+          .help("Recently Played")
+          .popover(
+            isPresented: $showRecentlyPlayed,
+            attachmentAnchor: .rect(.bounds),
+            arrowEdge: .bottom
+          ) {
+            RecentlyPlayedToolbarMenuView(
+              items: folderNavigationViewModel.globalRecentlyPlayedItems,
+              isLoading: folderNavigationViewModel.isLoadingGlobalRecentlyPlayed,
+              onPlayItem: { file in
+                await folderNavigationViewModel.playRecentlyPlayed(file)
+                showRecentlyPlayed = false
+              }
+            )
+            .fixedSize(horizontal: false, vertical: true)
+          }
+          .onChange(of: showRecentlyPlayed) { _, isPresented in
+            guard isPresented else { return }
+            Task { @MainActor in
+              await folderNavigationViewModel.refreshGlobalRecentlyPlayedIfNeeded()
             }
-          )
+          }
         }
       }
     }
@@ -157,8 +176,8 @@ public struct MainSplitView: View {
             await mainSplitViewModel.folderNavigationViewModel?.refreshCurrentFolder()
             mainSplitViewModel.syncQueueIfCurrentListMatchesSource()
           },
-          onPlayContinueWatching: { file in
-            await mainSplitViewModel.folderNavigationViewModel?.playContinueWatching(file)
+          onPlayRecentlyPlayed: { file in
+            await mainSplitViewModel.folderNavigationViewModel?.playRecentlyPlayed(file)
           },
           onClearAllData: {
             mainSplitViewModel.isClearingData = true

@@ -1,7 +1,7 @@
 import ProjectDescription
 
-let buildVersionString = "138"
-let shortVersionString = "0.4.9"
+let buildVersionString = "143"
+let shortVersionString = "0.4.10"
 
 let project = Project(
   name: "ABPlayer",
@@ -151,7 +151,10 @@ let project = Project(
       buildableFolders: [
         "ABPlayer/UITests",
       ],
-      dependencies: [.target(name: "ABPlayerDev")]
+      dependencies: [.target(name: "ABPlayerDev")],
+      settings: .settings(base: [
+        "CODE_SIGN_ENTITLEMENTS": "ABPlayer/UITests/ABPlayerUITests.entitlements",
+      ])
     ),
   ],
   schemes: [
