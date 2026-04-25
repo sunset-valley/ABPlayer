@@ -32,6 +32,21 @@ struct VideoPlayerSubtitleStateTests {
   }
 
   @Test
+  func subtitleOverlayIsNilBetweenCues() {
+    let viewModel = VideoPlayerViewModel()
+    let cues = [
+      SubtitleCue(startTime: 0.0, endTime: 1.0, text: "Hello"),
+      SubtitleCue(startTime: 2.0, endTime: 3.0, text: "World"),
+    ]
+
+    viewModel.updateSubtitleCues(cues)
+    viewModel.toggleSubtitle()
+    viewModel.updateCurrentSubtitle(at: 1.5)
+
+    #expect(viewModel.currentSubtitleText == nil)
+  }
+
+  @Test
   func subtitleEnabledPreservedAcrossReload() {
     let viewModel = VideoPlayerViewModel()
     let cues = [SubtitleCue(startTime: 0.0, endTime: 2.0, text: "First")]

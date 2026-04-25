@@ -151,7 +151,10 @@ let project = Project(
       buildableFolders: [
         "ABPlayer/UITests",
       ],
-      dependencies: [.target(name: "ABPlayerDev")]
+      dependencies: [.target(name: "ABPlayerDev")],
+      settings: .settings(base: [
+        "CODE_SIGN_ENTITLEMENTS": "ABPlayer/UITests/ABPlayerUITests.entitlements",
+      ])
     ),
   ],
   schemes: [

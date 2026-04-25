@@ -57,6 +57,40 @@ struct SubtitleCueEncodingTests {
 struct SubtitleCueSentenceNavigationTests {
 
   @Test
+  func latestStartedCueReturnsPreviousCueWhenTimeBetweenCues() {
+    let cues = [
+      SubtitleCue(startTime: 0.0, endTime: 1.0, text: "First"),
+      SubtitleCue(startTime: 2.0, endTime: 3.0, text: "Second"),
+      SubtitleCue(startTime: 4.0, endTime: 5.0, text: "Third"),
+    ]
+
+    let cue = cues.latestStartedCue(at: 1.5)
+    #expect(cue == cues[0])
+  }
+
+  @Test
+  func latestStartedCueReturnsNilBeforeFirstCue() {
+    let cues = [
+      SubtitleCue(startTime: 1.0, endTime: 2.0, text: "First"),
+      SubtitleCue(startTime: 3.0, endTime: 4.0, text: "Second"),
+    ]
+
+    let cue = cues.latestStartedCue(at: 0.5)
+    #expect(cue == nil)
+  }
+
+  @Test
+  func latestStartedCueReturnsLaterCueWhenStartTimesMatch() {
+    let cues = [
+      SubtitleCue(startTime: 1.0, endTime: 2.0, text: "First"),
+      SubtitleCue(startTime: 1.0, endTime: 2.5, text: "Second"),
+    ]
+
+    let cue = cues.latestStartedCue(at: 1.5)
+    #expect(cue == cues[1])
+  }
+
+  @Test
   func previousSentenceStartReturnsCurrentSentenceStartWhenTimeBetweenCues() {
     let cues = [
       SubtitleCue(startTime: 0.0, endTime: 1.0, text: "First"),
